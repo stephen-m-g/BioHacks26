@@ -2,6 +2,7 @@
 // Figures are the board's images with their annotations: hover for his words, click to jump to the section.
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { IconArrowLeft, IconClock, IconPrinter, IconRefresh, IconText } from '../components/DashIcons'
 import ImageBlock from '../components/ImageBlock'
 import RichText from '../components/RichText'
 import { useSessionData } from '../hooks/useSessionData'
@@ -10,6 +11,8 @@ import { assetUrl } from '../lib/assets'
 import { formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
+import '../styles/p4.css'
+import '../styles/study.css'
 
 export default function Notes() {
   const { sessionId = '' } = useParams()
@@ -67,95 +70,129 @@ export default function Notes() {
   }
 
   return (
-    <div className="page notes">
-      <header className="page-header no-print">
-        <Link className="btn" to="/">
-          ← Dashboard
+    <div className="p4">
+      <header className="p4-top no-print">
+        <Link className="p4-btn" to="/">
+          <IconArrowLeft /> Lectures
         </Link>
         <button onClick={compile} disabled={compiling}>
           {compiling ? 'Compiling…' : hasContent ? 'Recompile' : 'Compile notes'}
         </button>
-        {hasContent && <button onClick={() => window.print()}>Print / PDF</button>}
+        {hasContent && (
+          <button className="p4-btn solid" onClick={() => window.print()}>
+            <IconPrinter /> Print or PDF
+          </button>
+        )}
       </header>
 
-      {error && <div className="notice warn">{error}</div>}
-      {loaded && !hasContent && (
-        <div className="notice">
-          {notes ? 'The compiled notes are empty (the compile endpoint may not be implemented yet).' : 'Notes are compiling… they will appear here automatically.'}
-        </div>
-      )}
-
-      {content && hasContent && (
-        <article>
-          <h1>{content.title || data.session?.title || data.lecture?.title}</h1>
-          <div className="muted">{formatDate(data.session?.started_at)}</div>
-          {content.overview && (
-            <p className="overview">
-              <RichText text={content.overview} />
-            </p>
+      <div className="p4-inner">
+        <div className="st-article">
+          {error && (
+            <div className="p4-notice warn no-print" role="alert">
+              <span>{error}</span>
+              <button className="p4-btn" onClick={() => setError(null)}>
+                Dismiss
+              </button>
+            </div>
+          )}
+          {loaded && !hasContent && (
+            <div className="p4-notice" role="status">
+              <span>
+                {notes
+                  ? 'The compiled notes came back empty. Try Recompile.'
+                  : 'Your notes are compiling. They’ll appear here automatically.'}
+              </span>
+            </div>
           )}
 
-          {content.sections.length > 1 && (
-            <nav className="toc no-print">
-              {content.sections.map((s) => (
-                <a key={s.id} href={`#section-${s.id}`}>
-                  {s.heading}
-                </a>
-              ))}
-            </nav>
-          )}
-
-          {content.sections.map((s) => (
-            <section key={s.id} id={`section-${s.id}`} className="notes-section">
-              <h2>{s.heading}</h2>
-              {s.paragraphs.map((p, i) => (
-                <p key={i}>
-                  <RichText text={p} />
+          {content && hasContent && (
+            <article>
+              <span className="p4-badge dark st-eyebrow">Study notes</span>
+              <h1 className="p4-title" style={{ marginTop: 16 }}>
+                {content.title || data.session?.title || data.lecture?.title}
+              </h1>
+              <p className="p4-sub">
+                <span>
+                  <IconClock /> {formatDate(data.session?.started_at)}
+                </span>
+                <span>{content.sections.length} sections</span>
+              </p>
+              {content.overview && (
+                <p className="st-overview">
+                  <RichText text={content.overview} />
                 </p>
-              ))}
-              {s.figures.map((f) => {
-                const block = data.blocks[f.image_block_id]
-                if (!block) return null
-                const asset = block.asset_id ? data.assets[block.asset_id] : undefined
-                return (
-                  <figure key={f.image_block_id}>
-                    <ImageBlock
-                      block={block}
-                      src={assetUrl(asset)}
-                      alt={asset?.label ?? f.caption}
-                      strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                      annotations={data.annotationList.filter((a) => a.block_id === block.id && a.status === 'confirmed')}
-                      onJump={jumpTo}
-                    />
-                    <figcaption>{f.caption}</figcaption>
-                  </figure>
-                )
-              })}
-              {s.key_terms.length > 0 && (
-                <dl className="key-terms">
-                  {s.key_terms.map((k) => (
-                    <div key={k.term}>
-                      <dt>{k.term}</dt>
-                      <dd>{k.definition}</dd>
-                    </div>
-                  ))}
-                </dl>
               )}
-            </section>
-          ))}
 
-          {content.review_questions.length > 0 && (
-            <section className="notes-section">
-              <h2>Review questions</h2>
-              <ol>
-                {content.review_questions.map((q, i) => (
-                  <li key={i}>{q}</li>
+              {content.sections.length > 1 && (
+                <nav className="p4-section no-print" aria-labelledby="toc-heading">
+                  <h2 id="toc-heading" className="p4-label">
+                    Sections
+                  </h2>
+                  <div className="st-toc">
+                    {content.sections.map((s) => (
+                      <a key={s.id} href={`#section-${s.id}`}>
+                        {s.heading}
+                      </a>
+                    ))}
+                  </div>
+                </nav>
+              )}
+
+              <div className="st-sections">
+                {content.sections.map((s) => (
+                  <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
+                    <h2>{s.heading}</h2>
+                    {s.paragraphs.map((p, i) => (
+                      <p key={i}>
+                        <RichText text={p} />
+                      </p>
+                    ))}
+                    {s.figures.map((f) => {
+                      const block = data.blocks[f.image_block_id]
+                      if (!block) return null
+                      const asset = block.asset_id ? data.assets[block.asset_id] : undefined
+                      return (
+                        <figure key={f.image_block_id}>
+                          <ImageBlock
+                            block={block}
+                            src={assetUrl(asset)}
+                            alt={asset?.label ?? f.caption}
+                            strokes={data.strokeList.filter((st) => st.block_id === block.id)}
+                            annotations={data.annotationList.filter((a) => a.block_id === block.id && a.status === 'confirmed')}
+                            onJump={jumpTo}
+                          />
+                          <figcaption>{f.caption}</figcaption>
+                        </figure>
+                      )
+                    })}
+                    {s.key_terms.length > 0 && (
+                      <dl className="st-terms">
+                        {s.key_terms.map((k) => (
+                          <div key={k.term}>
+                            <dt>{k.term}</dt>
+                            <dd>{k.definition}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </section>
                 ))}
-              </ol>
-            </section>
+
+                {content.review_questions.length > 0 && (
+                  <section className="p4-card st-section">
+                    <h2>Review questions</h2>
+                    <ol className="st-questions">
+                      {content.review_questions.map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ol>
+                  </section>
+                )}
+              </div>
+            </article>
           )}
-        </article>
-      )}
+        </div>
+      </div>
     </div>
   )
 }
