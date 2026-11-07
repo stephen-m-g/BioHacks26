@@ -21,7 +21,8 @@ export default function Teach() {
   const actions = useTeacherActions(data)
   const store = useSessionStore()
   const settings = useSettings()
-  const [micOn, setMicOn] = useState(false)
+  // Recording starts with the session; Pause/Resume lives in the title menu.
+  const [micOn, setMicOn] = useState(true)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [ending, setEnding] = useState(false)
   const aspects = useRef(new Map<string, number>())
@@ -85,27 +86,38 @@ export default function Teach() {
 
   const placing = store.pendingAnnotationId === null && (store.selectedAssetId !== null || store.draggingAssetId !== null)
 
+  const title = data.session.title || data.lecture?.title || 'Lecture'
+
   return (
     <div className={`teach sidebar-${settings.sidebarSide}`}>
       <Sidebar
-        title={data.lecture?.title ?? 'Lecture'}
+        title={title}
+        onRename={actions.renameSession}
         images={data.imageAssets}
-        mic={{
-          on: micOn,
-          listening: speech.listening,
-          supported: speech.supported,
-          error: speech.error,
-          metrics: speech.metrics,
-          toggle: toggleMic,
-        }}
         onUndo={actions.undoStroke}
         onDrop={(assetId, aspect, slot) => insertAt(assetId, slot, aspect)}
         onEnd={() => setConfirmEnd(true)}
         onImageAspect={(id, aspect) => aspects.current.set(id, aspect)}
+        recording={{
+          on: micOn && data.session.status === 'live',
+          listening: speech.listening,
+          supported: speech.supported,
+          error: speech.error,
+          metrics: speech.metrics,
+          startedAt: data.session.started_at,
+          toggle: toggleMic,
+        }}
       />
-      <main className="board-scroll" ref={scrollRef}>
-        {data.session.status === 'ended' && <div className="notice">This session has ended.</div>}
-        <Board
+      <div className="teach-main">
+        <div className="breadcrumb">
+          <strong>{title}</strong>
+          <span aria-hidden="true">›</span>
+          <span>{data.session.status === 'live' ? 'Live session' : 'Ended'}</span>
+        </div>
+        <div className="canvas-card">
+          <main className="board-scroll" ref={scrollRef}>
+            {data.session.status === 'ended' && <div className="notice">This session has ended.</div>}
+            <Board
           blocks={data.blockList}
           assets={data.assets}
           strokes={data.strokeList}
@@ -116,7 +128,8 @@ export default function Teach() {
             mode: store.mode,
             inkColor: store.inkColor,
             inkWidth: store.inkWidth,
-            fingerDraws: settings.fingerDraws,
+            fingerDraws: !store.pencilSeen,
+            onPen: store.setPencilSeen,
             pendingId: store.pendingAnnotationId,
             placing,
             onSlot: (slot) => store.selectedAssetId && insertAt(store.selectedAssetId, slot),
@@ -126,7 +139,9 @@ export default function Teach() {
             onReject: actions.rejectAnnotation,
           }}
         />
-      </main>
+          </main>
+        </div>
+      </div>
 
       <ConfirmDialog
         open={confirmEnd}

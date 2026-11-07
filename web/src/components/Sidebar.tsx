@@ -1,28 +1,44 @@
-// P1 owns this component. Live-session sidebar: mode, ink presets, image bank, settings, End session.
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+// P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
 import type { SpeechMetrics } from '../hooks/transcriptionModel'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
+import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
+
+export interface Recording {
+  /** Recording wanted (not paused) and the session is live. */
+  on: boolean
+  /** The recognizer is actually running right now. */
+  listening: boolean
+  supported: boolean
+  error: string | null
+  /** Rolling / baseline WPM and average confidence from the transcription hook (P3). */
+  metrics: SpeechMetrics
+  startedAt: string
+  toggle: () => void
+}
 
 interface Props {
   title: string
+  recording: Recording
+  /** Save a new session name. */
+  onRename: (title: string) => void
   images: Asset[]
-  mic: {
-    on: boolean
-    listening: boolean
-    supported: boolean
-    error: string | null
-    metrics: SpeechMetrics
-    toggle: () => void
-  }
   onUndo: () => void
-  /** Drop an image on a slot (drag) — slot index comes from the element under the pointer. */
+  /** Drop an image on a slot (drag). */
   onDrop: (assetId: string, aspect: number, slot: number) => void
   onEnd: () => void
   /** Remember each image's aspect ratio once its thumbnail loads. */
   onImageAspect: (assetId: string, aspect: number) => void
+}
+
+const COLOR_NAMES: Record<string, string> = {
+  '#111111': 'Black',
+  '#2563eb': 'Blue',
+  '#dc2626': 'Red',
+  '#16a34a': 'Green',
 }
 
 /** Drag starts once the pointer moves this far; shorter is a tap. */
@@ -50,11 +66,67 @@ function highlightSlot(el: HTMLElement | null) {
   el?.classList.add('slot-target')
 }
 
-export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onImageAspect }: Props) {
+/** Session clock with a recording dot: red pulse while listening, grey when paused. */
+function SessionClock({ recording }: { recording: Recording }) {
+  // Counts recorded time only: it freezes while recording is paused and continues on resume.
+  // On first load it starts from the session's start time (pauses before a reload aren't known).
+  const [secs, setSecs] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - new Date(recording.startedAt).getTime()) / 1000)),
+  )
+  const secsRef = useRef(secs)
+  secsRef.current = secs
+  useEffect(() => {
+    if (!recording.on) return
+    const base = secsRef.current
+    const t0 = Date.now()
+    const t = setInterval(() => setSecs(base + Math.floor((Date.now() - t0) / 1000)), 250)
+    return () => clearInterval(t)
+  }, [recording.on])
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const time = `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
+  const status = !recording.supported
+    ? 'No mic'
+    : recording.error && recording.on
+      ? 'Mic blocked'
+      : !recording.on
+        ? 'Paused'
+        : null
+  return (
+    <span className="session-clock" aria-live="polite" title={recording.error ? `Mic: ${recording.error}` : undefined}>
+      <span className={`rec-dot${recording.on && recording.listening ? ' live' : ''}`} aria-hidden="true" />
+      {status && <span className="clock-status">{status}</span>}
+      <span className="clock-time" aria-label="Session time">
+        {time}
+      </span>
+    </span>
+  )
+}
+
+export default function Sidebar({ title, recording, onRename, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
   const s = useSessionStore()
   const settings = useSettings()
   const locked = s.pendingAnnotationId !== null
   const [ghost, setGhost] = useState<{ src: string; x: number; y: number } | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(title)
+
+  const editingRef = useRef(false)
+
+  const startRename = () => {
+    setMenuOpen(false)
+    setDraftTitle(title)
+    editingRef.current = true
+    setEditing(true)
+  }
+
+  const finishRename = (save: boolean) => {
+    if (!editingRef.current) return // Enter/Escape already finished; ignore the blur that follows
+    editingRef.current = false
+    setEditing(false)
+    const next = draftTitle.trim()
+    if (save && next && next !== title) onRename(next)
+  }
   const press = useRef<{ assetId: string; x: number; y: number; dragging: boolean; aspect: number } | null>(null)
 
   const onThumbDown = (e: ReactPointerEvent<HTMLButtonElement>, asset: Asset) => {
@@ -94,7 +166,7 @@ export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onI
       s.setDraggingAsset(null)
       if (target) onDrop(asset.id, p.aspect, Number(target.dataset.slot))
     } else {
-      // Tap: select, then tap a slot on the board.
+      // Tap: select, then tap a spot on the board.
       s.setSelectedAsset(s.selectedAssetId === asset.id ? null : asset.id)
     }
   }
@@ -107,112 +179,212 @@ export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onI
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-section">
-        <div className="sidebar-title">{title}</div>
-        <button className={mic.on ? 'primary' : ''} onClick={mic.toggle} disabled={!mic.supported}>
-          {!mic.supported ? 'Mic not supported here' : mic.on ? (mic.listening ? '● Listening' : 'Starting mic…') : 'Turn mic on'}
-        </button>
-        {mic.on && (
-          <div className="speech-metrics" aria-label="Speech metrics">
-            <span>60s: {mic.metrics.rollingWpm ?? '—'} WPM</span>
-            <span>Baseline: {mic.metrics.baselineWpm ?? '—'} WPM</span>
-            <span>
-              Confidence:{' '}
-              {mic.metrics.averageConfidence === null ? '—' : `${Math.round(mic.metrics.averageConfidence * 100)}%`}
-            </span>
-          </div>
-        )}
-        {mic.error && <div className="hint warn">Mic: {mic.error}</div>}
-      </div>
-
-      <div className="sidebar-section">
-        <div className="segmented">
-          <button className={s.mode === 'ink' ? 'selected' : ''} onClick={() => s.setMode('ink')}>
-            ✎ Ink
-          </button>
-          <button className={s.mode === 'smart' ? 'selected' : ''} onClick={() => s.setMode('smart')}>
-            ◌ Smart
-          </button>
-        </div>
-        {s.mode === 'ink' ? (
-          <>
-            <div className="swatches">
-              {INK_COLORS.map((c) => (
-                <button
-                  key={c}
-                  className={`swatch${s.inkColor === c ? ' selected' : ''}`}
-                  style={{ background: c }}
-                  aria-label={`Color ${c}`}
-                  onClick={() => s.setInkColor(c)}
-                />
-              ))}
-            </div>
-            <div className="widths">
-              {INK_WIDTHS.map((w) => (
-                <button key={w.value} className={s.inkWidth === w.value ? 'selected' : ''} onClick={() => s.setInkWidth(w.value)}>
-                  <span className="width-dot" style={{ width: w.value * 1200, height: w.value * 1200 }} />
-                  {w.label}
-                </button>
-              ))}
-            </div>
-            <button onClick={onUndo}>↶ Undo</button>
-          </>
+    <aside className="sidebar" aria-label="Board tools">
+      <div className="title-menu">
+        {editing ? (
+          <input
+            className="title-input"
+            aria-label="Session name"
+            value={draftTitle}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setDraftTitle(e.target.value)}
+            onBlur={() => finishRename(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') finishRename(true)
+              if (e.key === 'Escape') finishRename(false)
+            }}
+          />
         ) : (
-          <div className="hint">
-            {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image, then talk about it.'}
-          </div>
+          <button
+            className="title-btn"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={`${title} (double-click to rename)`}
+            onClick={() => setMenuOpen((o) => !o)}
+            onDoubleClick={startRename}
+          >
+            <span className="title-text">{title}</span>
+            <ChevronDownIcon />
+          </button>
+        )}
+        {menuOpen && !editing && (
+          <>
+            <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
+            <div className="menu" role="menu">
+              {recording.on && (
+                <div className="speech-metrics" aria-label="Speech metrics">
+                  <span>Pace {recording.metrics.rollingWpm ?? '—'} wpm</span>
+                  <span>Baseline {recording.metrics.baselineWpm ?? '—'} wpm</span>
+                  <span>
+                    Clarity{' '}
+                    {recording.metrics.averageConfidence === null
+                      ? '—'
+                      : `${Math.round(recording.metrics.averageConfidence * 100)}%`}
+                  </span>
+                </div>
+              )}
+              <button
+                role="menuitem"
+                className="menu-item"
+                disabled={!recording.supported}
+                onClick={() => {
+                  setMenuOpen(false)
+                  recording.toggle()
+                }}
+              >
+                {recording.on ? 'Pause recording' : 'Resume recording'}
+              </button>
+              <button
+                role="menuitem"
+                className="menu-item danger-item"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onEnd()
+                }}
+              >
+                End session
+              </button>
+            </div>
+          </>
         )}
       </div>
 
-      <div className="sidebar-section sidebar-images">
-        <div className="sidebar-label">Images</div>
-        {locked && <div className="hint warn">Press ✓ or ✗ on the open annotation before adding an image.</div>}
-        {!locked && s.selectedAssetId && <div className="hint">Now tap a spot on the board.</div>}
-        {images.length === 0 && <div className="hint">No images were uploaded for this lecture.</div>}
-        {images.map((a) => (
-          <button
-            key={a.id}
-            className={`thumb${s.selectedAssetId === a.id ? ' selected' : ''}`}
-            disabled={locked}
-            onPointerDown={(e) => onThumbDown(e, a)}
-            onPointerMove={(e) => onThumbMove(e, a)}
-            onPointerUp={(e) => onThumbUp(e, a)}
-            onPointerCancel={onThumbCancel}
-          >
-            <img
-              src={assetUrl(a)}
-              alt=""
-              draggable={false}
-              onLoad={(e) => {
-                const img = e.currentTarget
-                if (img.naturalHeight) onImageAspect(a.id, img.naturalWidth / img.naturalHeight)
-              }}
-            />
-            <span>{a.label || a.file_name || 'Image'}</span>
-          </button>
-        ))}
-      </div>
+      <hr className="sidebar-divider" />
 
-      <div className="sidebar-section">
-        <div className="sidebar-label">Settings</div>
-        <button onClick={() => settings.setSidebarSide(settings.sidebarSide === 'left' ? 'right' : 'left')}>
-          Move sidebar {settings.sidebarSide === 'left' ? 'right →' : '← left'}
+      <div className="mode-row" role="radiogroup" aria-label="Drawing mode">
+        <button
+          role="radio"
+          aria-checked={s.mode === 'ink'}
+          aria-label="Ink"
+          title="Ink"
+          className={`icon-btn${s.mode === 'ink' ? ' on' : ''}`}
+          onClick={() => s.setMode('ink')}
+        >
+          <span className="ic">
+            <PenIcon />
+          </span>
         </button>
-        <button onClick={() => settings.setFingerDraws(!settings.fingerDraws)}>
-          Finger draws: {settings.fingerDraws ? 'On' : 'Off (pencil only)'}
+        <button
+          role="radio"
+          aria-checked={s.mode === 'smart'}
+          aria-label="Smart annotation"
+          title="Smart annotation"
+          className={`icon-btn${s.mode === 'smart' ? ' on' : ''}`}
+          onClick={() => s.setMode('smart')}
+        >
+          <span className="ic">
+            <WandIcon />
+          </span>
         </button>
       </div>
 
-      <div className="sidebar-section sidebar-end">
-        <button className="danger" onClick={onEnd}>
-          End session
-        </button>
+      <div className="sidebar-label mode-label" aria-live="polite">
+        {s.mode === 'ink' ? 'Pen' : 'Smart annotate'}
       </div>
 
-      {ghost && (
-        <img className="drag-ghost" src={ghost.src} alt="" style={{ left: ghost.x, top: ghost.y }} draggable={false} />
+      {s.mode === 'ink' ? (
+        <div className="tool-panel">
+          <p className="hint mode-hint">Directly annotate diagrams.</p>
+          <div className="swatches" role="radiogroup" aria-label="Ink color">
+            {INK_COLORS.map((c) => (
+              <button
+                key={c}
+                role="radio"
+                aria-checked={s.inkColor === c}
+                aria-label={COLOR_NAMES[c] ?? c}
+                className={`swatch${s.inkColor === c ? ' on' : ''}`}
+                onClick={() => s.setInkColor(c)}
+              >
+                <span className="swatch-dot" style={{ background: c }} />
+              </button>
+            ))}
+          </div>
+          <div className="widths" role="radiogroup" aria-label="Ink width">
+            {INK_WIDTHS.map((w) => (
+              <button
+                key={w.value}
+                role="radio"
+                aria-checked={s.inkWidth === w.value}
+                aria-label={w.label}
+                title={w.label}
+                className={`width-btn${s.inkWidth === w.value ? ' on' : ''}`}
+                onClick={() => s.setInkWidth(w.value)}
+              >
+                <span className="width-chip">
+                  <span className="width-dot" style={{ width: 3 + w.value * 700, height: 3 + w.value * 700 }} />
+                </span>
+              </button>
+            ))}
+            <button className="width-btn" aria-label="Undo last stroke" title="Undo" onClick={onUndo}>
+              <span className="width-chip undo">
+                <UndoIcon />
+              </span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="hint mode-hint">
+          {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image to link it to your words.'}
+        </p>
       )}
+
+      <hr className="sidebar-divider" />
+
+      <div className="sidebar-images">
+        <div className="sidebar-label">Images</div>
+        <p className="hint images-hint" aria-live="polite">
+          {locked
+            ? 'Finish the open annotation (✓ or ✗) first.'
+            : s.selectedAssetId
+              ? 'Now tap a spot on the board.'
+              : images.length === 0
+                ? 'No images uploaded for this lecture.'
+                : 'Drag onto the board or tap and place.'}
+        </p>
+        <div className="thumb-grid">
+          {images.map((a) => (
+            <button
+              key={a.id}
+              className={`thumb${s.selectedAssetId === a.id ? ' on' : ''}`}
+              disabled={locked}
+              aria-label={a.label || a.file_name || 'Image'}
+              aria-pressed={s.selectedAssetId === a.id}
+              title={a.label || a.file_name || 'Image'}
+              onPointerDown={(e) => onThumbDown(e, a)}
+              onPointerMove={(e) => onThumbMove(e, a)}
+              onPointerUp={(e) => onThumbUp(e, a)}
+              onPointerCancel={onThumbCancel}
+            >
+              <img
+                src={assetUrl(a)}
+                alt=""
+                draggable={false}
+                onLoad={(e) => {
+                  const img = e.currentTarget
+                  if (img.naturalHeight) onImageAspect(a.id, img.naturalWidth / img.naturalHeight)
+                }}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="sidebar-footer">
+        <button
+          className="icon-btn small"
+          onClick={() => settings.setSidebarSide(settings.sidebarSide === 'left' ? 'right' : 'left')}
+          aria-label={`Move sidebar to the ${settings.sidebarSide === 'left' ? 'right' : 'left'}`}
+          title="Move sidebar to the other side"
+        >
+          <span className="ic">
+            <SwapIcon />
+          </span>
+        </button>
+        <SessionClock recording={recording} />
+      </div>
+
+      {ghost && <img className="drag-ghost" src={ghost.src} alt="" style={{ left: ghost.x, top: ghost.y }} draggable={false} />}
     </aside>
   )
 }

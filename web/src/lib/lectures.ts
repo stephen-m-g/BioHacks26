@@ -10,9 +10,9 @@ export async function createLecture(title = 'Untitled lecture'): Promise<string>
 }
 
 /** Launch a prepared lecture as a new live session. A lecture can be launched any number of times. */
-export async function startSession(lectureId: string): Promise<string> {
+export async function startSession(lectureId: string, title: string | null = null): Promise<string> {
   const id = newId()
-  const { error } = await supabase.from('sessions').insert({ id, lecture_id: lectureId })
+  const { error } = await supabase.from('sessions').insert({ id, lecture_id: lectureId, title })
   if (error) throw error
   return id
 }

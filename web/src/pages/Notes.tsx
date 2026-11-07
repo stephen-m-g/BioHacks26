@@ -90,7 +90,7 @@ export default function Notes() {
 
       {content && hasContent && (
         <article>
-          <h1>{content.title || data.lecture?.title}</h1>
+          <h1>{content.title || data.session?.title || data.lecture?.title}</h1>
           <div className="muted">{formatDate(data.session?.started_at)}</div>
           {content.overview && (
             <p className="overview">

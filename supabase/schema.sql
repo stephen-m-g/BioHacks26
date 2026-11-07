@@ -25,6 +25,7 @@ create table assets (
 create table sessions (
   id uuid primary key default gen_random_uuid(),
   lecture_id uuid references lectures on delete cascade,
+  title text,                 -- session name; starts as the lecture title, renamable per session
   status text default 'live' check (status in ('live','ended')),
   started_at timestamptz default now(),
   ended_at timestamptz

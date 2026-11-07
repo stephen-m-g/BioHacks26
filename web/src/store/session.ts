@@ -22,6 +22,12 @@ export interface SessionState {
   selectedAssetId: string | null
   /** Image currently being dragged from the sidebar. */
   draggingAssetId: string | null
+  /**
+   * Set the first time an Apple Pencil touches a board image. From then on only the pencil draws and
+   * fingers scroll (palm rejection). Not persisted, so a session without a pencil still lets fingers draw.
+   */
+  pencilSeen: boolean
+  setPencilSeen: () => void
   reset: (sessionId: string | null) => void
   setPendingAnnotation: (id: string | null) => void
   setMode: (mode: BoardMode) => void
@@ -39,6 +45,8 @@ export const useSessionStore = create<SessionState>((set) => ({
   inkWidth: INK_WIDTHS[1].value,
   selectedAssetId: null,
   draggingAssetId: null,
+  pencilSeen: false,
+  setPencilSeen: () => set({ pencilSeen: true }),
   reset: (sessionId) =>
     set({ sessionId, pendingAnnotationId: null, selectedAssetId: null, draggingAssetId: null }),
   setPendingAnnotation: (id) => set({ pendingAnnotationId: id }),

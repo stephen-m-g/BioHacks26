@@ -24,12 +24,14 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - **Canvas:** a vertical document. Speech is transcribed live; unprocessed text shows in grey italics at the bottom. About every 15 s the teacher client calls `POST /sessions/{id}/refine`, which cleans the unprocessed segments into one **text block** (a paragraph) appended to the board.
 - **Images** are blocks too. To place one: drag a thumbnail from the sidebar onto a drop slot between blocks, **or** tap a thumbnail and then tap a slot.
 - **Ink and lassos are only allowed on images**, stored in coordinates normalized to that image (x, y in [0,1] of the image's width/height; stroke width as a fraction of image width).
-- **Sidebar** (left by default; a setting moves it right). From top to bottom:
-  - lecture title and mic on/off;
+- **Sidebar** (left by default; a button at the bottom moves it right; its contents stay left-aligned on either side). From top to bottom:
+  - session title: tap opens a dropdown with **Pause/Resume recording** and **End session**; double-click renames it inline (Enter saves, Esc cancels);
   - **mode toggle: Ink / Smart**;
   - ink presets: 4 colors × 3 widths, plus Undo;
   - image bank;
-  - settings (sidebar side, finger draws on/off);
+  - bottom row: a small button to move the sidebar to the other side, and the session clock with a recording dot (red pulse while listening; shows Paused / Mic blocked).
+- **Recording starts automatically** when the session opens.
+- **Pencil auto-detect:** fingers draw on images until an Apple Pencil touches one; from then on (for that page load) only the pencil draws and fingers scroll, which stops palm marks. There is no toggle.
   - **End session** (confirm dialog).
 - **Smart annotation** (lasso): drawing a loop on an image in Smart mode creates a `pending` annotation. While it's pending:
   - the outline has an animated **shimmer**;
@@ -42,7 +44,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 ## Database (`supabase/schema.sql`, RLS off)
 - `lectures(id, title, archived_at, created_at)`
 - `assets(id, lecture_id, kind 'image'|'text'|'pdf', storage_path, text_content, file_name, label, description, key_terms[], created_at)`
-- `sessions(id, lecture_id → lectures on delete cascade, status 'live'|'ended', started_at, ended_at)`
+- `sessions(id, lecture_id → lectures on delete cascade, title, status 'live'|'ended', started_at, ended_at)`. `title` starts as the lecture title and can be renamed per session.
 - `blocks(id, session_id, kind 'text'|'image', position float, text, asset_id, aspect, created_at)`. The board is the blocks sorted by `position`; an image inserted between two blocks gets the midpoint position. `aspect` = image width/height.
 - `strokes(id, session_id, block_id, points [[x,y,pressure]], color, width, created_at)`
 - `annotations(id, session_id, block_id, path [[x,y,p]], bbox {x,y,w,h}, status 'pending'|'confirmed'|'rejected', drawn_at, closed_at, label, bubble_text)`

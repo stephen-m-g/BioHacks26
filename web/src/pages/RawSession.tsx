@@ -18,7 +18,7 @@ export default function RawSession() {
           ← Dashboard
         </Link>
         <div>
-          <h1>{data.lecture?.title ?? 'Session'}</h1>
+          <h1>{data.session.title || data.lecture?.title || 'Session'}</h1>
           <div className="muted">Raw board · {formatDate(data.session.started_at)}</div>
         </div>
         <Link className="btn primary" to={`/notes/${sessionId}`}>

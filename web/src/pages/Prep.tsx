@@ -128,7 +128,7 @@ export default function Prep() {
   const start = async () => {
     try {
       await saveTitle()
-      navigate(`/teach/${await startSession(lectureId)}`)
+      navigate(`/teach/${await startSession(lectureId, title.trim() || 'Untitled lecture')}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
