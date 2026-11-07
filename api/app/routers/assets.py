@@ -20,6 +20,7 @@ class DescribeOut(BaseModel):
 
 @router.post("/assets/{asset_id}/describe", response_model=DescribeOut)
 def describe_asset(asset_id: str) -> DescribeOut:
-    # TODO (P2): load asset; image -> download public URL, send as image part; text -> send text_content.
+    # TODO (P2): load asset; image -> download public URL, send as image part;
+    # pdf -> download, send as types.Part.from_bytes(data, mime_type="application/pdf"); text -> text_content.
     # Call gemini.generate_json(SYSTEM_PROMPT, contents, DescribeOut); write label/description/key_terms.
     return DescribeOut(label="", description="", key_terms=[])

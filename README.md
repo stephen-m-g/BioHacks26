@@ -1,23 +1,23 @@
 # BioHacks 2026: iPad whiteboard for a teacher with ALS
 
-Wearables & Quality of Life track. A web app that replaces Alex Chen's whiteboard with an iPad: live ink, circles that link his speech to what he selects, live cleaned-up speaker notes for students, and compiled lecture notes at the end.
+Wearables & Quality of Life track. A teacher-only web app, projected in class, that replaces Alex Chen's whiteboard. His speech becomes a live, scrolling board of cleaned-up paragraphs and lecture images. He can ink on images or lasso part of one to link what he's saying to it. Each session is saved as an interactive study document.
+
+**The current spec is [docs/CONTEXT.md](docs/CONTEXT.md)** (screens, schema, API contract, notes JSON, ownership).
 
 ## Layout
 
 | Path | What | Owner |
 |---|---|---|
-| `web/` | Vite + React + TS, react-konva, perfect-freehand, zustand, supabase-js | P1, P3, P4 |
-| `web/src/components/SlideRenderer.tsx` | Shared 16:9 board renderer (teacher + read-only student) | P1 |
-| `web/src/pages/Teach.tsx` | `/teach/:sessionId` teacher canvas | P1 |
-| `web/src/components/SpeakerNotes.tsx`, `web/src/hooks/useTranscription.ts` | Speech pipeline, speaker notes, adaptive volume | P3 |
-| `web/src/pages/{PrepList,PrepLecture,Join,Student,Notes}.tsx` | Prep flow, student view, notes page | P4 |
-| `web/src/store/session.ts` | Shared zustand store (P1 writes, P3 reads) | P4 stub |
-| `web/src/types.ts` | Types mirroring the DB tables | P4 |
-| `web/src/lib/api.ts` | Typed fetch wrappers for every API endpoint | shared |
+| `web/src/pages/Teach.tsx`, `components/{Board,ImageBlock,Sidebar}.tsx` | Live session: board, ink, lasso + shimmer + ✓/✗, image bank, settings | P1 |
+| `web/src/hooks/useTeacherActions.ts`, `useSessionData.ts` | Optimistic board actions; session loading + realtime | P1 / shared |
+| `web/src/hooks/useTranscription.ts` | Speech recognition (basic Web Speech version) | P3 |
+| `web/src/pages/{Dashboard,AllLectures,Prep,Notes,RawSession}.tsx` | Dashboard, archive, chat-style prep, study document, raw board | P4 |
+| `web/src/store/session.ts`, `store/settings.ts` | Live UI state (mode, ink, pending lasso); persisted device settings | shared |
+| `web/src/types.ts`, `web/src/lib/api.ts` | DB types, typed API client | shared |
 | `api/` | Python 3.11 FastAPI + google-genai + supabase-py | P2 |
 | `supabase/schema.sql` | Tables, realtime publication, storage bucket | P4 |
 
-Routes: `/prep`, `/prep/:lectureId`, `/teach/:sessionId`, `/join`, `/s/:sessionId`, `/notes/:sessionId`. The home page `/` has a system check that shows whether the API and Supabase are reachable.
+Routes: `/` dashboard, `/lectures` all lectures/archive, `/prep/:lectureId`, `/teach/:sessionId`, `/notes/:sessionId`, `/sessions/:sessionId/raw`. **`/teach/demo` runs the live board offline with sample images**, so you can try it without Supabase.
 
 ## Setup
 
