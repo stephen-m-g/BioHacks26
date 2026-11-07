@@ -1,20 +1,28 @@
-// P1 owns this component. Live-session sidebar: mode, ink presets, image bank, settings, End session.
+// P1 owns this component. Live-session sidebar: fits the screen without scrolling (only the image
+// grid scrolls internally if there are many images).
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
+import { HandIcon, LassoIcon, PenIcon, SwapIcon, UndoIcon } from './icons'
 
 interface Props {
   title: string
   images: Asset[]
-  mic: { on: boolean; listening: boolean; supported: boolean; error: string | null; toggle: () => void }
   onUndo: () => void
-  /** Drop an image on a slot (drag) — slot index comes from the element under the pointer. */
+  /** Drop an image on a slot (drag). */
   onDrop: (assetId: string, aspect: number, slot: number) => void
   onEnd: () => void
   /** Remember each image's aspect ratio once its thumbnail loads. */
   onImageAspect: (assetId: string, aspect: number) => void
+}
+
+const COLOR_NAMES: Record<string, string> = {
+  '#111111': 'Black',
+  '#2563eb': 'Blue',
+  '#dc2626': 'Red',
+  '#16a34a': 'Green',
 }
 
 /** Drag starts once the pointer moves this far; shorter is a tap. */
@@ -42,7 +50,7 @@ function highlightSlot(el: HTMLElement | null) {
   el?.classList.add('slot-target')
 }
 
-export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onImageAspect }: Props) {
+export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
   const s = useSessionStore()
   const settings = useSettings()
   const locked = s.pendingAnnotationId !== null
@@ -86,7 +94,7 @@ export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onI
       s.setDraggingAsset(null)
       if (target) onDrop(asset.id, p.aspect, Number(target.dataset.slot))
     } else {
-      // Tap: select, then tap a slot on the board.
+      // Tap: select, then tap a spot on the board.
       s.setSelectedAsset(s.selectedAssetId === asset.id ? null : asset.id)
     }
   }
@@ -99,102 +107,125 @@ export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onI
   }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-section">
-        <div className="sidebar-title">{title}</div>
-        <button className={mic.on ? 'primary' : ''} onClick={mic.toggle} disabled={!mic.supported}>
-          {!mic.supported ? 'Mic not supported here' : mic.on ? (mic.listening ? '● Listening' : 'Starting mic…') : 'Turn mic on'}
-        </button>
-        {mic.error && <div className="hint warn">Mic: {mic.error}</div>}
+    <aside className="sidebar" aria-label="Board tools">
+      <div className="sidebar-title" title={title}>
+        {title}
       </div>
 
-      <div className="sidebar-section">
-        <div className="segmented">
-          <button className={s.mode === 'ink' ? 'selected' : ''} onClick={() => s.setMode('ink')}>
-            ✎ Ink
-          </button>
-          <button className={s.mode === 'smart' ? 'selected' : ''} onClick={() => s.setMode('smart')}>
-            ◌ Smart
-          </button>
-        </div>
+      <div className="mode-toggle" role="radiogroup" aria-label="Drawing mode">
+        <button role="radio" aria-checked={s.mode === 'ink'} className={s.mode === 'ink' ? 'on' : ''} onClick={() => s.setMode('ink')}>
+          <PenIcon /> Ink
+        </button>
+        <button role="radio" aria-checked={s.mode === 'smart'} className={s.mode === 'smart' ? 'on' : ''} onClick={() => s.setMode('smart')}>
+          <LassoIcon /> Smart
+        </button>
+      </div>
+
+      <div className="tool-panel">
         {s.mode === 'ink' ? (
           <>
-            <div className="swatches">
+            <div className="swatches" role="radiogroup" aria-label="Ink color">
               {INK_COLORS.map((c) => (
                 <button
                   key={c}
-                  className={`swatch${s.inkColor === c ? ' selected' : ''}`}
-                  style={{ background: c }}
-                  aria-label={`Color ${c}`}
+                  role="radio"
+                  aria-checked={s.inkColor === c}
+                  aria-label={COLOR_NAMES[c] ?? c}
+                  className={`swatch${s.inkColor === c ? ' on' : ''}`}
                   onClick={() => s.setInkColor(c)}
-                />
-              ))}
-            </div>
-            <div className="widths">
-              {INK_WIDTHS.map((w) => (
-                <button key={w.value} className={s.inkWidth === w.value ? 'selected' : ''} onClick={() => s.setInkWidth(w.value)}>
-                  <span className="width-dot" style={{ width: w.value * 1200, height: w.value * 1200 }} />
-                  {w.label}
+                >
+                  <span className="swatch-dot" style={{ background: c }} />
                 </button>
               ))}
             </div>
-            <button onClick={onUndo}>↶ Undo</button>
+            <div className="widths" role="radiogroup" aria-label="Ink width">
+              {INK_WIDTHS.map((w) => (
+                <button
+                  key={w.value}
+                  role="radio"
+                  aria-checked={s.inkWidth === w.value}
+                  aria-label={w.label}
+                  title={w.label}
+                  className={s.inkWidth === w.value ? 'on' : ''}
+                  onClick={() => s.setInkWidth(w.value)}
+                >
+                  <span className="width-dot" style={{ width: 4 + w.value * 900, height: 4 + w.value * 900 }} />
+                </button>
+              ))}
+              <button aria-label="Undo last stroke" title="Undo" onClick={onUndo}>
+                <UndoIcon />
+              </button>
+            </div>
           </>
         ) : (
-          <div className="hint">
+          <p className="hint">
             {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image, then talk about it.'}
-          </div>
+          </p>
         )}
       </div>
 
-      <div className="sidebar-section sidebar-images">
+      <div className="sidebar-images">
         <div className="sidebar-label">Images</div>
-        {locked && <div className="hint warn">Press ✓ or ✗ on the open annotation before adding an image.</div>}
-        {!locked && s.selectedAssetId && <div className="hint">Now tap a spot on the board.</div>}
-        {images.length === 0 && <div className="hint">No images were uploaded for this lecture.</div>}
-        {images.map((a) => (
+        <p className="hint" aria-live="polite">
+          {locked
+            ? 'Finish the open annotation (✓ or ✗) first.'
+            : s.selectedAssetId
+              ? 'Now tap a spot on the board.'
+              : images.length === 0
+                ? 'No images uploaded for this lecture.'
+                : 'Drag onto the board, or tap then tap a spot.'}
+        </p>
+        <div className="thumb-grid">
+          {images.map((a) => (
+            <button
+              key={a.id}
+              className={`thumb${s.selectedAssetId === a.id ? ' on' : ''}`}
+              disabled={locked}
+              aria-label={a.label || a.file_name || 'Image'}
+              aria-pressed={s.selectedAssetId === a.id}
+              title={a.label || a.file_name || 'Image'}
+              onPointerDown={(e) => onThumbDown(e, a)}
+              onPointerMove={(e) => onThumbMove(e, a)}
+              onPointerUp={(e) => onThumbUp(e, a)}
+              onPointerCancel={onThumbCancel}
+            >
+              <img
+                src={assetUrl(a)}
+                alt=""
+                draggable={false}
+                onLoad={(e) => {
+                  const img = e.currentTarget
+                  if (img.naturalHeight) onImageAspect(a.id, img.naturalWidth / img.naturalHeight)
+                }}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="sidebar-card">
+        <div className="settings-row">
           <button
-            key={a.id}
-            className={`thumb${s.selectedAssetId === a.id ? ' selected' : ''}`}
-            disabled={locked}
-            onPointerDown={(e) => onThumbDown(e, a)}
-            onPointerMove={(e) => onThumbMove(e, a)}
-            onPointerUp={(e) => onThumbUp(e, a)}
-            onPointerCancel={onThumbCancel}
+            onClick={() => settings.setSidebarSide(settings.sidebarSide === 'left' ? 'right' : 'left')}
+            aria-label={`Move sidebar to the ${settings.sidebarSide === 'left' ? 'right' : 'left'}`}
           >
-            <img
-              src={assetUrl(a)}
-              alt=""
-              draggable={false}
-              onLoad={(e) => {
-                const img = e.currentTarget
-                if (img.naturalHeight) onImageAspect(a.id, img.naturalWidth / img.naturalHeight)
-              }}
-            />
-            <span>{a.label || a.file_name || 'Image'}</span>
+            <SwapIcon /> Side
           </button>
-        ))}
-      </div>
-
-      <div className="sidebar-section">
-        <div className="sidebar-label">Settings</div>
-        <button onClick={() => settings.setSidebarSide(settings.sidebarSide === 'left' ? 'right' : 'left')}>
-          Move sidebar {settings.sidebarSide === 'left' ? 'right →' : '← left'}
-        </button>
-        <button onClick={() => settings.setFingerDraws(!settings.fingerDraws)}>
-          Finger draws: {settings.fingerDraws ? 'On' : 'Off (pencil only)'}
-        </button>
-      </div>
-
-      <div className="sidebar-section sidebar-end">
-        <button className="danger" onClick={onEnd}>
+          <button
+            aria-pressed={settings.fingerDraws}
+            onClick={() => settings.setFingerDraws(!settings.fingerDraws)}
+            className={settings.fingerDraws ? 'on' : ''}
+            aria-label={`Finger drawing ${settings.fingerDraws ? 'on' : 'off'}`}
+          >
+            <HandIcon /> {settings.fingerDraws ? 'On' : 'Off'}
+          </button>
+        </div>
+        <button className="end-btn" onClick={onEnd}>
           End session
         </button>
       </div>
 
-      {ghost && (
-        <img className="drag-ghost" src={ghost.src} alt="" style={{ left: ghost.x, top: ghost.y }} draggable={false} />
-      )}
+      {ghost && <img className="drag-ghost" src={ghost.src} alt="" style={{ left: ghost.x, top: ghost.y }} draggable={false} />}
     </aside>
   )
 }
