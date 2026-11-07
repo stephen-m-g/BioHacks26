@@ -1,6 +1,7 @@
 // P1 owns this component. Live-session sidebar: mode, ink presets, image bank, settings, End session.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
+import type { SpeechMetrics } from '../hooks/transcriptionModel'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
@@ -8,7 +9,14 @@ import type { Asset } from '../types'
 interface Props {
   title: string
   images: Asset[]
-  mic: { on: boolean; listening: boolean; supported: boolean; error: string | null; toggle: () => void }
+  mic: {
+    on: boolean
+    listening: boolean
+    supported: boolean
+    error: string | null
+    metrics: SpeechMetrics
+    toggle: () => void
+  }
   onUndo: () => void
   /** Drop an image on a slot (drag) — slot index comes from the element under the pointer. */
   onDrop: (assetId: string, aspect: number, slot: number) => void
@@ -105,6 +113,16 @@ export default function Sidebar({ title, images, mic, onUndo, onDrop, onEnd, onI
         <button className={mic.on ? 'primary' : ''} onClick={mic.toggle} disabled={!mic.supported}>
           {!mic.supported ? 'Mic not supported here' : mic.on ? (mic.listening ? '● Listening' : 'Starting mic…') : 'Turn mic on'}
         </button>
+        {mic.on && (
+          <div className="speech-metrics" aria-label="Speech metrics">
+            <span>60s: {mic.metrics.rollingWpm ?? '—'} WPM</span>
+            <span>Baseline: {mic.metrics.baselineWpm ?? '—'} WPM</span>
+            <span>
+              Confidence:{' '}
+              {mic.metrics.averageConfidence === null ? '—' : `${Math.round(mic.metrics.averageConfidence * 100)}%`}
+            </span>
+          </div>
+        )}
         {mic.error && <div className="hint warn">Mic: {mic.error}</div>}
       </div>
 

@@ -407,6 +407,15 @@ textarea {
   letter-spacing: 0.05em;
 }
 
+.speech-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
 .sidebar-end {
   margin-top: auto;
   border-bottom: none;
