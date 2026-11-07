@@ -10,6 +10,8 @@ import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
 export interface Recording {
   /** Recording wanted (not paused) and the session is live. */
   on: boolean
+  /** The session is live, so the mic can be turned on. */
+  live: boolean
   /** The recognizer is actually running right now. */
   listening: boolean
   supported: boolean
@@ -91,7 +93,7 @@ function SessionClock({ recording }: { recording: Recording }) {
     : recording.error && recording.on
       ? 'Speech error'
       : !recording.on
-        ? 'Paused'
+        ? 'Mic off'
         : null
   return (
     <span className="session-clock" aria-live="polite" title={recording.error ? `Mic: ${recording.error}` : undefined}>
@@ -238,7 +240,7 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
                   recording.toggle()
                 }}
               >
-                {recording.on ? 'Pause recording' : 'Resume recording'}
+                {recording.on ? 'Pause recording' : 'Start recording'}
               </button>
               <button
                 role="menuitem"
@@ -254,6 +256,15 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
           </>
         )}
       </div>
+
+      {recording.live && !recording.on && recording.supported && (
+        <p className="mic-off-notice" role="status">
+          <span className="mic-off-dot" aria-hidden="true" />
+          <span>
+            <strong>Mic off.</strong> Tap the session name, then Start recording.
+          </span>
+        </p>
+      )}
 
       <hr className="sidebar-divider" />
 

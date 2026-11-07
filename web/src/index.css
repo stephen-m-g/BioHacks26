@@ -425,6 +425,28 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+/* Shown under the title while the mic is off, which is how every session opens */
+.mic-off-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.mic-off-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+}
+
 .speech-error {
   padding: 0 12px 8px;
   font-size: 0.75rem;
