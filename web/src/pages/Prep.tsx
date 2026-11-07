@@ -232,7 +232,6 @@ export default function Prep() {
             value={title}
             placeholder="Lecture title"
             onChange={(e) => setTitle(e.target.value)}
-            onBlur={saveTitle}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           />
           <p className="p4-sub">

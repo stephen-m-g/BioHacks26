@@ -138,7 +138,7 @@ export default function Dashboard() {
               <div className="list-main">
                 <div className="list-title">{l.title}</div>
                 <div className="muted">
-                  {l.assets?.[0]?.count ?? 0} items · created {formatDate(l.created_at)}
+                  {l.assets?.length ?? 0} items · created {formatDate(l.created_at)}
                 </div>
               </div>
               <div className="row">
