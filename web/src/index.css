@@ -738,9 +738,10 @@ textarea {
 .session-clock {
   grid-column: 2 / span 3;
   justify-self: end;
+  align-self: center;
   padding-right: 10px; /* the footer grid extends 10px past the content edge */
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   font-size: 0.85rem;
   color: var(--muted);
@@ -760,6 +761,10 @@ textarea {
   height: 8px;
   border-radius: 50%;
   background: var(--line-strong);
+  /* Sits on the text baseline, then rises by half the gap between its height and the cap/digit
+     height, so it's centered on the visible letters rather than the line box. */
+  transform: translateY(calc((8px - 0.7em) / 2));
+  transform: translateY(calc((8px - 1cap) / 2));
 }
 
 .rec-dot.live {
