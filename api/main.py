@@ -199,8 +199,9 @@ def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOu
         used = [segs[n - 1] for n in out.used_segments if 1 <= n <= len(segs)] if bubble else []
     else:
         label = "Annotation"
-        bubble = truncate_words(" ".join(s["raw_text"].strip() for s in segs), 70) or None
-        used = segs
+        # Without Gemini, speech from while the lasso was open ([OPEN]) is the best guess; else the whole window.
+        used = [s for s in segs if s.get("annotation_id") == annotation_id] or segs
+        bubble = truncate_words(" ".join(s["raw_text"].strip() for s in used), 70) or None
     if not segs:
         bubble = None
 
