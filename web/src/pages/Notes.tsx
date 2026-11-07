@@ -72,9 +72,6 @@ export default function Notes() {
         <Link className="btn" to="/">
           ← Dashboard
         </Link>
-        <Link className="btn" to={`/sessions/${sessionId}/raw`}>
-          Raw board
-        </Link>
         <button onClick={compile} disabled={compiling}>
           {compiling ? 'Compiling…' : hasContent ? 'Recompile' : 'Compile notes'}
         </button>

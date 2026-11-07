@@ -11,17 +11,18 @@ Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illeg
 ## Screens
 | Route | Screen |
 |---|---|
-| `/` | **Dashboard.** *Prepared lectures* (not archived): New, Start, Edit, Archive, plus a link to *All lectures*. *Past sessions*: View notes, View raw, Delete (confirm). A still-live session shows Resume. |
+| `/` | **Dashboard.** *Prepared lectures* (not archived): New, Start, Edit, Archive, plus a link to *All lectures*. *Past sessions*: View notes, Delete (confirm). A still-live session shows Resume. |
 | `/lectures` | **All lectures**, including archived: Edit, Archive/Restore, Delete. Deleting a lecture also deletes its past sessions; the confirm dialog says so. |
-| `/prep/:lectureId` | **Prep**, chat-style. He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title and a Start session button. |
-| `/teach/:sessionId` | **Live session** (below). Projected for the class. `/teach/demo` runs fully offline with sample data, so the UI can be tested without Supabase. |
+| `/prep/:lectureId` | **Prep**, chat-style. He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title. **Save** applies the title and removals and returns to the dashboard (it does not start a session). **← Dashboard** leaves without saving: uploads from this visit are deleted again, removed items come back, and a brand-new lecture (opened with `?new=1`) is deleted entirely. It asks to confirm only if something would be lost. |
+| `/teach/:sessionId` | **Live session** (below). Projected for the class. |
 | `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land, plus Recompile and Print/PDF buttons. |
-| `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. |
+| `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. Not linked from anywhere for now. |
 
 A prepared lecture can be launched any number of times; each launch is a new session. Archiving only hides it from the dashboard.
 
 ## Live session
 - **Canvas:** a vertical document. Speech is transcribed live; unprocessed text shows in grey italics at the bottom. About every 15 s the teacher client calls `POST /sessions/{id}/refine`, which cleans the unprocessed segments into one **text block** (a paragraph) appended to the board.
+- **Auto-scroll:** the board follows new text only when he's near the bottom, no lasso is open, and he hasn't touched the board (drawing, placing an image, scrolling) in the last 20 s, so it never scrolls away from a diagram he's working on.
 - **Images** are blocks too. To place one: drag a thumbnail from the sidebar onto a drop slot between blocks, **or** tap a thumbnail and then tap a slot.
 - **Ink and lassos are only allowed on images**, stored in coordinates normalized to that image (x, y in [0,1] of the image's width/height; stroke width as a fraction of image width).
 - **Sidebar** (left by default; a button at the bottom moves it right; its contents stay left-aligned on either side). From top to bottom:

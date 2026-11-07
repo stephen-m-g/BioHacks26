@@ -48,15 +48,11 @@ export default function Dashboard() {
     <div className="page">
       <header className="page-header">
         <h1>Lectures</h1>
-        <Link className="btn" to="/teach/demo">
-          Try the board (demo)
-        </Link>
       </header>
 
       {!supabaseConfigured && (
         <div className="notice">
-          Supabase isn't configured. Copy <code>web/.env.example</code> to <code>web/.env.local</code> and fill it in. The demo board
-          works without it.
+          Supabase isn't configured. Copy <code>web/.env.example</code> to <code>web/.env.local</code> and fill it in.
         </div>
       )}
       {error && <div className="notice warn">{error}</div>}
@@ -68,7 +64,7 @@ export default function Dashboard() {
             <Link className="btn" to="/lectures">
               All lectures & archive
             </Link>
-            <button className="primary" disabled={busy || !supabaseConfigured} onClick={() => run(async () => navigate(`/prep/${await createLecture()}`))}>
+            <button className="primary" disabled={busy || !supabaseConfigured} onClick={() => run(async () => navigate(`/prep/${await createLecture()}?new=1`))}>
               + New lecture
             </button>
           </div>
@@ -122,9 +118,6 @@ export default function Dashboard() {
                     Notes
                   </Link>
                 )}
-                <Link className="btn" to={`/sessions/${s.id}/raw`}>
-                  Raw
-                </Link>
                 <button className="danger-outline" onClick={() => setToDelete(s)}>
                   Delete
                 </button>
