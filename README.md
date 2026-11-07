@@ -39,8 +39,8 @@ python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env         # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-uvicorn app.main:app --reload --port 8000
-python scripts/smoke_test.py # hits every endpoint
+uvicorn main:app --reload --port 8000
+python smoke.py              # hits every endpoint
 ```
 
 The Gemini key and the service role key live only in `api/.env`. Never put them in `web/`.
@@ -52,7 +52,7 @@ Slides are 16:9. Every x, y, w, h and stroke width is normalized to [0,1] of the
 ## Deploy (HTTPS is required for the mic on iPad Safari)
 
 - **Web → Vercel:** import the repo, set Root Directory to `web`, framework Vite, add the three `VITE_*` env vars. `web/vercel.json` handles SPA routing.
-- **API → Render:** New → Blueprint, pick this repo (`render.yaml`), then set the secrets. Add the Vercel URL to `CORS_ORIGINS` (`*.vercel.app` is already allowed). Vultr is an option for its sponsor prize. For quick testing: `cloudflared tunnel --url http://localhost:8000`.
+- **API → Render:** New → Blueprint, pick this repo (`render.yaml`), then set the secrets. Add the Vercel URL to `WEB_ORIGIN`. Vultr is an option for its sponsor prize. For quick testing: `cloudflared tunnel --url http://localhost:8000`.
 
 ## UI rules
 
