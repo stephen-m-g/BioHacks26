@@ -1,13 +1,10 @@
 // Per-device teacher settings, remembered in localStorage.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { TranscriptionProvider } from '../hooks/scribeModel'
 
 export interface Settings {
   sidebarSide: 'left' | 'right'
   setSidebarSide: (side: 'left' | 'right') => void
-  transcriptionProvider: TranscriptionProvider
-  setTranscriptionProvider: (provider: TranscriptionProvider) => void
 }
 
 export const useSettings = create<Settings>()(
@@ -15,9 +12,15 @@ export const useSettings = create<Settings>()(
     (set) => ({
       sidebarSide: 'left',
       setSidebarSide: (sidebarSide) => set({ sidebarSide }),
-      transcriptionProvider: 'chrome',
-      setTranscriptionProvider: (transcriptionProvider) => set({ transcriptionProvider }),
     }),
-    { name: 'board-settings' },
+    {
+      name: 'board-settings',
+      // Version 0 also stored a speech provider choice; keep only the sidebar side.
+      version: 1,
+      partialize: ({ sidebarSide }) => ({ sidebarSide }),
+      migrate: (persisted) => ({
+        sidebarSide: (persisted as { sidebarSide?: unknown } | null)?.sidebarSide === 'right' ? 'right' : 'left',
+      }),
+    },
   ),
 )

@@ -7,9 +7,8 @@ import Sidebar from '../components/Sidebar'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { useSessionData } from '../hooks/useSessionData'
 import { useTeacherActions } from '../hooks/useTeacherActions'
-import type { TranscriptionProvider } from '../hooks/scribeModel'
+import { MIC_OFF, isMicOn, shouldRecord, turnMicOn, type MicState } from '../hooks/micModel'
 import { useScribeTranscription } from '../hooks/useScribeTranscription'
-import { useTranscription } from '../hooks/useTranscription'
 import { useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 
@@ -26,47 +25,25 @@ export default function Teach() {
   const actions = useTeacherActions(data)
   const store = useSessionStore()
   const settings = useSettings()
-  // Recording starts with the session; Pause/Resume lives in the title menu.
-  const [micOn, setMicOn] = useState(true)
+  // The mic starts off in every session; Start/Pause recording lives in the title menu.
+  const [mic, setMic] = useState<MicState>(MIC_OFF)
+  const micOn = isMicOn(mic, sessionId)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [ending, setEnding] = useState(false)
   const aspects = useRef(new Map<string, number>())
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastBoardTouch = useRef(0)
 
-  // Only the selected provider gets the mic; a switch stops the old one before the new one starts.
-  const [switching, setSwitching] = useState(false)
-  const provider = settings.transcriptionProvider
-  const recordingWanted = micOn && data.session?.status === 'live' && !switching
-  const captureContext = () => ({
-    sessionId,
-    annotationId: useSessionStore.getState().pendingAnnotationId,
-  })
-  const chromeSpeech = useTranscription({
-    enabled: recordingWanted && provider === 'chrome',
-    onFinal: actions.addSegment,
-    scopeKey: sessionId,
-    captureContext,
-  })
-  const scribeSpeech = useScribeTranscription({
-    enabled: recordingWanted && provider === 'elevenlabs',
+  const speech = useScribeTranscription({
+    enabled: shouldRecord(mic, sessionId, data.session?.status),
     sessionId,
     onFinal: actions.addSegment,
     scopeKey: sessionId,
-    captureContext,
+    captureContext: () => ({
+      sessionId,
+      annotationId: useSessionStore.getState().pendingAnnotationId,
+    }),
   })
-  const speech = provider === 'elevenlabs' ? scribeSpeech : chromeSpeech
-
-  const switchProvider = async (next: TranscriptionProvider) => {
-    if (next === provider || switching) return
-    setSwitching(true)
-    try {
-      await speech.stop()
-    } finally {
-      settings.setTranscriptionProvider(next)
-      setSwitching(false)
-    }
-  }
 
   useEffect(() => {
     useSessionStore.getState().reset(sessionId)
@@ -105,7 +82,7 @@ export default function Teach() {
   const endSession = async () => {
     setEnding(true)
     await speech.stop()
-    setMicOn(false)
+    setMic(MIC_OFF)
     await actions.endSession()
     navigate(`/notes/${sessionId}`)
   }
@@ -113,9 +90,9 @@ export default function Teach() {
   const toggleMic = async () => {
     if (micOn) {
       await speech.stop()
-      setMicOn(false)
+      setMic(MIC_OFF)
     } else {
-      setMicOn(true)
+      setMic(turnMicOn(sessionId))
     }
   }
 
@@ -138,6 +115,7 @@ export default function Teach() {
         onImageAspect={(id, aspect) => aspects.current.set(id, aspect)}
         recording={{
           on: micOn && data.session.status === 'live',
+          live: data.session.status === 'live',
           listening: speech.listening,
           supported: speech.supported,
           error: speech.error,
@@ -145,9 +123,6 @@ export default function Teach() {
           confidenceSupported: speech.confidenceSupported,
           startedAt: data.session.started_at,
           toggle: toggleMic,
-          provider,
-          switching,
-          onProvider: switchProvider,
         }}
       />
       <div className="teach-main">

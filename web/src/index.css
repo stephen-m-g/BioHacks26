@@ -425,37 +425,26 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Speech provider switch (P3): Chrome or ElevenLabs, inside the title dropdown */
-.speech-provider {
+/* Shown under the title while the mic is off, which is how every session opens */
+.mic-off-notice {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 0.8rem;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.85rem;
+  line-height: 1.35;
 }
 
-.speech-provider-label {
-  color: var(--muted);
-  margin-right: auto;
-}
-
-.provider-btn {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: none;
-  color: var(--fg);
-  font-size: 0.8rem;
-}
-
-.provider-btn.on {
-  border-color: var(--fg);
-  font-weight: 600;
-}
-
-.provider-btn:disabled {
-  opacity: 0.45;
+.mic-off-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
 }
 
 .speech-error {

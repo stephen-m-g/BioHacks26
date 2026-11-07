@@ -1,7 +1,6 @@
 // P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
-import type { TranscriptionProvider } from '../hooks/scribeModel'
 import type { SpeechMetrics } from '../hooks/transcriptionModel'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
@@ -11,6 +10,8 @@ import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
 export interface Recording {
   /** Recording wanted (not paused) and the session is live. */
   on: boolean
+  /** The session is live, so the mic can be turned on. */
+  live: boolean
   /** The recognizer is actually running right now. */
   listening: boolean
   supported: boolean
@@ -21,15 +22,7 @@ export interface Recording {
   confidenceSupported: boolean
   startedAt: string
   toggle: () => void
-  provider: TranscriptionProvider
-  switching: boolean
-  onProvider: (provider: TranscriptionProvider) => void
 }
-
-const PROVIDERS: { id: TranscriptionProvider; label: string; title: string }[] = [
-  { id: 'chrome', label: 'Chrome', title: 'Browser speech recognition (no setup needed)' },
-  { id: 'elevenlabs', label: 'ElevenLabs', title: 'ElevenLabs Scribe Realtime (needs ELEVENLABS_API_KEY on the API)' },
-]
 
 interface Props {
   title: string
@@ -98,9 +91,9 @@ function SessionClock({ recording }: { recording: Recording }) {
   const status = !recording.supported
     ? 'No mic'
     : recording.error && recording.on
-      ? 'Mic blocked'
+      ? 'Speech error'
       : !recording.on
-        ? 'Paused'
+        ? 'Mic off'
         : null
   return (
     <span className="session-clock" aria-live="polite" title={recording.error ? `Mic: ${recording.error}` : undefined}>
@@ -237,22 +230,6 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
                   </span>
                 </div>
               )}
-              <div className="speech-provider" role="radiogroup" aria-label="Speech recognition">
-                <span className="speech-provider-label">Speech</span>
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.id}
-                    role="radio"
-                    aria-checked={recording.provider === p.id}
-                    className={`provider-btn${recording.provider === p.id ? ' on' : ''}`}
-                    title={p.title}
-                    disabled={recording.switching}
-                    onClick={() => recording.onProvider(p.id)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
               {recording.on && recording.error && <p className="hint speech-error">{recording.error}</p>}
               <button
                 role="menuitem"
@@ -263,7 +240,7 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
                   recording.toggle()
                 }}
               >
-                {recording.on ? 'Pause recording' : 'Resume recording'}
+                {recording.on ? 'Pause recording' : 'Start recording'}
               </button>
               <button
                 role="menuitem"
@@ -279,6 +256,15 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
           </>
         )}
       </div>
+
+      {recording.live && !recording.on && recording.supported && (
+        <p className="mic-off-notice" role="status">
+          <span className="mic-off-dot" aria-hidden="true" />
+          <span>
+            <strong>Mic off.</strong> Tap the session name, then Start recording.
+          </span>
+        </p>
+      )}
 
       <hr className="sidebar-divider" />
 

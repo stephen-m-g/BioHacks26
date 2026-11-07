@@ -26,12 +26,12 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - **Images** are blocks too. To place one: drag a thumbnail from the sidebar onto a drop slot between blocks, **or** tap a thumbnail and then tap a slot.
 - **Ink and lassos are only allowed on images**, stored in coordinates normalized to that image (x, y in [0,1] of the image's width/height; stroke width as a fraction of image width).
 - **Sidebar** (left by default; a button at the bottom moves it right; its contents stay left-aligned on either side). From top to bottom:
-  - session title: tap opens a dropdown with **Pause/Resume recording** and **End session**; double-click renames it inline (Enter saves, Esc cancels);
+  - session title: tap opens a dropdown with **Start/Pause recording** and **End session**; double-click renames it inline (Enter saves, Esc cancels);
   - **mode toggle: Ink / Smart**;
   - ink presets: 4 colors × 3 widths, plus Undo;
   - image bank;
-  - bottom row: a small button to move the sidebar to the other side, and the session clock with a recording dot (red pulse while listening; shows Paused / Mic blocked).
-- **Recording starts automatically** when the session opens.
+  - bottom row: a small button to move the sidebar to the other side, and the session clock with a recording dot (red pulse while listening; shows Mic off / Speech error).
+- **The mic starts off** whenever a session opens (new, resumed or reloaded); a red "Mic off" notice sits under the title until he picks Start recording. Nothing asks for mic permission or mints an ElevenLabs token before that. While it's on, dropped connections reconnect automatically; after he pauses it, nothing restarts it.
 - **Pencil auto-detect:** fingers draw on images until an Apple Pencil touches one; from then on (for that page load) only the pencil draws and fingers scroll, which stops palm marks. There is no toggle.
   - **End session** (confirm dialog).
 - **Smart annotation** (lasso): drawing a loop on an image in Smart mode creates a `pending` annotation. While it's pending:
@@ -59,7 +59,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - `POST /sessions/{id}/refine` → `{block, segment_ids}`. Takes the session's segments where `text_block_id is null`, cleans them into one paragraph (vocabulary = the lecture's asset `key_terms`, context = the previous text block), inserts a text block at `max(position)+1`, and sets `text_block_id` on those segments. Falls back to the joined raw text if Gemini fails. **Already implemented.**
 - `POST /annotations/{id}/close` body `{crop_png_base64?}` → `{label, bubble_text}`. Sets `confirmed`/`closed_at`, picks his words about the selection, writes `label`/`bubble_text`, and sets `annotation_id` on the segments it used.
 - `POST /sessions/{id}/compile` → notes JSON; upserts `lecture_notes`.
-- `POST /sessions/{id}/scribe-token` → `{token}`. Single-use ElevenLabs Scribe Realtime token (expires in 15 min) for the teacher's ElevenLabs speech provider. Only for existing `live` sessions, rate-limited (10/min per session, 60/min total). 503 if `ELEVENLABS_API_KEY` is unset. No user auth yet, so anyone who knows a live session id can mint tokens.
+- `POST /sessions/{id}/scribe-token` → `{token}`. Single-use ElevenLabs Scribe Realtime token (expires in 15 min) for live transcription (ElevenLabs is the only speech-to-text engine). Only for existing `live` sessions, rate-limited (10/min per session, 60/min total). 503 if `ELEVENLABS_API_KEY` is unset. No user auth yet, so anyone who knows a live session id can mint tokens.
 - `POST /segments/{id}/clean` is **removed** (replaced by batch refine).
 
 ## Notes JSON (compile output)
@@ -81,7 +81,7 @@ Figures render the image with its confirmed annotations. Hovering an annotation 
 ## Ownership after the redesign
 - **P1** (canvas): `components/ImageBlock.tsx` (ink, lasso, shimmer, ✓/✗, popovers), `components/Board.tsx`, `pages/Teach.tsx`, `components/Sidebar.tsx`.
 - **P2** (AI): `/describe` (+PDF), `/close`, `/compile` with notes v2; `/refine` is done but needs tuning.
-- **P3** (speech): `hooks/useTranscription.ts` (Chrome Web Speech, default) and `hooks/useScribeTranscription.ts` (ElevenLabs Scribe v2 Realtime, chosen in the session menu), metrics, adaptive volume.
+- **P3** (speech): `hooks/useScribeTranscription.ts` (ElevenLabs Scribe v2 Realtime, the only speech-to-text engine; if it's unavailable the sidebar shows the error, with no fallback), metrics, adaptive volume.
 - **P4** (platform): `pages/Dashboard.tsx`, `AllLectures.tsx`, `Prep.tsx`, `Notes.tsx`, `RawSession.tsx`; run the new `schema.sql`; deploy; pitch.
 
 ## Not built yet / open
