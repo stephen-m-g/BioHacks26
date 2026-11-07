@@ -20,7 +20,7 @@ import ai  # noqa: E402
 import prompts  # noqa: E402
 from db import download, get_db  # noqa: E402
 from schemas import (  # noqa: E402
-    CloseGemini, CloseIn, CloseOut, DescribeOut, NotesContent, RefineGemini, RefineOut,
+    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, RefineGemini, RefineOut, Section,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -287,8 +287,92 @@ def crop_to_bbox(data: bytes, bbox: dict | None, pad: float = 0.08) -> bytes:
 
 @app.post("/sessions/{session_id}/compile", response_model=NotesContent)
 def compile_session(session_id: str) -> NotesContent:
-    # TODO: blocks in order + confirmed annotations + text/pdf assets -> NotesContent; upsert lecture_notes.
-    return NotesContent(title="", overview="", sections=[], review_questions=[])
+    """Build the study document and upsert lecture_notes. Fallback: sections straight from the board."""
+    t0 = time.perf_counter()
+    db = get_db()
+    rows = db.table("sessions").select("*").eq("id", session_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(404, "session not found")
+    lecture_id = rows[0]["lecture_id"]
+    lecture = db.table("lectures").select("title").eq("id", lecture_id).limit(1).execute().data
+    # sessions.title (renamable per session) wins over the lecture title.
+    title = rows[0].get("title") or (lecture[0]["title"] if lecture else "") or "Lecture notes"
+    blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
+    anns = (db.table("annotations").select("id, block_id, label, bubble_text")
+            .eq("session_id", session_id).eq("status", "confirmed").execute().data)
+    assets = (db.table("assets").select("id, kind, label, description, text_content, file_name")
+              .eq("lecture_id", lecture_id).execute().data)
+    db_ms = ms(t0)
+
+    out, gemini_ms = (None, 0.0)
+    if any(b["kind"] == "text" and (b.get("text") or "").strip() for b in blocks):
+        doc = compile_input(title, blocks, anns, assets)
+        out, gemini_ms = ai.generate("compile", prompts.COMPILE, [doc], NotesContent, timeout_ms=120_000)
+    notes = clean_notes(out, blocks, anns, title) if out else fallback_notes(title, blocks, anns)
+
+    t_write = time.perf_counter()
+    db.table("lecture_notes").upsert({"session_id": session_id, "content": notes.model_dump()}).execute()
+    log.info("[compile] blocks=%d anns=%d sections=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(blocks),
+             len(anns), len(notes.sections), db_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback)")
+    return notes
+
+
+def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
+    """The whole session as one text document, with the ids Gemini may reference."""
+    assets_by_id = {a["id"]: a for a in assets}
+    anns_by_block: dict[str, list] = {}
+    for a in anns:
+        anns_by_block.setdefault(a["block_id"], []).append(a)
+    lines = [f"LECTURE TITLE: {title}", "", "BOARD, in teaching order:"]
+    for b in blocks:
+        if b["kind"] == "text" and (b.get("text") or "").strip():
+            lines.append(f"[TEXT] {b['text'].strip()}")
+        elif b["kind"] == "image":
+            a = assets_by_id.get(b.get("asset_id"), {})
+            lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
+            for ann in anns_by_block.get(b["id"], []):
+                lines.append(f"    [ANNOTATION annotation_id={ann['id']}] {ann.get('label') or ''}: "
+                             f"\"{ann.get('bubble_text') or ''}\"")
+    materials = [a for a in assets if a["kind"] in ("text", "pdf")]
+    if materials:
+        lines += ["", "TEACHING MATERIALS (prepared before class):"]
+        for a in materials:
+            body = (a.get("text_content") or "")[:4000] if a["kind"] == "text" else ""
+            name = a.get("label") or a.get("file_name") or "material"
+            lines.append(f"- {name}: {a.get('description') or ''} {body}".strip())
+    lines += ["", "Section ids: use s1, s2, ... in order."]
+    return "\n".join(lines)
+
+
+def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> NotesContent:
+    """Drop ids Gemini invented, renumber sections, cap review questions."""
+    image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
+    ann_ids = {a["id"] for a in anns}
+    for i, s in enumerate(notes.sections, 1):
+        s.id = f"s{i}"
+        s.figures = [f for f in s.figures if f.image_block_id in image_ids]
+        s.annotation_ids = [a for a in s.annotation_ids if a in ann_ids]
+    notes.title = notes.title or title
+    notes.review_questions = notes.review_questions[:5]
+    return notes
+
+
+def fallback_notes(title: str, blocks: list, anns: list) -> NotesContent:
+    """No Gemini: a new section at each image; paragraphs = the refined text blocks."""
+    sections: list[Section] = []
+    for b in blocks:
+        if b["kind"] == "image" or not sections:
+            n = len(sections) + 1
+            sections.append(Section(id=f"s{n}", heading=f"Part {n}", paragraphs=[], key_terms=[],
+                                    figures=[], annotation_ids=[]))
+        s = sections[-1]
+        if b["kind"] == "image":
+            s.figures.append(Figure(image_block_id=b["id"], caption=""))
+            s.annotation_ids += [a["id"] for a in anns if a["block_id"] == b["id"]]
+        elif (b.get("text") or "").strip():
+            s.paragraphs.append(b["text"].strip())
+    sections = [s for s in sections if s.paragraphs or s.figures]
+    return NotesContent(title=title, overview="", sections=sections, review_questions=[])
 
 
 def parse_ts(value: str) -> datetime:
