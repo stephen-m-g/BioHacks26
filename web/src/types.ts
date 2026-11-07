@@ -48,6 +48,15 @@ export interface Session {
   ended_at: Timestamp | null
 }
 
+/** A named grouping (a class, or a section of one). Lectures and sessions can belong to several. */
+export interface ClassGroup {
+  id: UUID
+  name: string
+  /** hex color from CLASS_COLORS */
+  color: string
+  created_at: Timestamp
+}
+
 export type BlockKind = 'text' | 'image'
 
 export interface Block {

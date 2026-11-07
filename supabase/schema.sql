@@ -87,6 +87,27 @@ create table lecture_notes (
   created_at timestamptz default now()
 );
 
+-- Classes: named groupings (different classes, or sections of the same class) with a color.
+-- A lecture and a session can each belong to any number of classes. A new session copies its lecture's classes.
+create table classes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  color text not null,                -- hex, from the palette in web/src/lib/classes.ts
+  created_at timestamptz default now()
+);
+
+create table lecture_classes (
+  lecture_id uuid not null references lectures on delete cascade,
+  class_id uuid not null references classes on delete cascade,
+  primary key (lecture_id, class_id)
+);
+
+create table session_classes (
+  session_id uuid not null references sessions on delete cascade,
+  class_id uuid not null references classes on delete cascade,
+  primary key (session_id, class_id)
+);
+
 alter publication supabase_realtime add table sessions, blocks, strokes, annotations, transcript_segments, lecture_notes;
 
 -- Public storage bucket for uploads.
