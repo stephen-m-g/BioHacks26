@@ -411,6 +411,20 @@ textarea {
   padding: 0;
 }
 
+/* Speech metrics (P3): read-only line at the top of the title dropdown */
+.speech-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 12px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Title with dropdown (Back to lectures / End session) */
 .title-menu {
   position: relative;

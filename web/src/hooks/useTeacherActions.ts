@@ -7,6 +7,8 @@ import { bboxOf } from '../lib/ink'
 import { supabase } from '../lib/supabase'
 import { useSessionStore } from '../store/session'
 import type { Annotation, Block, Point, Stroke, TranscriptSegment } from '../types'
+import { RefineCoordinator, buildTranscriptSegment } from './teacherActionsModel'
+import type { TranscriptionContext } from './transcriptionModel'
 import type { SessionData } from './useSessionData'
 
 function logError(what: string) {
@@ -18,7 +20,8 @@ function logError(what: string) {
 export function useTeacherActions(data: SessionData) {
   const ref = useRef(data)
   ref.current = data
-  const refining = useRef(false)
+  const refineCoordinator = useRef(new RefineCoordinator())
+  const pendingSegmentWrites = useRef(new Set<Promise<void>>())
   const { demo, upsert, remove } = data
   const sessionId = data.session?.id ?? ''
 
@@ -132,31 +135,43 @@ export function useTeacherActions(data: SessionData) {
 
   /** Called by the transcription hook for every final result. */
   const addSegment = useCallback(
-    (rawText: string, confidence: number | null, tStart: string, tEnd: string) => {
-      const row: TranscriptSegment = {
+    (
+      rawText: string,
+      confidence: number | null,
+      tStart: string,
+      tEnd: string,
+      context: TranscriptionContext | null = null,
+    ) => {
+      const row: TranscriptSegment = buildTranscriptSegment({
         id: newId(),
-        session_id: sessionId,
-        t_start: tStart,
-        t_end: tEnd,
-        raw_text: rawText,
+        defaultSessionId: sessionId,
+        defaultAnnotationId: useSessionStore.getState().pendingAnnotationId,
+        context,
+        rawText,
         confidence,
-        annotation_id: useSessionStore.getState().pendingAnnotationId,
-        text_block_id: null,
-        created_at: nowIso(),
-      }
+        tStart,
+        tEnd,
+        createdAt: nowIso(),
+      })
       upsert('transcript_segments', row)
-      if (!demo) supabase.from('transcript_segments').insert(row).then(logError('insert segment'))
+      if (!demo) {
+        const write = Promise.resolve(supabase.from('transcript_segments').insert(row)).then(logError('insert segment'))
+        pendingSegmentWrites.current.add(write)
+        void write.finally(() => pendingSegmentWrites.current.delete(write))
+      }
     },
     [sessionId, demo, upsert],
   )
 
   /** Batch-clean unrefined speech into a new text block at the end of the board. */
-  const refine = useCallback(async () => {
-    if (refining.current || !sessionId) return
-    const pending = ref.current.segmentList.filter((s) => !s.text_block_id)
-    if (pending.length === 0) return
-    refining.current = true
+  const performRefine = useCallback(async () => {
+    if (!sessionId) return
     try {
+      if (!demo && pendingSegmentWrites.current.size > 0) {
+        await Promise.allSettled([...pendingSegmentWrites.current])
+      }
+      const pending = ref.current.segmentList.filter((s) => !s.text_block_id)
+      if (pending.length === 0) return
       if (demo) {
         const last = ref.current.blockList.at(-1)
         const block: Block = {
@@ -180,10 +195,13 @@ export function useTeacherActions(data: SessionData) {
       }
     } catch (e) {
       console.error('refine', e)
-    } finally {
-      refining.current = false
     }
   }, [sessionId, demo, upsert])
+
+  const refine = useCallback(
+    () => refineCoordinator.current.run(performRefine),
+    [performRefine],
+  )
 
   /** Rename this session (each launch of a lecture has its own name). */
   const renameSession = useCallback(
@@ -198,14 +216,14 @@ export function useTeacherActions(data: SessionData) {
   const endSession = useCallback(async () => {
     const pendingId = useSessionStore.getState().pendingAnnotationId
     if (pendingId) confirmAnnotation(pendingId)
-    await refine()
+    await refineCoordinator.current.drain(performRefine)
     const endedAt = nowIso()
     data.patchSession({ status: 'ended', ended_at: endedAt })
     if (demo) return
     const { error } = await supabase.from('sessions').update({ status: 'ended', ended_at: endedAt }).eq('id', sessionId)
     if (error) console.error('end session', error.message)
     api.compileSession(sessionId).catch((e) => console.error('compile', e))
-  }, [sessionId, demo, confirmAnnotation, refine, data.patchSession])
+  }, [sessionId, demo, confirmAnnotation, performRefine, data.patchSession])
 
   return useMemo(
     () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession }),

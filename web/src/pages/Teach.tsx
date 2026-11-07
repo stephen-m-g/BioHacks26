@@ -28,7 +28,15 @@ export default function Teach() {
   const aspects = useRef(new Map<string, number>())
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const speech = useTranscription({ enabled: micOn && data.session?.status === 'live', onFinal: actions.addSegment })
+  const speech = useTranscription({
+    enabled: micOn && data.session?.status === 'live',
+    onFinal: actions.addSegment,
+    scopeKey: sessionId,
+    captureContext: () => ({
+      sessionId,
+      annotationId: useSessionStore.getState().pendingAnnotationId,
+    }),
+  })
 
   useEffect(() => {
     useSessionStore.getState().reset(sessionId)
@@ -58,9 +66,19 @@ export default function Teach() {
 
   const endSession = async () => {
     setEnding(true)
+    await speech.stop()
     setMicOn(false)
     await actions.endSession()
     navigate(data.demo ? '/' : `/notes/${sessionId}`)
+  }
+
+  const toggleMic = async () => {
+    if (micOn) {
+      await speech.stop()
+      setMicOn(false)
+    } else {
+      setMicOn(true)
+    }
   }
 
   if (data.loading) return <div className="page muted">Loading session…</div>
@@ -85,8 +103,9 @@ export default function Teach() {
           listening: speech.listening,
           supported: speech.supported,
           error: speech.error,
+          metrics: speech.metrics,
           startedAt: data.session.started_at,
-          toggle: () => setMicOn((v) => !v),
+          toggle: toggleMic,
         }}
       />
       <div className="teach-main">

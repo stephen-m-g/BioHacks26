@@ -1,7 +1,7 @@
 """Hit every endpoint of a running API so you can test without the frontend.
 
-Usage:  python scripts/smoke_test.py [http://localhost:8000]
-P2: replace the fake ids with rows you insert into Supabase (or create them here with get_db()).
+Usage:  python smoke.py [http://localhost:8000]
+TODO step 2+: insert fake lecture/session/segment rows with db.get_db() and use their ids.
 """
 import sys
 
@@ -13,7 +13,7 @@ FAKE = "00000000-0000-0000-0000-000000000000"
 checks = [
     ("GET", "/health", None),
     ("POST", f"/assets/{FAKE}/describe", None),
-    ("POST", f"/sessions/{FAKE}/refine", None),  # 500 until Supabase is configured and the row exists
+    ("POST", f"/sessions/{FAKE}/refine", None),  # 500 until the v2 schema.sql is run in Supabase
     ("POST", f"/annotations/{FAKE}/close", {"crop_png_base64": None}),
     ("POST", f"/sessions/{FAKE}/compile", None),
 ]

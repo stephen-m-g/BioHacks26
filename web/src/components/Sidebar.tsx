@@ -1,6 +1,7 @@
 // P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
+import type { SpeechMetrics } from '../hooks/transcriptionModel'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
@@ -13,6 +14,8 @@ export interface Recording {
   listening: boolean
   supported: boolean
   error: string | null
+  /** Rolling / baseline WPM and average confidence from the transcription hook (P3). */
+  metrics: SpeechMetrics
   startedAt: string
   toggle: () => void
 }
@@ -209,6 +212,18 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
           <>
             <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="menu" role="menu">
+              {recording.on && (
+                <div className="speech-metrics" aria-label="Speech metrics">
+                  <span>Pace {recording.metrics.rollingWpm ?? '—'} wpm</span>
+                  <span>Baseline {recording.metrics.baselineWpm ?? '—'} wpm</span>
+                  <span>
+                    Clarity{' '}
+                    {recording.metrics.averageConfidence === null
+                      ? '—'
+                      : `${Math.round(recording.metrics.averageConfidence * 100)}%`}
+                  </span>
+                </div>
+              )}
               <button
                 role="menuitem"
                 className="menu-item"
