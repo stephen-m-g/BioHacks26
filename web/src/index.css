@@ -830,8 +830,6 @@ textarea {
   overflow-y: auto;
   padding: 28px 32px;
   background-color: white;
-  background-image: radial-gradient(#d6d6d6 1px, transparent 1px);
-  background-size: 18px 18px;
 }
 
 @media (prefers-reduced-motion: reduce) {
