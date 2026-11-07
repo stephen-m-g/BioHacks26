@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
-from .routers import annotations, assets, segments, sessions
+from .routers import annotations, assets, sessions
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -31,6 +31,5 @@ def health() -> dict:
 
 
 app.include_router(assets.router)
-app.include_router(segments.router)
 app.include_router(annotations.router)
 app.include_router(sessions.router)

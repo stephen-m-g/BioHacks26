@@ -13,7 +13,7 @@ FAKE = "00000000-0000-0000-0000-000000000000"
 checks = [
     ("GET", "/health", None),
     ("POST", f"/assets/{FAKE}/describe", None),
-    ("POST", f"/segments/{FAKE}/clean", None),
+    ("POST", f"/sessions/{FAKE}/refine", None),  # 500 until Supabase is configured and the row exists
     ("POST", f"/annotations/{FAKE}/close", {"crop_png_base64": None}),
     ("POST", f"/sessions/{FAKE}/compile", None),
 ]

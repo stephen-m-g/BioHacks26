@@ -1,5 +1,5 @@
 // Thin fetch wrapper for the FastAPI backend (P2). Never put the Gemini key in the frontend.
-import type { NotesContent } from '../types'
+import type { Block, NotesContent } from '../types'
 
 export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
@@ -17,7 +17,9 @@ export const api = {
   health: async () => (await fetch(`${API_URL}/health`)).json() as Promise<{ ok: boolean }>,
   describeAsset: (assetId: string) =>
     post<{ label: string; description: string; key_terms: string[] }>(`/assets/${assetId}/describe`),
-  cleanSegment: (segmentId: string) => post<{ clean_text: string }>(`/segments/${segmentId}/clean`),
+  /** Batch-clean unrefined speech into one text block appended to the board. */
+  refineSession: (sessionId: string) =>
+    post<{ block: Block | null; segment_ids: string[] }>(`/sessions/${sessionId}/refine`),
   closeAnnotation: (annotationId: string, cropPngBase64?: string) =>
     post<{ label: string | null; bubble_text: string | null }>(`/annotations/${annotationId}/close`, {
       crop_png_base64: cropPngBase64,
