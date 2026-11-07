@@ -30,6 +30,12 @@ class CloseOut(BaseModel):
     bubble_text: str | None
 
 
+class CloseGemini(BaseModel):
+    label: str
+    bubble_text: str
+    used_segments: list[int]  # transcript line numbers the bubble_text came from
+
+
 # --- /sessions/{id}/compile (notes v2, also what the frontend renders) ---
 class KeyTerm(BaseModel):
     term: str

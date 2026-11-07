@@ -1,9 +1,12 @@
 """FastAPI app: CORS, routes, GET /health. Run: uvicorn main:app --reload --port 8000
 Spec: docs/CONTEXT.md (v2)."""
+import base64
+import io
 import logging
 import mimetypes
 import os
 import time
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
@@ -11,11 +14,14 @@ load_dotenv()  # before anything reads os.environ
 
 from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from PIL import Image  # noqa: E402
 
 import ai  # noqa: E402
 import prompts  # noqa: E402
 from db import download, get_db  # noqa: E402
-from schemas import CloseIn, CloseOut, DescribeOut, NotesContent, RefineGemini, RefineOut  # noqa: E402
+from schemas import (  # noqa: E402
+    CloseGemini, CloseIn, CloseOut, DescribeOut, NotesContent, RefineGemini, RefineOut,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -63,9 +69,7 @@ def refine_session(session_id: str) -> RefineOut:
     if not segs:
         return RefineOut(block=None, segment_ids=[])
 
-    session = db.table("sessions").select("lecture_id").eq("id", session_id).single().execute().data
-    assets = db.table("assets").select("key_terms").eq("lecture_id", session["lecture_id"]).execute().data
-    vocab = sorted({t for a in assets for t in (a.get("key_terms") or [])})
+    vocab = lecture_vocab(db, session_id)
     blocks = (
         db.table("blocks").select("kind, position, text").eq("session_id", session_id)
         .order("position", desc=True).execute().data
@@ -95,6 +99,15 @@ def refine_session(session_id: str) -> RefineOut:
     log.info("[refine] segs=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids),
              db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
     return RefineOut(block=block, segment_ids=ids)
+
+
+def lecture_vocab(db, session_id: str) -> list[str]:
+    """Union of key_terms over the session's lecture assets (filled in by /describe)."""
+    session = db.table("sessions").select("lecture_id").eq("id", session_id).limit(1).execute().data
+    if not session:
+        return []
+    assets = db.table("assets").select("key_terms").eq("lecture_id", session[0]["lecture_id"]).execute().data
+    return sorted({t for a in assets for t in (a.get("key_terms") or [])})
 
 
 @app.post("/assets/{asset_id}/describe", response_model=DescribeOut)
@@ -143,17 +156,145 @@ def asset_contents(asset: dict) -> list | None:
     return [ai.image_part(data, mime), f"File name: {name}"]
 
 
-# --- Stubs: return each endpoint's empty fallback until it is built ---
-
-
 @app.post("/annotations/{annotation_id}/close", response_model=CloseOut)
 def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOut:
-    # TODO: confirm; candidates = segments with t_start in [drawn_at - 5 s, closed_at] plus those tagged
-    # with this annotation_id ([OPEN]); crop = body or asset image cropped to bbox; write label/bubble_text.
-    return CloseOut(label=None, bubble_text=None)
+    """Confirm a lasso and pick the teacher's words about it.
+    Fallback: label "Annotation", bubble_text = joined candidate text (max 70 words)."""
+    t0 = time.perf_counter()
+    db = get_db()
+    rows = db.table("annotations").select("*").eq("id", annotation_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(404, "annotation not found")
+    ann = rows[0]
+    # The frontend also sets these, but its update can land after this call.
+    closed_at = parse_ts(ann["closed_at"]) if ann.get("closed_at") else datetime.now(timezone.utc)
+    if ann.get("status") != "confirmed" or not ann.get("closed_at"):
+        db.table("annotations").update({"status": "confirmed", "closed_at": closed_at.isoformat()}) \
+            .eq("id", annotation_id).execute()
+
+    segs = close_candidates(db, ann, closed_at)
+    asset = block_asset(db, ann.get("block_id"))
+    vocab = lecture_vocab(db, ann["session_id"]) if segs else []
+    image = selection_image(body, asset, ann.get("bbox"))
+    db_ms = ms(t0)
+
+    contents: list = []
+    if image:
+        contents.append(ai.image_part(*image))
+    contents.append(f"Whole image: {asset.get('label') or '(unlabelled)'}. {asset.get('description') or ''}".strip())
+    if vocab:
+        contents.append(f"Lecture vocabulary: {', '.join(vocab)}")
+    if segs:
+        lines = [f"{i}. {'[OPEN] ' if s.get('annotation_id') == annotation_id else ''}{s['raw_text'].strip()}"
+                 for i, s in enumerate(segs, 1)]
+        contents.append("Transcript (numbered):\n" + "\n".join(lines) +
+                        "\n\nAlso return used_segments: the line numbers your bubble_text came from.")
+    else:
+        contents.append("Transcript: (he said nothing). Return bubble_text \"\" and used_segments [].")
+
+    out, gemini_ms = ai.generate("close", prompts.CLOSE, contents, CloseGemini, timeout_ms=20_000)
+    if out:
+        label = out.label.strip() or "Annotation"
+        bubble = truncate_words(out.bubble_text.strip(), 70) or None
+        used = [segs[n - 1] for n in out.used_segments if 1 <= n <= len(segs)] if bubble else []
+    else:
+        label = "Annotation"
+        bubble = truncate_words(" ".join(s["raw_text"].strip() for s in segs), 70) or None
+        used = segs
+    if not segs:
+        bubble = None
+
+    t_write = time.perf_counter()
+    db.table("annotations").update({"label": label, "bubble_text": bubble}).eq("id", annotation_id).execute()
+    # Link the segments used (without stealing another annotation's), and untag tagged ones it didn't use.
+    link = [s["id"] for s in used if s.get("annotation_id") in (None, annotation_id)]
+    if link:
+        db.table("transcript_segments").update({"annotation_id": annotation_id}).in_("id", link).execute()
+    unused = [s["id"] for s in segs if s.get("annotation_id") == annotation_id and s["id"] not in link]
+    if unused and out:
+        db.table("transcript_segments").update({"annotation_id": None}).in_("id", unused).execute()
+    log.info("[close] segs=%d used=%d image=%s db=%.0fms gemini=%.0fms total=%.0fms%s", len(segs), len(link),
+             "yes" if image else "no", db_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback)")
+    return CloseOut(label=label, bubble_text=bubble)
+
+
+def close_candidates(db, ann: dict, closed_at: datetime) -> list[dict]:
+    """Segments from 5 s before the lasso until it was confirmed, plus any tagged with it, in time order."""
+    drawn_at = parse_ts(ann["drawn_at"]) if ann.get("drawn_at") else closed_at
+    cols = "id, raw_text, t_start, created_at, annotation_id"
+    window = (
+        db.table("transcript_segments").select(cols)
+        .eq("session_id", ann["session_id"])
+        .gte("t_start", (drawn_at - timedelta(seconds=5)).isoformat())
+        .lte("t_start", closed_at.isoformat())
+        .execute().data
+    )
+    tagged = db.table("transcript_segments").select(cols).eq("annotation_id", ann["id"]).execute().data
+    by_id = {s["id"]: s for s in window + tagged if (s.get("raw_text") or "").strip()}
+    return sorted(by_id.values(), key=lambda s: s.get("t_start") or s.get("created_at") or "")
+
+
+def block_asset(db, block_id: str | None) -> dict:
+    if not block_id:
+        return {}
+    blocks = db.table("blocks").select("asset_id").eq("id", block_id).limit(1).execute().data
+    if not blocks or not blocks[0].get("asset_id"):
+        return {}
+    assets = (db.table("assets").select("id, label, description, storage_path, kind")
+              .eq("id", blocks[0]["asset_id"]).limit(1).execute().data)
+    return assets[0] if assets else {}
+
+
+def selection_image(body: CloseIn | None, asset: dict, bbox: dict | None) -> tuple[bytes, str] | None:
+    """(bytes, mime) of what he selected: the frontend's crop if sent, else the asset cropped to bbox."""
+    if body and body.crop_png_base64:
+        try:
+            b64 = body.crop_png_base64.split(",", 1)[-1]  # tolerate a data: URL prefix
+            return base64.b64decode(b64), "image/png"
+        except ValueError:
+            log.warning("[close] bad crop_png_base64, using the asset image")
+    path = asset.get("storage_path") or ""
+    if not path or path.startswith("data:"):
+        return None
+    try:
+        data = download(path)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[close] download failed for %s: %s", path, e)
+        return None
+    try:
+        return crop_to_bbox(data, bbox), "image/png"
+    except Exception as e:  # noqa: BLE001 - odd format (e.g. HEIC): send the whole image instead
+        log.warning("[close] crop failed (%s), sending the whole image", e)
+        return data, mimetypes.guess_type(path)[0] or "image/png"
+
+
+def crop_to_bbox(data: bytes, bbox: dict | None, pad: float = 0.08) -> bytes:
+    """Crop an image to a normalized {x, y, w, h} box plus a small margin, as PNG."""
+    img = Image.open(io.BytesIO(data))
+    img.load()
+    if bbox:
+        W, H = img.size
+        x0 = max(0.0, bbox["x"] - pad * bbox["w"]) * W
+        y0 = max(0.0, bbox["y"] - pad * bbox["h"]) * H
+        x1 = min(1.0, bbox["x"] + bbox["w"] * (1 + pad)) * W
+        y1 = min(1.0, bbox["y"] + bbox["h"] * (1 + pad)) * H
+        if x1 - x0 >= 4 and y1 - y0 >= 4:
+            img = img.crop((int(x0), int(y0), int(x1), int(y1)))
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
 
 
 @app.post("/sessions/{session_id}/compile", response_model=NotesContent)
 def compile_session(session_id: str) -> NotesContent:
     # TODO: blocks in order + confirmed annotations + text/pdf assets -> NotesContent; upsert lecture_notes.
     return NotesContent(title="", overview="", sections=[], review_questions=[])
+
+
+def parse_ts(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def truncate_words(text: str, n: int) -> str:
+    words = text.split()
+    return text if len(words) <= n else " ".join(words[:n]) + "…"
