@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import os
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -18,9 +19,11 @@ from PIL import Image  # noqa: E402
 
 import ai  # noqa: E402
 import prompts  # noqa: E402
+import scribe  # noqa: E402
 from db import download, get_db  # noqa: E402
 from schemas import (  # noqa: E402
-    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, RefineGemini, RefineOut, Section,
+    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, RefineGemini, RefineOut, ScribeTokenOut,
+    Section,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -108,6 +111,34 @@ def lecture_vocab(db, session_id: str) -> list[str]:
         return []
     assets = db.table("assets").select("key_terms").eq("lecture_id", session[0]["lecture_id"]).execute().data
     return sorted({t for a in assets for t in (a.get("key_terms") or [])})
+
+
+@app.post("/sessions/{session_id}/scribe-token", response_model=ScribeTokenOut)
+def scribe_token(session_id: str) -> ScribeTokenOut:
+    """Single-use ElevenLabs Scribe Realtime token for a live session's teacher client.
+    There is no user auth yet: issuance is limited to existing live sessions and rate-limited."""
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(503, "ElevenLabs is not configured on the server")
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(404, "session not found") from None
+    rows = get_db().table("sessions").select("status").eq("id", session_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(404, "session not found")
+    if rows[0].get("status") != "live":
+        raise HTTPException(409, "session is not live")
+    if not scribe.per_session_limiter.allow(session_id) or not scribe.global_limiter.allow("all"):
+        raise HTTPException(429, "too many token requests; try again in a minute")
+    t0 = time.perf_counter()
+    try:
+        token = scribe.create_realtime_token(api_key)
+    except scribe.ScribeTokenError as e:
+        log.warning("[scribe-token] %s", e)
+        raise HTTPException(502, "could not get an ElevenLabs token") from None
+    log.info("[scribe-token] issued in %.0fms", ms(t0))
+    return ScribeTokenOut(token=token)
 
 
 @app.post("/assets/{asset_id}/describe", response_model=DescribeOut)
@@ -199,8 +230,9 @@ def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOu
         used = [segs[n - 1] for n in out.used_segments if 1 <= n <= len(segs)] if bubble else []
     else:
         label = "Annotation"
-        bubble = truncate_words(" ".join(s["raw_text"].strip() for s in segs), 70) or None
-        used = segs
+        # Without Gemini, speech from while the lasso was open ([OPEN]) is the best guess; else the whole window.
+        used = [s for s in segs if s.get("annotation_id") == annotation_id] or segs
+        bubble = truncate_words(" ".join(s["raw_text"].strip() for s in used), 70) or None
     if not segs:
         bubble = None
 
@@ -344,15 +376,19 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
     return "\n".join(lines)
 
 
+DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he renames it
+
+
 def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> NotesContent:
-    """Drop ids Gemini invented, renumber sections, cap review questions."""
+    """Drop ids Gemini invented, renumber sections, cap review questions. His own title wins over Gemini's;
+    Gemini's is only used while the lecture still has the default name."""
     image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
     ann_ids = {a["id"] for a in anns}
     for i, s in enumerate(notes.sections, 1):
         s.id = f"s{i}"
         s.figures = [f for f in s.figures if f.image_block_id in image_ids]
         s.annotation_ids = [a for a in s.annotation_ids if a in ann_ids]
-    notes.title = notes.title or title
+    notes.title = title if title and title != DEFAULT_TITLE else (notes.title.strip() or title)
     notes.review_questions = notes.review_questions[:5]
     return notes
 

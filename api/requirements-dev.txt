@@ -1,0 +1,4 @@
+# Local testing only (not installed on Render).
+-r requirements.txt
+pytest>=8.0         # python -m pytest tests -q
+playwright>=1.50    # then: python -m playwright install chromium  (for e2e_ui.py)

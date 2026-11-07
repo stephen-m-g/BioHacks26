@@ -75,12 +75,8 @@ export default function Notes() {
         <Link className="p4-btn" to="/">
           <IconArrowLeft /> Lectures
         </Link>
-        <div className="p4-spacer" />
-        <Link className="p4-btn quiet" to={`/sessions/${sessionId}/raw`}>
-          <IconText /> Transcript
-        </Link>
-        <button className="p4-btn" onClick={compile} disabled={compiling}>
-          <IconRefresh /> {compiling ? 'Compiling…' : hasContent ? 'Recompile' : 'Compile notes'}
+        <button onClick={compile} disabled={compiling}>
+          {compiling ? 'Compiling…' : hasContent ? 'Recompile' : 'Compile notes'}
         </button>
         {hasContent && (
           <button className="p4-btn solid" onClick={() => window.print()}>

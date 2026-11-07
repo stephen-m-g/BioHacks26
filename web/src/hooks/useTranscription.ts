@@ -9,6 +9,7 @@ import {
   getRecognitionErrorMessage,
   getRestartDelay,
   isFatalRecognitionError,
+  splitSentences,
   stopRecognitionEngine,
   type SpeechMetrics,
   type SpeechSample,
@@ -69,12 +70,6 @@ function getRecognitionCtor(): SpeechConstructor | null {
     webkitSpeechRecognition?: SpeechConstructor
   }
   return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null
-}
-
-/** Split long final results into board-friendly sentence segments. */
-function splitSentences(text: string): string[] {
-  const parts = text.match(/[^.!?]+[.!?]*/g) ?? [text]
-  return parts.map((part) => part.trim()).filter(Boolean)
 }
 
 export function useTranscription({ enabled, onFinal, captureContext, scopeKey }: UseTranscriptionOptions) {
@@ -302,5 +297,5 @@ export function useTranscription({ enabled, onFinal, captureContext, scopeKey }:
     }
   }, [enabled, refreshMetrics, scopeKey])
 
-  return { interim, listening, supported, error, metrics, stop }
+  return { interim, listening, supported, error, metrics, confidenceSupported: true, stop }
 }

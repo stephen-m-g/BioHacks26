@@ -106,194 +106,90 @@ export default function Dashboard() {
     }
   }
 
-  const today = new Date()
-  const sessionsToday = sessions.filter((s) => isSameDay(new Date(s.started_at), today)).length
-
-  /** "···" button with a small menu. Tap to open, tap outside to close (no long-press). */
-  const moreMenu = (key: string, label: string, items: { label: string; danger?: boolean; onClick: () => void }[]) => (
-    <div className="dash-menu-wrap">
-      <button
-        className="dash-btn icon-only"
-        aria-label={`More actions for ${label}`}
-        aria-haspopup="menu"
-        aria-expanded={menu === key}
-        onClick={() => setMenu(menu === key ? null : key)}
-      >
-        <IconDots />
-      </button>
-      {menu === key && (
-        <>
-          <div className="dash-menu-backdrop" onClick={() => setMenu(null)} />
-          <div className="dash-menu" role="menu">
-            {items.map((item) => (
-              <button
-                key={item.label}
-                role="menuitem"
-                className={`dash-btn dash-menu-item${item.danger ? ' danger' : ''}`}
-                disabled={busy}
-                onClick={item.onClick}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-
   return (
-    <div className="dash">
-      <div className="dash-inner">
-        <header className="dash-header">
-          <div>
-            <h1 className="dash-title">Lectures</h1>
-            {supabaseConfigured && (
-              <p className="dash-sub">
-                {lectures.length} ready to present · {plural(sessionsToday, 'session')} today
-              </p>
-            )}
-          </div>
-          <button
-            className="dash-btn solid"
-            disabled={busy || !supabaseConfigured}
-            onClick={() => run(async () => navigate(`/prep/${await createLecture()}`))}
-          >
-            <IconPlus /> New lecture
-          </button>
-        </header>
+    <div className="page">
+      <header className="page-header">
+        <h1>Lectures</h1>
+      </header>
 
-        {!supabaseConfigured && (
-          <div className="dash-notice">
-            Supabase isn't configured. Copy <code>web/.env.example</code> to <code>web/.env.local</code> and fill it in. The{' '}
-            <Link to="/teach/demo">demo board</Link> works without it.
-          </div>
-        )}
-        {error && (
-          <div className="dash-notice warn" role="alert">
-            {error}
-          </div>
-        )}
+      {!supabaseConfigured && (
+        <div className="notice">
+          Supabase isn't configured. Copy <code>web/.env.example</code> to <code>web/.env.local</code> and fill it in.
+        </div>
+      )}
+      {error && <div className="notice warn">{error}</div>}
 
-        <section className="dash-section" aria-labelledby="ready-heading">
-          <div className="dash-section-head">
-            <h2 id="ready-heading" className="dash-label">
-              Ready to present
-            </h2>
-            {lectures.length > 1 && <span className="dash-hint">Sorted by last updated</span>}
+      <section>
+        <div className="section-header">
+          <h2>Ready to teach</h2>
+          <div className="row">
+            <Link className="btn" to="/lectures">
+              All lectures & archive
+            </Link>
+            <button className="primary" disabled={busy || !supabaseConfigured} onClick={() => run(async () => navigate(`/prep/${await createLecture()}?new=1`))}>
+              + New lecture
+            </button>
           </div>
-          {supabaseConfigured && lectures.length === 0 && (
-            <p className="dash-empty">Create your first lecture to upload diagrams and notes before class.</p>
-          )}
-          <ul className="dash-list">
-            {lectures.map((l) => {
-              const images = (l.assets ?? []).filter((a) => a.kind === 'image').length
-              const notes = (l.assets ?? []).length - images
-              return (
-                <li key={l.id} className="dash-row">
-                  <div className="dash-avatar" aria-hidden="true">
-                    {initials(l.title)}
-                  </div>
-                  <div className="dash-main">
-                    <h3 className="dash-row-title">{l.title}</h3>
-                    <div className="dash-meta">
-                      <span>
-                        <IconImage /> {plural(images, 'image')}
-                      </span>
-                      <span>
-                        <IconFile /> {plural(notes, 'note')}
-                      </span>
-                      <span>Updated {relative(lastUpdated(l))}</span>
-                    </div>
-                  </div>
-                  <div className="dash-actions">
-                    <Link className="dash-btn" to={`/prep/${l.id}`}>
-                      <IconEdit /> Edit
-                    </Link>
-                    {moreMenu(`l:${l.id}`, l.title, [
-                      {
-                        label: 'Archive',
-                        onClick: () =>
-                          run(async () => {
-                            await setArchived(l.id, true)
-                            await load()
-                          }),
-                      },
-                    ])}
-                    <button
-                      className="dash-btn solid"
-                      disabled={busy}
-                      onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}
-                    >
-                      <IconPlay /> Start
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
+        </div>
+        {lectures.length === 0 && <p className="muted">No prepared lectures yet.</p>}
+        <ul className="list">
+          {lectures.map((l) => (
+            <li key={l.id} className="list-item">
+              <div className="list-main">
+                <div className="list-title">{l.title}</div>
+                <div className="muted">
+                  {l.assets?.[0]?.count ?? 0} items · created {formatDate(l.created_at)}
+                </div>
+              </div>
+              <div className="row">
+                <button className="primary" disabled={busy} onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}>
+                  Start
+                </button>
+                <Link className="btn" to={`/prep/${l.id}`}>
+                  Edit
+                </Link>
+                <button disabled={busy} onClick={() => run(async () => { await setArchived(l.id, true); await load() })}>
+                  Archive
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-        <section className="dash-section" aria-labelledby="past-heading">
-          <div className="dash-section-head">
-            <h2 id="past-heading" className="dash-label">
-              Past sessions
-            </h2>
-            {sessions.length > 1 && <span className="dash-hint">Newest first</span>}
-          </div>
-          {supabaseConfigured && sessions.length === 0 && (
-            <p className="dash-empty">Sessions appear here after you start a lecture.</p>
-          )}
-          <ul className="dash-list">
-            {sessions.map((s) => {
-              const title = s.title || s.lectures?.title || 'Lecture'
-              const live = s.status === 'live'
-              return (
-                <li key={s.id} className={`dash-row${live ? '' : ' past'}`}>
-                  <div className="dash-avatar dark" aria-hidden="true">
-                    {initials(title)}
-                  </div>
-                  <div className="dash-main">
-                    <h3 className="dash-row-title">{title}</h3>
-                    <div className="dash-meta">
-                      <span>
-                        <IconClock /> {sessionWhen(s)}
-                      </span>
-                      {live ? (
-                        <span className="dash-badge live">Live</span>
-                      ) : (
-                        hasNotes(s) && <span className="dash-badge">Notes ready</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="dash-actions">
-                    <Link className="dash-btn quiet" to={`/sessions/${s.id}/raw`}>
-                      Transcript
-                    </Link>
-                    {moreMenu(`s:${s.id}`, title, [{ label: 'Delete session', danger: true, onClick: () => { setMenu(null); setToDelete(s) } }])}
-                    {live ? (
-                      <Link className="dash-btn solid" to={`/teach/${s.id}`}>
-                        <IconPlay /> Resume
-                      </Link>
-                    ) : (
-                      <Link className="dash-btn" to={`/notes/${s.id}`}>
-                        Open notes <IconArrowRight />
-                      </Link>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
+      <section>
+        <h2>Past sessions</h2>
+        {sessions.length === 0 && <p className="muted">No sessions yet.</p>}
+        <ul className="list">
+          {sessions.map((s) => (
+            <li key={s.id} className="list-item">
+              <div className="list-main">
+                <div className="list-title">{s.title || s.lectures?.title || 'Lecture'}</div>
+                <div className="muted">
+                  {formatDate(s.started_at)}
+                  {s.status === 'live' && ' · still live'}
+                </div>
+              </div>
+              <div className="row">
+                {s.status === 'live' ? (
+                  <Link className="btn primary" to={`/teach/${s.id}`}>
+                    Resume
+                  </Link>
+                ) : (
+                  <Link className="btn primary" to={`/notes/${s.id}`}>
+                    Notes
+                  </Link>
+                )}
+                <button className="danger-outline" onClick={() => setToDelete(s)}>
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-        <p className="dash-footer">
-          Archived lectures live in <Link to="/lectures">Archive</Link>. Want to try it first? Open the{' '}
-          <Link to="/teach/demo">demo board</Link>.
-        </p>
-
-        <SystemCheck />
-      </div>
+      <SystemCheck />
 
       <ConfirmDialog
         open={toDelete !== null}

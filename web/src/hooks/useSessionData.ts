@@ -1,7 +1,6 @@
 // Loads everything for one session and keeps it live through Supabase Realtime.
-// Used by the teacher, student, raw and notes views. sessionId 'demo' runs offline.
+// Used by the teacher, raw and notes views.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { demoData, DEMO_SESSION_ID } from '../lib/demo'
 import { supabase } from '../lib/supabase'
 import type { Annotation, Asset, Block, Lecture, Session, Stroke, TranscriptSegment } from '../types'
 
@@ -46,10 +45,7 @@ function byId<T extends { id: string }>(rows: T[] | null | undefined): Record<st
 const time = (s: TranscriptSegment) => s.t_start ?? s.created_at
 
 export function useSessionData(sessionId: string | undefined) {
-  const demo = sessionId === DEMO_SESSION_ID
-  const [state, setState] = useState<SessionDataState>(() =>
-    demo ? { ...EMPTY, ...demoData(), loading: false } : EMPTY,
-  )
+  const [state, setState] = useState<SessionDataState>(EMPTY)
 
   /** Insert or merge a row locally (optimistic updates and realtime echoes both land here). */
   const upsert = useCallback(<T extends RowTable>(table: T, row: Partial<RowOf[T]> & { id: string }) => {
@@ -73,7 +69,7 @@ export function useSessionData(sessionId: string | undefined) {
   }, [])
 
   useEffect(() => {
-    if (!sessionId || demo) return
+    if (!sessionId) return
     let cancelled = false
 
     async function load() {
@@ -127,7 +123,7 @@ export function useSessionData(sessionId: string | undefined) {
       cancelled = true
       supabase.removeChannel(channel)
     }
-  }, [sessionId, demo, upsert, remove, patchSession])
+  }, [sessionId, upsert, remove, patchSession])
 
   const derived = useMemo(() => {
     const blocks = Object.values(state.blocks).sort((a, b) => a.position - b.position)
@@ -138,7 +134,7 @@ export function useSessionData(sessionId: string | undefined) {
     return { blockList: blocks, strokeList: strokes, annotationList: annotations, segmentList: segments, imageAssets }
   }, [state])
 
-  return { ...state, ...derived, demo, upsert, remove, patchSession }
+  return { ...state, ...derived, upsert, remove, patchSession }
 }
 
 export type SessionData = ReturnType<typeof useSessionData>

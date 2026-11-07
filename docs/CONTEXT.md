@@ -11,17 +11,18 @@ Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illeg
 ## Screens
 | Route | Screen |
 |---|---|
-| `/` | **Dashboard.** *Prepared lectures* (not archived): New, Start, Edit, Archive, plus a link to *All lectures*. *Past sessions*: View notes, View raw, Delete (confirm). A still-live session shows Resume. |
+| `/` | **Dashboard.** *Prepared lectures* (not archived): New, Start, Edit, Archive, plus a link to *All lectures*. *Past sessions*: View notes, Delete (confirm). A still-live session shows Resume. |
 | `/lectures` | **All lectures**, including archived: Edit, Archive/Restore, Delete. Deleting a lecture also deletes its past sessions; the confirm dialog says so. |
-| `/prep/:lectureId` | **Prep**, chat-style. He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title and a Start session button. |
-| `/teach/:sessionId` | **Live session** (below). Projected for the class. `/teach/demo` runs fully offline with sample data, so the UI can be tested without Supabase. |
+| `/prep/:lectureId` | **Prep**, chat-style. He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title. **Save** applies the title and removals and returns to the dashboard (it does not start a session). **← Dashboard** leaves without saving: uploads from this visit are deleted again, removed items come back, and a brand-new lecture (opened with `?new=1`) is deleted entirely. It asks to confirm only if something would be lost. |
+| `/teach/:sessionId` | **Live session** (below). Projected for the class. |
 | `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land, plus Recompile and Print/PDF buttons. |
-| `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. |
+| `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. Not linked from anywhere for now. |
 
 A prepared lecture can be launched any number of times; each launch is a new session. Archiving only hides it from the dashboard.
 
 ## Live session
 - **Canvas:** a vertical document. Speech is transcribed live; unprocessed text shows in grey italics at the bottom. About every 15 s the teacher client calls `POST /sessions/{id}/refine`, which cleans the unprocessed segments into one **text block** (a paragraph) appended to the board.
+- **Auto-scroll:** the board follows new text only when he's near the bottom, no lasso is open, and he hasn't touched the board (drawing, placing an image, scrolling) in the last 20 s, so it never scrolls away from a diagram he's working on.
 - **Images** are blocks too. To place one: drag a thumbnail from the sidebar onto a drop slot between blocks, **or** tap a thumbnail and then tap a slot.
 - **Ink and lassos are only allowed on images**, stored in coordinates normalized to that image (x, y in [0,1] of the image's width/height; stroke width as a fraction of image width).
 - **Sidebar** (left by default; a button at the bottom moves it right; its contents stay left-aligned on either side). From top to bottom:
@@ -58,6 +59,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - `POST /sessions/{id}/refine` → `{block, segment_ids}`. Takes the session's segments where `text_block_id is null`, cleans them into one paragraph (vocabulary = the lecture's asset `key_terms`, context = the previous text block), inserts a text block at `max(position)+1`, and sets `text_block_id` on those segments. Falls back to the joined raw text if Gemini fails. **Already implemented.**
 - `POST /annotations/{id}/close` body `{crop_png_base64?}` → `{label, bubble_text}`. Sets `confirmed`/`closed_at`, picks his words about the selection, writes `label`/`bubble_text`, and sets `annotation_id` on the segments it used.
 - `POST /sessions/{id}/compile` → notes JSON; upserts `lecture_notes`.
+- `POST /sessions/{id}/scribe-token` → `{token}`. Single-use ElevenLabs Scribe Realtime token (expires in 15 min) for the teacher's ElevenLabs speech provider. Only for existing `live` sessions, rate-limited (10/min per session, 60/min total). 503 if `ELEVENLABS_API_KEY` is unset. No user auth yet, so anyone who knows a live session id can mint tokens.
 - `POST /segments/{id}/clean` is **removed** (replaced by batch refine).
 
 ## Notes JSON (compile output)
@@ -79,7 +81,7 @@ Figures render the image with its confirmed annotations. Hovering an annotation 
 ## Ownership after the redesign
 - **P1** (canvas): `components/ImageBlock.tsx` (ink, lasso, shimmer, ✓/✗, popovers), `components/Board.tsx`, `pages/Teach.tsx`, `components/Sidebar.tsx`.
 - **P2** (AI): `/describe` (+PDF), `/close`, `/compile` with notes v2; `/refine` is done but needs tuning.
-- **P3** (speech): `hooks/useTranscription.ts` (a basic Web Speech version exists; harden it or swap in Deepgram), metrics, adaptive volume.
+- **P3** (speech): `hooks/useTranscription.ts` (Chrome Web Speech, default) and `hooks/useScribeTranscription.ts` (ElevenLabs Scribe v2 Realtime, chosen in the session menu), metrics, adaptive volume.
 - **P4** (platform): `pages/Dashboard.tsx`, `AllLectures.tsx`, `Prep.tsx`, `Notes.tsx`, `RawSession.tsx`; run the new `schema.sql`; deploy; pitch.
 
 ## Not built yet / open

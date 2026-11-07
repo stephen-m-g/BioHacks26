@@ -97,6 +97,12 @@ export function stopRecognitionEngine(
   }
 }
 
+/** Split long final results into board-friendly sentence segments. */
+export function splitSentences(text: string): string[] {
+  const parts = text.match(/[^.!?]+[.!?]*/g) ?? [text]
+  return parts.map((part) => part.trim()).filter(Boolean)
+}
+
 export function countWords(text: string): number {
   const normalized = text.trim()
   return normalized ? normalized.split(/\s+/u).length : 0
