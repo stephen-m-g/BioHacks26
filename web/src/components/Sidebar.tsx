@@ -1,7 +1,5 @@
-// P1 owns this component. Live-session sidebar: fits the screen without scrolling (only the image
-// grid scrolls internally if there are many images).
+// P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { assetUrl } from '../lib/assets'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
@@ -10,6 +8,8 @@ import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
 
 interface Props {
   title: string
+  /** Save a new session name. */
+  onRename: (title: string) => void
   images: Asset[]
   onUndo: () => void
   /** Drop an image on a slot (drag). */
@@ -51,12 +51,31 @@ function highlightSlot(el: HTMLElement | null) {
   el?.classList.add('slot-target')
 }
 
-export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
+export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
   const s = useSessionStore()
   const settings = useSettings()
   const locked = s.pendingAnnotationId !== null
   const [ghost, setGhost] = useState<{ src: string; x: number; y: number } | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(title)
+
+  const editingRef = useRef(false)
+
+  const startRename = () => {
+    setMenuOpen(false)
+    setDraftTitle(title)
+    editingRef.current = true
+    setEditing(true)
+  }
+
+  const finishRename = (save: boolean) => {
+    if (!editingRef.current) return // Enter/Escape already finished; ignore the blur that follows
+    editingRef.current = false
+    setEditing(false)
+    const next = draftTitle.trim()
+    if (save && next && next !== title) onRename(next)
+  }
   const press = useRef<{ assetId: string; x: number; y: number; dragging: boolean; aspect: number } | null>(null)
 
   const onThumbDown = (e: ReactPointerEvent<HTMLButtonElement>, asset: Asset) => {
@@ -111,23 +130,40 @@ export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageA
   return (
     <aside className="sidebar" aria-label="Board tools">
       <div className="title-menu">
-        <button
-          className="title-btn"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          title={title}
-          onClick={() => setMenuOpen((o) => !o)}
-        >
-          <span className="title-text">{title}</span>
-          <ChevronDownIcon />
-        </button>
-        {menuOpen && (
+        {editing ? (
+          <input
+            className="title-input"
+            aria-label="Session name"
+            value={draftTitle}
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setDraftTitle(e.target.value)}
+            onBlur={() => finishRename(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') finishRename(true)
+              if (e.key === 'Escape') finishRename(false)
+            }}
+          />
+        ) : (
+          <button
+            className="title-btn"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            title={`${title} (double-click to rename)`}
+            onClick={() => setMenuOpen((o) => !o)}
+            onDoubleClick={startRename}
+          >
+            <span className="title-text">{title}</span>
+            <ChevronDownIcon />
+          </button>
+        )}
+        {menuOpen && !editing && (
           <>
             <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="menu" role="menu">
-              <Link role="menuitem" className="menu-item" to="/">
-                Back to lectures
-              </Link>
+              <button role="menuitem" className="menu-item" onClick={startRename}>
+                Rename session
+              </button>
               <button
                 role="menuitem"
                 className="menu-item danger-item"
@@ -203,7 +239,7 @@ export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageA
               </button>
             ))}
             <button className="width-btn" aria-label="Undo last stroke" title="Undo" onClick={onUndo}>
-              <span className="width-chip">
+              <span className="width-chip undo">
                 <UndoIcon />
               </span>
             </button>

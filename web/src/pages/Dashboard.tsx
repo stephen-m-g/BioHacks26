@@ -84,7 +84,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="row">
-                <button className="primary" disabled={busy} onClick={() => run(async () => navigate(`/teach/${await startSession(l.id)}`))}>
+                <button className="primary" disabled={busy} onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}>
                   Start
                 </button>
                 <Link className="btn" to={`/prep/${l.id}`}>
@@ -106,7 +106,7 @@ export default function Dashboard() {
           {sessions.map((s) => (
             <li key={s.id} className="list-item">
               <div className="list-main">
-                <div className="list-title">{s.lectures?.title ?? 'Lecture'}</div>
+                <div className="list-title">{s.title || s.lectures?.title || 'Lecture'}</div>
                 <div className="muted">
                   {formatDate(s.started_at)}
                   {s.status === 'live' && ' · still live'}
@@ -150,7 +150,7 @@ export default function Dashboard() {
           })
         }
       >
-        {toDelete?.lectures?.title} from {formatDate(toDelete?.started_at)}. Its board, transcript and notes are deleted permanently. The
+        {toDelete?.title || toDelete?.lectures?.title} from {formatDate(toDelete?.started_at)}. Its board, transcript and notes are deleted permanently. The
         prepared lecture is kept.
       </ConfirmDialog>
     </div>

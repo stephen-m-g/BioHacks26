@@ -416,12 +416,25 @@ textarea {
 }
 
 .title-btn {
+  position: relative;
+  z-index: 45; /* above the menu backdrop so a second click / double-click reaches it */
   width: 100%;
   justify-content: space-between;
   padding: 0 8px;
   border: none;
   border-radius: 10px;
   background: transparent;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.title-input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0 8px;
+  border: 1.5px solid var(--fg);
+  border-radius: 10px;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -524,16 +537,27 @@ textarea {
 }
 
 /* Ink / Smart: two circles on one row, aligned to the sidebar's side */
+/* Same 4-column grid as the swatches, so button centers line up with swatch centers.
+   Left sidebar: columns 1-2. Right sidebar: columns 3-4. */
 .mode-row,
 .sidebar-footer {
-  display: flex;
-  gap: 0;
-  margin: 0 -6px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  justify-items: center;
 }
 
-.sidebar-right .mode-row,
-.sidebar-right .sidebar-footer {
-  justify-content: flex-end;
+.mode-row .icon-btn,
+.sidebar-footer .icon-btn {
+  min-width: 0;
+  width: 100%;
+}
+
+.sidebar-right .mode-row > :first-child {
+  grid-column: 3;
+}
+
+.sidebar-right .sidebar-footer > :first-child {
+  grid-column: 4;
 }
 
 .tool-panel {
@@ -558,8 +582,8 @@ textarea {
 }
 
 .swatch-dot {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: block;
   transition: box-shadow 0.12s;
@@ -585,6 +609,17 @@ textarea {
 .width-chip svg {
   width: 18px;
   height: 18px;
+}
+
+/* Undo: about 20% larger than the width chips */
+.width-chip.undo {
+  width: 40px;
+  height: 40px;
+}
+
+.width-chip.undo svg {
+  width: 22px;
+  height: 22px;
 }
 
 .width-btn:hover .width-chip {

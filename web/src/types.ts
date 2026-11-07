@@ -41,6 +41,8 @@ export type SessionStatus = 'live' | 'ended'
 export interface Session {
   id: UUID
   lecture_id: UUID
+  /** Session name; starts as the lecture title, renamable per session. */
+  title: string | null
   status: SessionStatus
   started_at: Timestamp
   ended_at: Timestamp | null

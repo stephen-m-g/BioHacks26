@@ -1,6 +1,6 @@
 // P1 owns this page. The live session: sidebar + scrolling board. /teach/demo runs offline.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import Board from '../components/Board'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { MicIcon } from '../components/icons'
@@ -86,6 +86,8 @@ export default function Teach() {
 
   const placing = store.pendingAnnotationId === null && (store.selectedAssetId !== null || store.draggingAssetId !== null)
 
+  const title = data.session.title || data.lecture?.title || 'Lecture'
+
   const micLabel = !speech.supported
     ? 'Mic not supported in this browser'
     : micOn
@@ -97,7 +99,8 @@ export default function Teach() {
   return (
     <div className={`teach sidebar-${settings.sidebarSide}`}>
       <Sidebar
-        title={data.lecture?.title ?? 'Lecture'}
+        title={title}
+        onRename={actions.renameSession}
         images={data.imageAssets}
         onUndo={actions.undoStroke}
         onDrop={(assetId, aspect, slot) => insertAt(assetId, slot, aspect)}
@@ -105,13 +108,11 @@ export default function Teach() {
         onImageAspect={(id, aspect) => aspects.current.set(id, aspect)}
       />
       <div className="teach-main">
-        <nav className="breadcrumb" aria-label="Breadcrumb">
-          <Link to="/">Lectures</Link>
+        <div className="breadcrumb">
+          <strong>{title}</strong>
           <span aria-hidden="true">›</span>
-          <strong>{data.lecture?.title ?? 'Lecture'}</strong>
-          <span aria-hidden="true">›</span>
-          <span>Live session</span>
-        </nav>
+          <span>{data.session.status === 'live' ? 'Live session' : 'Ended'}</span>
+        </div>
         <div className="canvas-card">
           <main className="board-scroll" ref={scrollRef}>
             {data.session.status === 'ended' && <div className="notice">This session has ended.</div>}

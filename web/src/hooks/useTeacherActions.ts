@@ -185,6 +185,15 @@ export function useTeacherActions(data: SessionData) {
     }
   }, [sessionId, demo, upsert])
 
+  /** Rename this session (each launch of a lecture has its own name). */
+  const renameSession = useCallback(
+    (title: string) => {
+      data.patchSession({ title })
+      if (!demo) supabase.from('sessions').update({ title }).eq('id', sessionId).then(logError('rename session'))
+    },
+    [sessionId, demo, data.patchSession],
+  )
+
   /** Confirm anything open, flush speech, end the session and kick off note compilation. */
   const endSession = useCallback(async () => {
     const pendingId = useSessionStore.getState().pendingAnnotationId
@@ -199,7 +208,7 @@ export function useTeacherActions(data: SessionData) {
   }, [sessionId, demo, confirmAnnotation, refine, data.patchSession])
 
   return useMemo(
-    () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, endSession }),
-    [addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, endSession],
+    () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession }),
+    [addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession],
   )
 }

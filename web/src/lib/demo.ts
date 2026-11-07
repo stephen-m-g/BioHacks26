@@ -38,6 +38,7 @@ export function demoData() {
   const session: Session = {
     id: DEMO_SESSION_ID,
     lecture_id: lecture.id,
+    title: lecture.title,
     status: 'live',
     started_at: t,
     ended_at: null,
