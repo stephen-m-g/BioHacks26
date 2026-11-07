@@ -549,7 +549,7 @@ textarea {
 
 /* Ink / Smart: two circles on one row, aligned to the sidebar's side */
 /* Same 4-column grid as the swatches, so button centers line up with swatch centers.
-   Left sidebar: columns 1-2. Right sidebar: columns 3-4. */
+   Columns 1-2, left-aligned on either side of the screen. */
 .mode-row,
 .sidebar-footer {
   display: grid;
@@ -564,24 +564,10 @@ textarea {
   width: 100%;
 }
 
-.sidebar-right .mode-row > :first-child {
-  grid-column: 3;
-}
-
-.sidebar-right .sidebar-footer > :first-child {
-  grid-column: 4;
-}
-
 /* The smaller footer circle hugs the content edge too (its column extends 10px past it). */
 .sidebar-footer .icon-btn {
   justify-content: flex-start;
   padding-left: 10px;
-}
-
-.sidebar-right .sidebar-footer .icon-btn {
-  justify-content: flex-end;
-  padding-left: 0;
-  padding-right: 10px;
 }
 
 .tool-panel {
@@ -688,11 +674,6 @@ textarea {
 
 .mode-hint {
   margin-bottom: 4px;
-}
-
-.sidebar-right .mode-label,
-.sidebar-right .mode-hint {
-  text-align: right;
 }
 
 .thumb-grid {
