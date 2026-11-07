@@ -345,15 +345,19 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
     return "\n".join(lines)
 
 
+DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he renames it
+
+
 def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> NotesContent:
-    """Drop ids Gemini invented, renumber sections, cap review questions."""
+    """Drop ids Gemini invented, renumber sections, cap review questions. His own title wins over Gemini's;
+    Gemini's is only used while the lecture still has the default name."""
     image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
     ann_ids = {a["id"] for a in anns}
     for i, s in enumerate(notes.sections, 1):
         s.id = f"s{i}"
         s.figures = [f for f in s.figures if f.image_block_id in image_ids]
         s.annotation_ids = [a for a in s.annotation_ids if a in ann_ids]
-    notes.title = notes.title or title
+    notes.title = title if title and title != DEFAULT_TITLE else (notes.title.strip() or title)
     notes.review_questions = notes.review_questions[:5]
     return notes
 
