@@ -5,6 +5,7 @@ import io
 import logging
 import mimetypes
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -54,13 +55,30 @@ def health() -> dict:
     return {"ok": True}
 
 
+MAX_REFINE_WORDS = 150  # ~1 min of speech; a backlog (after an outage) becomes several paragraphs, not one wall
+_refine_locks: dict[str, threading.Lock] = {}
+_refine_locks_guard = threading.Lock()
+
+
+def refine_lock(session_id: str) -> threading.Lock:
+    """One lock per session: overlapping refines (two tabs, a reload mid-refine, compile's flush) must not turn
+    the same segments into two paragraphs. In-process only, which is fine for a single API process."""
+    with _refine_locks_guard:
+        return _refine_locks.setdefault(session_id, threading.Lock())
+
+
 @app.post("/sessions/{session_id}/refine", response_model=RefineOut)
 def refine_session(session_id: str) -> RefineOut:
     """Clean the session's unrefined segments into one text block appended to the board.
     Fallback: the joined raw text."""
+    with refine_lock(session_id):
+        return refine_batch(get_db(), session_id)
+
+
+def refine_batch(db, session_id: str) -> RefineOut:
+    """Refine the oldest unrefined segments (up to ~MAX_REFINE_WORDS) into one text block. Call under refine_lock."""
     t0 = time.perf_counter()
-    db = get_db()
-    segs = (
+    unrefined = (
         db.table("transcript_segments")
         .select("id, raw_text, t_start, created_at")
         .eq("session_id", session_id)
@@ -69,6 +87,12 @@ def refine_session(session_id: str) -> RefineOut:
         .execute()
         .data
     )
+    segs, words = [], 0
+    for s in unrefined:
+        segs.append(s)
+        words += len(s["raw_text"].split())
+        if words >= MAX_REFINE_WORDS:
+            break  # the rest goes in the next call
     if not segs:
         return RefineOut(block=None, segment_ids=[])
 
@@ -96,8 +120,8 @@ def refine_session(session_id: str) -> RefineOut:
     )
     ids = [s["id"] for s in segs]
     db.table("transcript_segments").update({"text_block_id": block["id"]}).in_("id", ids).execute()
-    log.info("[refine] segs=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids),
-             db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
+    log.info("[refine] segs=%d words=%d left=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids), words,
+             len(unrefined) - len(ids), db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
     return RefineOut(block=block, segment_ids=ids)
 
 
@@ -109,13 +133,25 @@ def refine_prompt(vocab: list[str], prev_text: str, raw: str) -> str:
     )
 
 
+VOCAB_TTL_S = 120
+_vocab_cache: dict[str, tuple[float, list[str]]] = {}
+
+
 def lecture_vocab(db, session_id: str) -> list[str]:
-    """Union of key_terms over the session's lecture assets (filled in by /describe)."""
+    """Union of key_terms over the session's lecture assets (filled in by /describe). Cached ~2 min per session:
+    every refine reads it (2 DB round trips) and assets rarely change mid-class. Empty results aren't cached, so
+    terms from a /describe that is still running show up as soon as they exist."""
+    hit = _vocab_cache.get(session_id)
+    if hit and time.monotonic() - hit[0] < VOCAB_TTL_S:
+        return hit[1]
     session = db.table("sessions").select("lecture_id").eq("id", session_id).limit(1).execute().data
     if not session:
         return []
     assets = db.table("assets").select("key_terms").eq("lecture_id", session[0]["lecture_id"]).execute().data
-    return sorted({t for a in assets for t in (a.get("key_terms") or [])})
+    vocab = sorted({t for a in assets for t in (a.get("key_terms") or [])})
+    if vocab:
+        _vocab_cache[session_id] = (time.monotonic(), vocab)
+    return vocab
 
 
 @app.post("/sessions/{session_id}/scribe-token", response_model=ScribeTokenOut)
@@ -334,6 +370,11 @@ def compile_session(session_id: str) -> NotesContent:
     lecture = db.table("lectures").select("title").eq("id", lecture_id).limit(1).execute().data
     # sessions.title (renamable per session) wins over the lecture title.
     title = rows[0].get("title") or (lecture[0]["title"] if lecture else "") or "Lecture notes"
+    # Speech that was never refined (e.g. the tab closed without End session) becomes paragraphs first.
+    with refine_lock(session_id):
+        for _ in range(20):
+            if refine_batch(db, session_id).block is None:
+                break
     blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
     anns = (db.table("annotations").select("id, block_id, label, bubble_text")
             .eq("session_id", session_id).eq("status", "confirmed").execute().data)

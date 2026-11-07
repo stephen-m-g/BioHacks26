@@ -290,6 +290,56 @@ def test_refine_uses_the_refine_model_with_low_thinking(db, gemini, monkeypatch)
         assert gemini.options[-1] == expected
 
 
+def test_refine_splits_a_backlog_into_paragraphs_of_about_150_words(db, gemini):
+    lec = db.add("lectures", title="L")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    for i in range(10):  # 200 words of unrefined speech, e.g. after an outage
+        db.add("transcript_segments", session_id=ses["id"], raw_text=" ".join(["word"] * 20), text_block_id=None,
+               created_at=ts(i))
+    gemini.result = None
+    first = main.refine_session(ses["id"])
+    second = main.refine_session(ses["id"])
+    assert len(first.segment_ids) == 8 and len(second.segment_ids) == 2  # 8 x 20 = 160 >= 150
+    assert main.refine_session(ses["id"]).block is None
+
+
+def test_overlapping_refines_do_not_duplicate_a_paragraph(db, gemini):
+    """Two tabs / a reload mid-refine: both calls would read the same segments without the per-session lock."""
+    lec = db.add("lectures", title="L")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    for i in range(3):
+        db.add("transcript_segments", session_id=ses["id"], raw_text=f"line {i}", text_block_id=None,
+               created_at=ts(i))
+    gemini.result, gemini.delay = RefineGemini(text="Lines."), 0.2
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(lambda _: main.refine_session(ses["id"]), range(2)))
+    assert sorted(len(r.segment_ids) for r in results) == [0, 3]
+    assert len([b for b in db.tables["blocks"] if b["kind"] == "text"]) == 1
+
+
+def test_lecture_vocab_is_cached_per_session_but_not_when_empty(db, monkeypatch):
+    lec = db.add("lectures", title="L")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    assert main.lecture_vocab(db, ses["id"]) == []            # describe hasn't finished yet: not cached
+    asset = db.add("assets", lecture_id=lec["id"], kind="text", key_terms=["ATP"])
+    assert main.lecture_vocab(db, ses["id"]) == ["ATP"]       # picked up right away
+    asset["key_terms"] = ["ATP", "glucose"]
+    assert main.lecture_vocab(db, ses["id"]) == ["ATP"]       # cached
+    now = main.time.monotonic()
+    monkeypatch.setattr(main.time, "monotonic", lambda: now + main.VOCAB_TTL_S + 1)
+    assert main.lecture_vocab(db, ses["id"]) == ["ATP", "glucose"]  # expired -> re-read
+
+
+def test_compile_folds_unrefined_speech_into_the_board_first(db, gemini):
+    ses, b = board(db)
+    seg = db.add("transcript_segments", session_id=ses["id"], raw_text="and that is the end of class",
+                 text_block_id=None, created_at=ts(99))
+    gemini.result = None  # fallbacks for both the flush refine and compile
+    notes = main.compile_session(ses["id"])
+    assert db.get("transcript_segments", seg["id"])["text_block_id"]
+    assert "and that is the end of class" in notes.sections[-1].paragraphs
+
+
 def test_refine_fallback_uses_raw_text_and_nothing_to_do_returns_null(db, gemini):
     lec = db.add("lectures", title="L")
     ses = db.add("sessions", lecture_id=lec["id"])
