@@ -3,13 +3,23 @@ import type { Block, NotesContent } from '../types'
 
 export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status} ${await res.text()}`)
+  if (!res.ok) throw new ApiError(`POST ${path} failed: ${res.status} ${await res.text()}`, res.status)
   return res.json() as Promise<T>
 }
 
@@ -25,4 +35,6 @@ export const api = {
       crop_png_base64: cropPngBase64,
     }),
   compileSession: (sessionId: string) => post<NotesContent>(`/sessions/${sessionId}/compile`),
+  /** Single-use ElevenLabs Scribe Realtime token; the API key stays on the server. */
+  scribeToken: (sessionId: string) => post<{ token: string }>(`/sessions/${sessionId}/scribe-token`),
 }

@@ -7,6 +7,8 @@ import Sidebar from '../components/Sidebar'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { useSessionData } from '../hooks/useSessionData'
 import { useTeacherActions } from '../hooks/useTeacherActions'
+import type { TranscriptionProvider } from '../hooks/scribeModel'
+import { useScribeTranscription } from '../hooks/useScribeTranscription'
 import { useTranscription } from '../hooks/useTranscription'
 import { useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
@@ -32,15 +34,39 @@ export default function Teach() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastBoardTouch = useRef(0)
 
-  const speech = useTranscription({
-    enabled: micOn && data.session?.status === 'live',
+  // Only the selected provider gets the mic; a switch stops the old one before the new one starts.
+  const [switching, setSwitching] = useState(false)
+  const provider = settings.transcriptionProvider
+  const recordingWanted = micOn && data.session?.status === 'live' && !switching
+  const captureContext = () => ({
+    sessionId,
+    annotationId: useSessionStore.getState().pendingAnnotationId,
+  })
+  const chromeSpeech = useTranscription({
+    enabled: recordingWanted && provider === 'chrome',
     onFinal: actions.addSegment,
     scopeKey: sessionId,
-    captureContext: () => ({
-      sessionId,
-      annotationId: useSessionStore.getState().pendingAnnotationId,
-    }),
+    captureContext,
   })
+  const scribeSpeech = useScribeTranscription({
+    enabled: recordingWanted && provider === 'elevenlabs',
+    sessionId,
+    onFinal: actions.addSegment,
+    scopeKey: sessionId,
+    captureContext,
+  })
+  const speech = provider === 'elevenlabs' ? scribeSpeech : chromeSpeech
+
+  const switchProvider = async (next: TranscriptionProvider) => {
+    if (next === provider || switching) return
+    setSwitching(true)
+    try {
+      await speech.stop()
+    } finally {
+      settings.setTranscriptionProvider(next)
+      setSwitching(false)
+    }
+  }
 
   useEffect(() => {
     useSessionStore.getState().reset(sessionId)
@@ -116,8 +142,12 @@ export default function Teach() {
           supported: speech.supported,
           error: speech.error,
           metrics: speech.metrics,
+          confidenceSupported: speech.confidenceSupported,
           startedAt: data.session.started_at,
           toggle: toggleMic,
+          provider,
+          switching,
+          onProvider: switchProvider,
         }}
       />
       <div className="teach-main">

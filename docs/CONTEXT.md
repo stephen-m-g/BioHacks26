@@ -59,6 +59,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - `POST /sessions/{id}/refine` → `{block, segment_ids}`. Takes the session's segments where `text_block_id is null`, cleans them into one paragraph (vocabulary = the lecture's asset `key_terms`, context = the previous text block), inserts a text block at `max(position)+1`, and sets `text_block_id` on those segments. Falls back to the joined raw text if Gemini fails. **Already implemented.**
 - `POST /annotations/{id}/close` body `{crop_png_base64?}` → `{label, bubble_text}`. Sets `confirmed`/`closed_at`, picks his words about the selection, writes `label`/`bubble_text`, and sets `annotation_id` on the segments it used.
 - `POST /sessions/{id}/compile` → notes JSON; upserts `lecture_notes`.
+- `POST /sessions/{id}/scribe-token` → `{token}`. Single-use ElevenLabs Scribe Realtime token (expires in 15 min) for the teacher's ElevenLabs speech provider. Only for existing `live` sessions, rate-limited (10/min per session, 60/min total). 503 if `ELEVENLABS_API_KEY` is unset. No user auth yet, so anyone who knows a live session id can mint tokens.
 - `POST /segments/{id}/clean` is **removed** (replaced by batch refine).
 
 ## Notes JSON (compile output)
@@ -80,7 +81,7 @@ Figures render the image with its confirmed annotations. Hovering an annotation 
 ## Ownership after the redesign
 - **P1** (canvas): `components/ImageBlock.tsx` (ink, lasso, shimmer, ✓/✗, popovers), `components/Board.tsx`, `pages/Teach.tsx`, `components/Sidebar.tsx`.
 - **P2** (AI): `/describe` (+PDF), `/close`, `/compile` with notes v2; `/refine` is done but needs tuning.
-- **P3** (speech): `hooks/useTranscription.ts` (a basic Web Speech version exists; harden it or swap in Deepgram), metrics, adaptive volume.
+- **P3** (speech): `hooks/useTranscription.ts` (Chrome Web Speech, default) and `hooks/useScribeTranscription.ts` (ElevenLabs Scribe v2 Realtime, chosen in the session menu), metrics, adaptive volume.
 - **P4** (platform): `pages/Dashboard.tsx`, `AllLectures.tsx`, `Prep.tsx`, `Notes.tsx`, `RawSession.tsx`; run the new `schema.sql`; deploy; pitch.
 
 ## Not built yet / open
