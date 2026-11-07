@@ -82,8 +82,9 @@ def refine_session(session_id: str) -> RefineOut:
     db_read_ms = ms(t0)
 
     raw = " ".join(s["raw_text"].strip() for s in segs if s["raw_text"].strip())
+    # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
     out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, raw)], RefineGemini,
-                                 timeout_ms=10_000)
+                                 timeout_ms=10_000, model=os.getenv("GEMINI_REFINE_MODEL") or None, thinking="LOW")
     text = (out.text if out else "") or raw
 
     t_write = time.perf_counter()

@@ -96,6 +96,28 @@ def test_backup_equal_to_main_is_ignored(client, monkeypatch):
     assert ai.models_to_try() == ["main-model"]
 
 
+def test_task_model_goes_first_then_backup_then_main(client, monkeypatch):
+    assert ai.models_to_try("fast-model") == ["fast-model", "main-model"]
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "backup-model")
+    assert ai.models_to_try("fast-model") == ["fast-model", "backup-model", "main-model"]
+    assert ai.models_to_try("backup-model") == ["backup-model", "main-model"]  # no duplicates
+
+
+def test_task_model_is_used_for_the_first_attempt(client, monkeypatch):
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "backup-model")
+    fake = client(OVERLOADED, OK)
+    assert ai.generate("t", "s", ["hi"], RefineGemini, model="fast-model")[0] == OK
+    assert fake.models == ["fast-model", "backup-model"]
+
+
+def test_thinking_level_is_sent_and_dropped_if_a_model_rejects_it(client):
+    rejected = RuntimeError("400 INVALID_ARGUMENT. Thinking level MINIMAL is not supported for this model.")
+    fake = client(rejected, OK)
+    assert ai.generate("t", "s", ["hi"], RefineGemini, thinking="MINIMAL")[0] == OK
+    assert fake.configs[0].thinking_config.thinking_level.value == "MINIMAL"
+    assert fake.configs[1].thinking_config is None
+
+
 def test_concurrent_first_calls_share_one_client(monkeypatch):
     """A second Client from a racing first call gets garbage-collected mid-request, and Client.__del__ closes its
     HTTP connection ("client has been closed"). Seen with 6 parallel calls in eval_refine.py."""

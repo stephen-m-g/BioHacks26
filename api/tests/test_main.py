@@ -1,6 +1,7 @@
 """Endpoint logic and helpers in main.py, with Supabase and Gemini faked (see conftest.py)."""
 import base64
 import io
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -273,6 +274,20 @@ def test_refine_appends_a_block_and_marks_segments(db, gemini):
     assert db.get("transcript_segments", s1["id"])["text_block_id"] == out.block["id"]
     prompt = gemini.calls[0][2][0]
     assert "ATP" in prompt and "Earlier paragraph." in prompt and "makes a tee pee" in prompt
+
+
+def test_refine_uses_the_refine_model_with_low_thinking(db, gemini, monkeypatch):
+    lec = db.add("lectures", title="L")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    gemini.result = RefineGemini(text="x")
+    for env, expected in [("fast-model", ("fast-model", "LOW")), (None, (None, "LOW"))]:
+        if env:
+            monkeypatch.setenv("GEMINI_REFINE_MODEL", env)
+        else:
+            monkeypatch.delenv("GEMINI_REFINE_MODEL", raising=False)
+        db.add("transcript_segments", session_id=ses["id"], raw_text="words", text_block_id=None, created_at=ts(0))
+        main.refine_session(ses["id"])
+        assert gemini.options[-1] == expected
 
 
 def test_refine_fallback_uses_raw_text_and_nothing_to_do_returns_null(db, gemini):
