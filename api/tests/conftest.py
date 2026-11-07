@@ -1,5 +1,7 @@
 """Test setup: import the api modules, and an in-memory stand-in for the Supabase client (no network)."""
 import sys
+import threading
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -79,6 +81,10 @@ class Query:
         return self
 
     def execute(self):
+        with self.db.lock:  # tests call endpoints from several threads
+            return self._execute()
+
+    def _execute(self):
         if self.op == "insert":
             row = {"id": str(uuid.uuid4()), "created_at": "2026-11-07T19:00:00+00:00", **self.payload}
             self.rows.append(row)
@@ -105,6 +111,7 @@ class Query:
 class FakeDB:
     def __init__(self):
         self.tables: dict[str, list[dict]] = {}
+        self.lock = threading.RLock()
 
     def table(self, name):
         return Query(self, name)
@@ -133,12 +140,17 @@ def gemini(monkeypatch):
     class Fake:
         result = None
         calls: list = []
+        options: list = []  # (model, thinking) per call
+        delay = 0.0
 
-        def __call__(self, task, system, contents, schema, timeout_ms=20_000):
+        def __call__(self, task, system, contents, schema, timeout_ms=20_000, model=None, thinking=None):
             self.calls.append((task, system, contents, schema))
+            self.options.append((model, thinking))
+            if self.delay:
+                time.sleep(self.delay)
             return self.result, 1.0
 
     fake = Fake()
-    fake.calls = []
+    fake.calls, fake.options = [], []
     monkeypatch.setattr(main.ai, "generate", fake)
     return fake

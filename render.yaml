@@ -20,6 +20,8 @@ services:
         value: gemini-3.6-flash
       - key: GEMINI_FALLBACK_MODEL
         value: gemini-3.5-flash-lite
+      - key: GEMINI_REFINE_MODEL
+        value: gemini-3.5-flash-lite
       - key: WEB_ORIGIN
         sync: false
       - key: ELEVENLABS_API_KEY
