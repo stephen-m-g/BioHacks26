@@ -176,6 +176,8 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
         )}
       </div>
 
+      <hr className="sidebar-divider" />
+
       <div className="mode-row" role="radiogroup" aria-label="Drawing mode">
         <button
           role="radio"
@@ -253,9 +255,11 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
         </p>
       )}
 
+      <hr className="sidebar-divider" />
+
       <div className="sidebar-images">
         <div className="sidebar-label">Images</div>
-        <p className="hint" aria-live="polite">
+        <p className="hint images-hint" aria-live="polite">
           {locked
             ? 'Finish the open annotation (✓ or ✗) first.'
             : s.selectedAssetId
