@@ -1,0 +1,317 @@
+/* Dashboard look (P4). Every selector is scoped under .dash so no other page changes.
+   Kept from the app's rules: 64px tap targets, text contrast >= 4.5:1, no hover-only actions. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Inter:wght@400;500;600;700&display=swap');
+
+.dash {
+  --d-bg: #efeeea;
+  --d-fg: #111111;
+  --d-muted: #5c5c58; /* 5.8:1 on --d-bg */
+  --d-faded: #64645f; /* past-session titles, 5.1:1 */
+  --d-soft: #e2e1dc;
+  --d-card: #fbfbf9;
+  --d-danger: #b42318;
+  --d-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  min-height: 100vh;
+  background: var(--d-bg);
+  color: var(--d-fg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.dash-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 32px 64px;
+}
+
+/* ---------- header ---------- */
+.dash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.dash-title {
+  font-family: var(--d-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: clamp(40px, 5vw, 60px);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.dash-sub {
+  margin: 12px 0 0;
+  font-size: 17px;
+  color: var(--d-muted);
+}
+
+/* ---------- sections ---------- */
+.dash-section {
+  margin-top: 48px;
+}
+
+.dash-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.dash-label {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--d-soft);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dash-hint {
+  font-size: 14px;
+  color: var(--d-muted);
+}
+
+.dash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dash-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.dash-avatar {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--d-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--d-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.dash-avatar.dark {
+  background: var(--d-fg);
+  color: var(--d-card);
+}
+
+.dash-main {
+  flex: 1;
+  min-width: 240px;
+}
+
+.dash-row-title {
+  margin: 0;
+  font-family: var(--d-display);
+  font-stretch: 125%;
+  font-weight: 700;
+  font-size: clamp(19px, 2vw, 23px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.dash-row.past .dash-row-title {
+  color: var(--d-faded);
+}
+
+.dash-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 20px;
+  margin-top: 6px;
+  font-size: 15px;
+  color: var(--d-muted);
+}
+
+.dash-meta svg {
+  width: 18px;
+  height: 18px;
+}
+
+.dash-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dash-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ---------- buttons (override the global button look inside .dash only) ---------- */
+.dash .dash-btn {
+  min-width: var(--tap, 64px);
+  min-height: var(--tap, 64px);
+  padding: 0 20px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--d-fg);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dash .dash-btn.solid {
+  background: var(--d-fg);
+  color: var(--d-card);
+  padding: 0 26px;
+  font-weight: 600;
+}
+
+.dash .dash-btn.quiet {
+  color: var(--d-muted);
+}
+
+.dash .dash-btn.icon-only {
+  width: var(--tap, 64px);
+  padding: 0;
+}
+
+.dash .dash-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .dash .dash-btn:not(.solid):hover {
+    background: rgba(17, 17, 17, 0.06);
+  }
+  .dash .dash-btn.solid:hover {
+    background: #2a2a2a;
+  }
+}
+
+.dash .dash-btn:active {
+  transform: scale(0.97);
+}
+
+/* ---------- badges ---------- */
+.dash-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--d-card);
+  color: var(--d-fg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dash-badge.live {
+  background: var(--d-fg);
+  color: var(--d-card);
+}
+
+/* ---------- ··· menu ---------- */
+.dash-menu-wrap {
+  position: relative;
+}
+
+.dash-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.dash-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 11;
+  min-width: 240px;
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--d-card);
+  box-shadow: 0 2px 6px rgba(17, 17, 17, 0.08), 0 12px 32px rgba(17, 17, 17, 0.12);
+}
+
+.dash .dash-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 14px;
+  font-size: 16px;
+}
+
+.dash .dash-menu-item.danger {
+  color: var(--d-danger);
+}
+
+/* ---------- empty, notices, footer ---------- */
+.dash-empty {
+  margin: 8px 0 0;
+  padding: 16px 0;
+  font-size: 16px;
+  color: var(--d-muted);
+}
+
+.dash-notice {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--d-card);
+  font-size: 17px;
+}
+
+.dash-notice.warn {
+  background: #fde8e6;
+  color: #8a1c12;
+}
+
+.dash-footer {
+  margin-top: 48px;
+  font-size: 15px;
+  color: var(--d-muted);
+}
+
+.dash-footer a {
+  color: var(--d-fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  /* Inline links still get a 64px-tall hit area. */
+  display: inline-block;
+  padding: 20px 0;
+}
+
+/* ---------- narrow screens ---------- */
+@media (max-width: 700px) {
+  .dash-inner {
+    padding: 32px 16px 56px;
+  }
+  .dash-actions {
+    width: 100%;
+    margin-left: 76px;
+  }
+}

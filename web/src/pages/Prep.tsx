@@ -3,11 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { IconArrowLeft, IconArrowUp, IconFile, IconImage, IconPaperclip, IconPlay, IconSparkle, IconX } from '../components/DashIcons'
 import { api } from '../lib/api'
 import { assetUrl, newId } from '../lib/assets'
 import { startSession } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { Asset, AssetKind, Lecture } from '../types'
+import '../styles/p4.css'
+import '../styles/prep.css'
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 type AiState = 'reading' | 'error' | 'done'
 
@@ -135,102 +140,163 @@ export default function Prep() {
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
+  const noteCount = items.length - imageCount
 
   return (
-    <div className="prep">
-      <header className="prep-header">
-        <Link className="btn" to="/">
-          ← Dashboard
+    <div className="p4 pp">
+      <header className="p4-top">
+        <Link className="p4-btn" to="/">
+          <IconArrowLeft /> Lectures
         </Link>
-        <input
-          className="prep-title"
-          value={title}
-          placeholder="Lecture title"
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={saveTitle}
-          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        />
-        <button className="primary" onClick={start} disabled={!lecture}>
-          Start session
+        <div className="p4-spacer" />
+        <button className="p4-btn solid" onClick={start} disabled={!lecture}>
+          <IconPlay /> Start session
         </button>
       </header>
 
-      <div className="prep-feed">
-        <div className="bubble ai">
-          Add what you'll teach with: diagrams and photos (they go to your image bank for the board), PDFs, text files, or just type
-          your lecture notes. Everything that isn't an image is used as context for cleaning up your speech and writing the notes.
-        </div>
-        {items.map((a) => (
-          <div key={a.id} className="exchange">
-            <div className="bubble user">
-              {a.kind === 'image' && <img src={assetUrl(a)} alt={a.file_name ?? ''} className="bubble-image" />}
-              {a.kind === 'pdf' && <div className="file-chip">📄 {a.file_name}</div>}
-              {a.kind === 'text' && (
-                <div className="bubble-text">
-                  {a.file_name && <div className="file-chip">📝 {a.file_name}</div>}
-                  {(a.text_content ?? '').slice(0, 600)}
-                  {(a.text_content?.length ?? 0) > 600 && '…'}
+      <div className="pp-scroll">
+        <div className="pp-inner">
+          <input
+            className="pp-title"
+            aria-label="Lecture title"
+            value={title}
+            placeholder="Lecture title"
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={saveTitle}
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          />
+          <p className="p4-sub">
+            <span>
+              <IconImage /> {plural(imageCount, 'image')}
+            </span>
+            <span>
+              <IconFile /> {plural(noteCount, 'note')}
+            </span>
+          </p>
+
+          <section className="p4-section" aria-labelledby="materials-heading">
+            <h2 id="materials-heading" className="p4-label">
+              Materials
+            </h2>
+            <div className="pp-feed">
+              <div className="pp-ai">
+                <div className="pp-ai-avatar" aria-hidden="true">
+                  <IconSparkle />
                 </div>
-              )}
-              <button className="bubble-remove" aria-label="Remove" onClick={() => setToRemove(a)}>
-                ✕
-              </button>
-            </div>
-            <div className="bubble ai">
-              {ai[a.id] === 'reading' ? (
-                <span className="muted">Reading…</span>
-              ) : a.label ? (
-                <>
-                  <strong>{a.label}</strong>
-                  {a.description && <p>{a.description}</p>}
-                  {a.key_terms && a.key_terms.length > 0 && (
-                    <div className="chips">
-                      {a.key_terms.map((t) => (
-                        <span key={t} className="chip">
-                          {t}
-                        </span>
-                      ))}
+                <div className="pp-ai-body">
+                  <p className="pp-ai-title">Add what you'll teach with</p>
+                  <p className="pp-ai-desc">
+                    Diagrams and photos go to your image bank for the board. PDFs, text files and typed notes become context for
+                    cleaning up your speech and writing the study notes.
+                  </p>
+                </div>
+              </div>
+
+              {items.map((a) => (
+                <div key={a.id} className="pp-exchange">
+                  <div className={`pp-user${a.kind === 'image' ? ' has-image' : ''}`}>
+                    {a.kind === 'image' && <img src={assetUrl(a)} alt={a.label ?? a.file_name ?? 'Uploaded image'} />}
+                    {a.kind === 'pdf' && (
+                      <div className="pp-file">
+                        <IconFile /> {a.file_name}
+                      </div>
+                    )}
+                    {a.kind === 'text' && (
+                      <>
+                        {a.file_name && (
+                          <div className="pp-file">
+                            <IconFile /> {a.file_name}
+                          </div>
+                        )}
+                        <div className="pp-text">
+                          {(a.text_content ?? '').slice(0, 600)}
+                          {(a.text_content?.length ?? 0) > 600 && '…'}
+                        </div>
+                      </>
+                    )}
+                    <button
+                      className="p4-btn icon-only pp-remove"
+                      aria-label={`Remove ${a.file_name ?? a.label ?? 'this item'}`}
+                      onClick={() => setToRemove(a)}
+                    >
+                      <IconX />
+                    </button>
+                  </div>
+                  <div className="pp-ai">
+                    <div className="pp-ai-avatar" aria-hidden="true">
+                      <IconSparkle />
                     </div>
-                  )}
-                </>
-              ) : (
-                <span>{ai[a.id] === 'error' ? "Saved. (I couldn't describe it right now.)" : 'Saved.'}</span>
-              )}
-              <div className="muted small">{a.kind === 'image' ? 'Added to the image bank.' : 'Added to session context.'}</div>
+                    <div className="pp-ai-body">
+                      {ai[a.id] === 'reading' ? (
+                        <p className="pp-ai-desc reading">Reading…</p>
+                      ) : a.label ? (
+                        <>
+                          <p className="pp-ai-title">{a.label}</p>
+                          {a.description && <p className="pp-ai-desc">{a.description}</p>}
+                          {a.key_terms && a.key_terms.length > 0 && (
+                            <div className="p4-chips">
+                              {a.key_terms.map((t) => (
+                                <span key={t} className="p4-chip">
+                                  {t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="pp-ai-desc">{ai[a.id] === 'error' ? 'Saved. A description isn’t available right now.' : 'Saved.'}</p>
+                      )}
+                      <p className="pp-ai-foot">{a.kind === 'image' ? 'Added to image bank' : 'Added to context'}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div ref={feedEnd} />
             </div>
-          </div>
-        ))}
-        <div ref={feedEnd} />
+          </section>
+        </div>
       </div>
 
-      {error && (
-        <div className="notice warn prep-error" onClick={() => setError(null)}>
-          {error} (tap to dismiss)
+      <footer className="pp-composer-wrap">
+        {error && (
+          <div className="p4-notice warn" role="alert">
+            <span>{error}</span>
+            <button className="p4-btn" onClick={() => setError(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+        <div className="pp-composer">
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            accept="image/*,application/pdf,.pdf,.txt,text/plain"
+            hidden
+            onChange={(e) => onFiles(e.target.files)}
+          />
+          <button className="p4-btn icon-only" onClick={() => fileInput.current?.click()} aria-label="Attach images, PDFs or text files">
+            <IconPaperclip />
+          </button>
+          <textarea
+            className="pp-textarea"
+            aria-label="Lecture notes"
+            value={draft}
+            placeholder="Type or paste lecture notes…"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                sendText()
+              }
+            }}
+            rows={1}
+          />
+          <button className="p4-btn solid" onClick={sendText} disabled={!draft.trim()}>
+            <IconArrowUp /> Send
+          </button>
         </div>
-      )}
-
-      <footer className="prep-composer">
-        <input
-          ref={fileInput}
-          type="file"
-          multiple
-          accept="image/*,application/pdf,.pdf,.txt,text/plain"
-          hidden
-          onChange={(e) => onFiles(e.target.files)}
-        />
-        <button onClick={() => fileInput.current?.click()} aria-label="Attach files">
-          📎 Attach
-        </button>
-        <textarea
-          value={draft}
-          placeholder="Type or paste lecture notes…"
-          onChange={(e) => setDraft(e.target.value)}
-          rows={2}
-        />
-        <button className="primary" onClick={sendText} disabled={!draft.trim()}>
-          Send
-        </button>
-        <span className="muted small prep-count">{imageCount} images</span>
+        <p className="pp-hint">Images go to the image bank. Everything else becomes context.</p>
       </footer>
 
       <ConfirmDialog
