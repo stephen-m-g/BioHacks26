@@ -1,4 +1,4 @@
-// P1 owns this page. The live session: sidebar + scrolling board. /teach/demo runs offline.
+// P1 owns this page. The live session: sidebar + scrolling board.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Board from '../components/Board'
@@ -14,6 +14,9 @@ import { useSettings } from '../store/settings'
 /** How often unrefined speech is batch-cleaned into a paragraph. */
 const REFINE_EVERY_MS = 15_000
 
+/** After the teacher touches the board, don't follow new text for this long. */
+const HOLD_SCROLL_AFTER_TOUCH_MS = 20_000
+
 export default function Teach() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
@@ -27,6 +30,7 @@ export default function Teach() {
   const [ending, setEnding] = useState(false)
   const aspects = useRef(new Map<string, number>())
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastBoardTouch = useRef(0)
 
   const speech = useTranscription({
     enabled: micOn && data.session?.status === 'live',
@@ -54,7 +58,15 @@ export default function Teach() {
     return () => clearInterval(t)
   }, [actions.refine])
 
-  useAutoScroll(scrollRef, [data.blockList.length, data.segmentList.length, speech.interim])
+  // Follow new text, but never scroll away from a diagram he's working on: hold while a lasso is
+  // open and for a while after he last touched the board (drawing, placing an image, scrolling).
+  useAutoScroll(
+    scrollRef,
+    [data.blockList.length, data.segmentList.length, speech.interim],
+    () =>
+      useSessionStore.getState().pendingAnnotationId !== null ||
+      Date.now() - lastBoardTouch.current < HOLD_SCROLL_AFTER_TOUCH_MS,
+  )
 
   const insertAt = useCallback(
     (assetId: string, slot: number, aspect?: number) => {
@@ -69,7 +81,7 @@ export default function Teach() {
     await speech.stop()
     setMicOn(false)
     await actions.endSession()
-    navigate(data.demo ? '/' : `/notes/${sessionId}`)
+    navigate(`/notes/${sessionId}`)
   }
 
   const toggleMic = async () => {
@@ -115,7 +127,12 @@ export default function Teach() {
           <span>{data.session.status === 'live' ? 'Live session' : 'Ended'}</span>
         </div>
         <div className="canvas-card">
-          <main className="board-scroll" ref={scrollRef}>
+          <main
+            className="board-scroll"
+            ref={scrollRef}
+            onPointerDownCapture={() => (lastBoardTouch.current = Date.now())}
+            onWheel={() => (lastBoardTouch.current = Date.now())}
+          >
             {data.session.status === 'ended' && <div className="notice">This session has ended.</div>}
             <Board
           blocks={data.blockList}

@@ -1,5 +1,5 @@
 // Everything the teacher can do on the live board. Optimistic: local state updates first, the
-// database write and API call follow without blocking drawing. In demo mode nothing leaves the browser.
+// database write and API call follow without blocking drawing.
 import { useCallback, useMemo, useRef } from 'react'
 import { api } from '../lib/api'
 import { newId, nowIso } from '../lib/assets'
@@ -22,24 +22,24 @@ export function useTeacherActions(data: SessionData) {
   ref.current = data
   const refineCoordinator = useRef(new RefineCoordinator())
   const pendingSegmentWrites = useRef(new Set<Promise<void>>())
-  const { demo, upsert, remove } = data
+  const { upsert, remove } = data
   const sessionId = data.session?.id ?? ''
 
   const addStroke = useCallback(
     (blockId: string, points: Point[], color: string, width: number) => {
       const row: Stroke = { id: newId(), session_id: sessionId, block_id: blockId, points, color, width, created_at: nowIso() }
       upsert('strokes', row)
-      if (!demo) supabase.from('strokes').insert(row).then(logError('insert stroke'))
+      supabase.from('strokes').insert(row).then(logError('insert stroke'))
     },
-    [sessionId, demo, upsert],
+    [sessionId, upsert],
   )
 
   const undoStroke = useCallback(() => {
     const last = ref.current.strokeList.at(-1)
     if (!last) return
     remove('strokes', last.id)
-    if (!demo) supabase.from('strokes').delete().eq('id', last.id).then(logError('undo stroke'))
-  }, [demo, remove])
+    supabase.from('strokes').delete().eq('id', last.id).then(logError('undo stroke'))
+  }, [remove])
 
   const addLasso = useCallback(
     (blockId: string, path: Point[], drawnAt: string) => {
@@ -59,9 +59,9 @@ export function useTeacherActions(data: SessionData) {
       }
       upsert('annotations', row)
       store.setPendingAnnotation(row.id)
-      if (!demo) supabase.from('annotations').insert(row).then(logError('insert annotation'))
+      supabase.from('annotations').insert(row).then(logError('insert annotation'))
     },
-    [sessionId, demo, upsert],
+    [sessionId, upsert],
   )
 
   const confirmAnnotation = useCallback(
@@ -69,14 +69,6 @@ export function useTeacherActions(data: SessionData) {
       const closedAt = nowIso()
       upsert('annotations', { id, status: 'confirmed', closed_at: closedAt })
       useSessionStore.getState().setPendingAnnotation(null)
-      if (demo) {
-        const words = ref.current.segmentList.filter((s) => s.annotation_id === id).map((s) => s.raw_text)
-        setTimeout(
-          () => upsert('annotations', { id, label: 'Selected region', bubble_text: words.join(' ') || null }),
-          800,
-        )
-        return
-      }
       supabase
         .from('annotations')
         .update({ status: 'confirmed', closed_at: closedAt })
@@ -87,7 +79,7 @@ export function useTeacherActions(data: SessionData) {
         .then((r) => upsert('annotations', { id, label: r.label, bubble_text: r.bubble_text }))
         .catch((e) => console.error('close annotation', e))
     },
-    [demo, upsert],
+    [upsert],
   )
 
   const rejectAnnotation = useCallback(
@@ -97,7 +89,6 @@ export function useTeacherActions(data: SessionData) {
       for (const s of ref.current.segmentList) {
         if (s.annotation_id === id) upsert('transcript_segments', { id: s.id, annotation_id: null })
       }
-      if (demo) return
       supabase.from('annotations').update({ status: 'rejected' }).eq('id', id).then(logError('reject annotation'))
       supabase
         .from('transcript_segments')
@@ -105,7 +96,7 @@ export function useTeacherActions(data: SessionData) {
         .eq('annotation_id', id)
         .then(logError('unlink segments'))
     },
-    [demo, upsert],
+    [upsert],
   )
 
   /** Insert an image block into drop slot `slot` (0 = top, blocks.length = bottom). */
@@ -128,9 +119,9 @@ export function useTeacherActions(data: SessionData) {
         created_at: nowIso(),
       }
       upsert('blocks', row)
-      if (!demo) supabase.from('blocks').insert(row).then(logError('insert image block'))
+      supabase.from('blocks').insert(row).then(logError('insert image block'))
     },
-    [sessionId, demo, upsert],
+    [sessionId, upsert],
   )
 
   /** Called by the transcription hook for every final result. */
@@ -154,40 +145,22 @@ export function useTeacherActions(data: SessionData) {
         createdAt: nowIso(),
       })
       upsert('transcript_segments', row)
-      if (!demo) {
-        const write = Promise.resolve(supabase.from('transcript_segments').insert(row)).then(logError('insert segment'))
-        pendingSegmentWrites.current.add(write)
-        void write.finally(() => pendingSegmentWrites.current.delete(write))
-      }
+      const write = Promise.resolve(supabase.from('transcript_segments').insert(row)).then(logError('insert segment'))
+      pendingSegmentWrites.current.add(write)
+      void write.finally(() => pendingSegmentWrites.current.delete(write))
     },
-    [sessionId, demo, upsert],
+    [sessionId, upsert],
   )
 
   /** Batch-clean unrefined speech into a new text block at the end of the board. */
   const performRefine = useCallback(async () => {
     if (!sessionId) return
     try {
-      if (!demo && pendingSegmentWrites.current.size > 0) {
+      if (pendingSegmentWrites.current.size > 0) {
         await Promise.allSettled([...pendingSegmentWrites.current])
       }
       const pending = ref.current.segmentList.filter((s) => !s.text_block_id)
       if (pending.length === 0) return
-      if (demo) {
-        const last = ref.current.blockList.at(-1)
-        const block: Block = {
-          id: newId(),
-          session_id: sessionId,
-          kind: 'text',
-          position: (last?.position ?? 0) + 1,
-          text: pending.map((s) => s.raw_text.trim()).join(' '),
-          asset_id: null,
-          aspect: null,
-          created_at: nowIso(),
-        }
-        upsert('blocks', block)
-        for (const s of pending) upsert('transcript_segments', { id: s.id, text_block_id: block.id })
-        return
-      }
       const res = await api.refineSession(sessionId)
       if (res.block) {
         upsert('blocks', res.block)
@@ -196,7 +169,7 @@ export function useTeacherActions(data: SessionData) {
     } catch (e) {
       console.error('refine', e)
     }
-  }, [sessionId, demo, upsert])
+  }, [sessionId, upsert])
 
   const refine = useCallback(
     () => refineCoordinator.current.run(performRefine),
@@ -207,9 +180,9 @@ export function useTeacherActions(data: SessionData) {
   const renameSession = useCallback(
     (title: string) => {
       data.patchSession({ title })
-      if (!demo) supabase.from('sessions').update({ title }).eq('id', sessionId).then(logError('rename session'))
+      supabase.from('sessions').update({ title }).eq('id', sessionId).then(logError('rename session'))
     },
-    [sessionId, demo, data.patchSession],
+    [sessionId, data.patchSession],
   )
 
   /** Confirm anything open, flush speech, end the session and kick off note compilation. */
@@ -219,11 +192,10 @@ export function useTeacherActions(data: SessionData) {
     await refineCoordinator.current.drain(performRefine)
     const endedAt = nowIso()
     data.patchSession({ status: 'ended', ended_at: endedAt })
-    if (demo) return
     const { error } = await supabase.from('sessions').update({ status: 'ended', ended_at: endedAt }).eq('id', sessionId)
     if (error) console.error('end session', error.message)
     api.compileSession(sessionId).catch((e) => console.error('compile', e))
-  }, [sessionId, demo, confirmAnnotation, performRefine, data.patchSession])
+  }, [sessionId, confirmAnnotation, performRefine, data.patchSession])
 
   return useMemo(
     () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession }),

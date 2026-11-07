@@ -1,11 +1,16 @@
 // P4 owns this page. Chat-style prep: upload images / PDFs / .txt or type text. Each item gets an
 // AI acknowledgement from /describe. Images go to the image bank; everything else is session context.
+//
+// Save / discard: "Save" applies the title and any removals and returns to the dashboard.
+// "<- Dashboard" discards this visit's changes. Uploads must exist in the database for /describe to
+// read them, so they are written immediately and tracked; discarding deletes them again (and deletes
+// the lecture itself if it was created for this visit, i.e. opened with ?new=1).
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { api } from '../lib/api'
 import { assetUrl, newId } from '../lib/assets'
-import { startSession } from '../lib/lectures'
+import { deleteLecture } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { Asset, AssetKind, Lecture } from '../types'
 
@@ -21,6 +26,8 @@ function kindOf(file: File): AssetKind | null {
 
 export default function Prep() {
   const { lectureId = '' } = useParams()
+  const [searchParams] = useSearchParams()
+  const isNew = searchParams.get('new') === '1'
   const navigate = useNavigate()
   const [lecture, setLecture] = useState<Lecture | null>(null)
   const [title, setTitle] = useState('')
@@ -29,6 +36,12 @@ export default function Prep() {
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [toRemove, setToRemove] = useState<Asset | null>(null)
+  /** Assets uploaded during this visit (deleted again on discard). */
+  const [added, setAdded] = useState<Asset[]>([])
+  /** Previously saved assets the teacher removed (deleted on save). */
+  const [removed, setRemoved] = useState<Asset[]>([])
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const feedEnd = useRef<HTMLDivElement>(null)
 
@@ -68,8 +81,30 @@ export default function Prep() {
     const { data, error } = await supabase.from('assets').insert({ lecture_id: lectureId, ...row }).select().single()
     if (error) throw error
     setItems((list) => [...list, data as Asset])
+    setAdded((list) => [...list, data as Asset])
     describe(row.id)
   }
+
+  const deleteAssets = async (assets: Asset[]) => {
+    if (assets.length === 0) return
+    const paths = assets.map((a) => a.storage_path).filter((p): p is string => !!p)
+    if (paths.length) await supabase.storage.from('assets').remove(paths)
+    const { error } = await supabase.from('assets').delete().in('id', assets.map((a) => a.id))
+    if (error) throw error
+  }
+
+  const savedTitle = lecture?.title ?? ''
+  const titleChanged = (title.trim() || 'Untitled lecture') !== savedTitle
+  /** Something would be lost by leaving without saving. */
+  const hasUnsavedWork = added.length > 0 || removed.length > 0 || (!isNew && titleChanged)
+
+  // Warn before closing the tab with unsaved changes.
+  useEffect(() => {
+    if (!hasUnsavedWork && !isNew) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasUnsavedWork, isNew])
 
   const sendText = async () => {
     const text = draft.trim()
@@ -109,29 +144,57 @@ export default function Prep() {
     if (fileInput.current) fileInput.current.value = ''
   }
 
-  const removeItem = async (asset: Asset) => {
+  /** Hide an item now; an upload from this visit is deleted right away, a saved one on Save. */
+  const removeItem = (asset: Asset) => {
     setToRemove(null)
-    setItems((list) => list.filter((a) => a.id !== asset.id))
-    if (asset.storage_path) await supabase.storage.from('assets').remove([asset.storage_path])
-    const { error } = await supabase.from('assets').delete().eq('id', asset.id)
-    if (error) setError(error.message)
-  }
-
-  const saveTitle = async () => {
-    const t = title.trim() || 'Untitled lecture'
-    if (t === lecture?.title) return
-    const { error } = await supabase.from('lectures').update({ title: t }).eq('id', lectureId)
-    if (error) setError(error.message)
-    else setLecture((l) => (l ? { ...l, title: t } : l))
-  }
-
-  const start = async () => {
-    try {
-      await saveTitle()
-      navigate(`/teach/${await startSession(lectureId, title.trim() || 'Untitled lecture')}`)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+    setItems((list) => list.filter((x) => x.id !== asset.id))
+    if (added.some((x) => x.id === asset.id)) {
+      setAdded((list) => list.filter((x) => x.id !== asset.id))
+      deleteAssets([asset]).catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    } else {
+      setRemoved((list) => [...list, asset])
     }
+  }
+
+  const fail = (e: unknown) => {
+    setError(e instanceof Error ? e.message : String(e))
+    setBusy(false)
+  }
+
+  /** Apply the title and removals, then go back to the dashboard. */
+  const save = async () => {
+    setBusy(true)
+    try {
+      if (titleChanged) {
+        const { error } = await supabase
+          .from('lectures')
+          .update({ title: title.trim() || 'Untitled lecture' })
+          .eq('id', lectureId)
+        if (error) throw error
+      }
+      await deleteAssets(removed)
+      navigate('/')
+    } catch (e) {
+      fail(e)
+    }
+  }
+
+  /** Leave without saving: undo this visit's uploads (or the whole new lecture). */
+  const discard = async () => {
+    setConfirmDiscard(false)
+    setBusy(true)
+    try {
+      if (isNew) await deleteLecture(lectureId)
+      else await deleteAssets(added)
+      navigate('/')
+    } catch (e) {
+      fail(e)
+    }
+  }
+
+  const back = () => {
+    if (hasUnsavedWork) setConfirmDiscard(true)
+    else discard()
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
@@ -139,19 +202,19 @@ export default function Prep() {
   return (
     <div className="prep">
       <header className="prep-header">
-        <Link className="btn" to="/">
+        <button onClick={back} disabled={busy}>
           ← Dashboard
-        </Link>
+        </button>
         <input
           className="prep-title"
           value={title}
           placeholder="Lecture title"
+          aria-label="Lecture title"
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={saveTitle}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
-        <button className="primary" onClick={start} disabled={!lecture}>
-          Start session
+        <button className="primary" onClick={save} disabled={!lecture || busy}>
+          {busy ? 'Saving…' : 'Save'}
         </button>
       </header>
 
@@ -241,8 +304,21 @@ export default function Prep() {
         onCancel={() => setToRemove(null)}
         onConfirm={() => toRemove && removeItem(toRemove)}
       >
-        It's deleted from this lecture.
-        {toRemove?.kind === 'image' && ' Past sessions that placed this image on the board will show a blank image.'}
+        It's removed when you press Save.
+        {toRemove?.kind === 'image' && ' Past sessions that placed this image on the board will then show a blank image.'}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmDiscard}
+        title="Discard changes?"
+        confirmLabel="Discard"
+        danger
+        onCancel={() => setConfirmDiscard(false)}
+        onConfirm={discard}
+      >
+        {isNew
+          ? "This lecture hasn't been saved. It and everything you added will be deleted."
+          : 'Changes since you last saved will be lost: new uploads are deleted, removed items come back and the title is restored.'}
       </ConfirmDialog>
     </div>
   )
