@@ -20,3 +20,6 @@ venv/
 Thumbs.db
 .vscode/
 .idea/
+
+# Created by `npm --prefix web` at the repo root; the real lockfile is web/package-lock.json
+/package-lock.json
