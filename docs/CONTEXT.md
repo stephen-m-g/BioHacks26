@@ -25,7 +25,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - **Images** are blocks too. To place one: drag a thumbnail from the sidebar onto a drop slot between blocks, **or** tap a thumbnail and then tap a slot.
 - **Ink and lassos are only allowed on images**, stored in coordinates normalized to that image (x, y in [0,1] of the image's width/height; stroke width as a fraction of image width).
 - **Sidebar** (left by default; a setting moves it right). From top to bottom:
-  - session title with a dropdown: **Rename session** (inline edit; double-click on the title also works for mouse users, but double-tap is never required) and **End session**;
+  - session title: tap opens a dropdown with **End session**; double-click renames it inline (Enter saves, Esc cancels);
   - **mode toggle: Ink / Smart**;
   - ink presets: 4 colors × 3 widths, plus Undo;
   - image bank;

@@ -420,9 +420,10 @@ textarea {
   z-index: 45; /* above the menu backdrop so a second click / double-click reaches it */
   width: 100%;
   justify-content: space-between;
-  padding: 0 8px;
+  gap: 4px;
+  padding: 0 4px;
   border: none;
-  border-radius: 10px;
+  border-radius: 6px;
   background: transparent;
   font-size: 1.05rem;
   font-weight: 700;
@@ -432,12 +433,19 @@ textarea {
 .title-input {
   width: 100%;
   min-height: var(--tap);
-  padding: 0 8px;
-  border: 1.5px solid var(--fg);
-  border-radius: 10px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+.title-input:focus,
+.title-input:focus-visible {
+  outline: none;
 }
 
 .title-btn:hover,
@@ -642,7 +650,18 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* "PEN" / "SMART ANNOTATE" under the mode circles, aligned with the circle edge */
+.mode-label {
+  padding: 0 10px;
+  margin-top: -4px;
+}
+
+.sidebar-right .mode-label {
+  text-align: right;
 }
 
 .thumb-grid {

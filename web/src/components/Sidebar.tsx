@@ -161,9 +161,6 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
           <>
             <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="menu" role="menu">
-              <button role="menuitem" className="menu-item" onClick={startRename}>
-                Rename session
-              </button>
               <button
                 role="menuitem"
                 className="menu-item danger-item"
@@ -204,6 +201,10 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
             <WandIcon />
           </span>
         </button>
+      </div>
+
+      <div className="sidebar-label mode-label" aria-live="polite">
+        {s.mode === 'ink' ? 'Pen' : 'Smart annotate'}
       </div>
 
       {s.mode === 'ink' ? (
