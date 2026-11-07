@@ -1,13 +1,25 @@
 // P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
 import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
 
+export interface Recording {
+  /** Recording wanted (not paused) and the session is live. */
+  on: boolean
+  /** The recognizer is actually running right now. */
+  listening: boolean
+  supported: boolean
+  error: string | null
+  startedAt: string
+  toggle: () => void
+}
+
 interface Props {
   title: string
+  recording: Recording
   /** Save a new session name. */
   onRename: (title: string) => void
   images: Asset[]
@@ -51,7 +63,35 @@ function highlightSlot(el: HTMLElement | null) {
   el?.classList.add('slot-target')
 }
 
-export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
+/** Session clock with a recording dot: red pulse while listening, grey when paused. */
+function SessionClock({ recording }: { recording: Recording }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const secs = Math.max(0, Math.floor((now - new Date(recording.startedAt).getTime()) / 1000))
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const time = `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
+  const status = !recording.supported
+    ? 'No mic'
+    : recording.error && recording.on
+      ? 'Mic blocked'
+      : !recording.on
+        ? 'Paused'
+        : null
+  return (
+    <span className="session-clock" aria-live="polite" title={recording.error ? `Mic: ${recording.error}` : undefined}>
+      <span className={`rec-dot${recording.on && recording.listening ? ' live' : ''}`} aria-hidden="true" />
+      {status && <span className="clock-status">{status}</span>}
+      <span className="clock-time" aria-label="Session time">
+        {time}
+      </span>
+    </span>
+  )
+}
+
+export default function Sidebar({ title, recording, onRename, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
   const s = useSessionStore()
   const settings = useSettings()
   const locked = s.pendingAnnotationId !== null
@@ -161,6 +201,17 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
           <>
             <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
             <div className="menu" role="menu">
+              <button
+                role="menuitem"
+                className="menu-item"
+                disabled={!recording.supported}
+                onClick={() => {
+                  setMenuOpen(false)
+                  recording.toggle()
+                }}
+              >
+                {recording.on ? 'Pause recording' : 'Resume recording'}
+              </button>
               <button
                 role="menuitem"
                 className="menu-item danger-item"
@@ -307,6 +358,7 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
             <SwapIcon />
           </span>
         </button>
+        <SessionClock recording={recording} />
       </div>
 
       {ghost && <img className="drag-ghost" src={ghost.src} alt="" style={{ left: ghost.x, top: ghost.y }} draggable={false} />}

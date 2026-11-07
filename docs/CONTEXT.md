@@ -25,11 +25,12 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - **Images** are blocks too. To place one: drag a thumbnail from the sidebar onto a drop slot between blocks, **or** tap a thumbnail and then tap a slot.
 - **Ink and lassos are only allowed on images**, stored in coordinates normalized to that image (x, y in [0,1] of the image's width/height; stroke width as a fraction of image width).
 - **Sidebar** (left by default; a button at the bottom moves it right; its contents stay left-aligned on either side). From top to bottom:
-  - session title: tap opens a dropdown with **End session**; double-click renames it inline (Enter saves, Esc cancels);
+  - session title: tap opens a dropdown with **Pause/Resume recording** and **End session**; double-click renames it inline (Enter saves, Esc cancels);
   - **mode toggle: Ink / Smart**;
   - ink presets: 4 colors × 3 widths, plus Undo;
   - image bank;
-  - a small button at the bottom to move the sidebar to the other side.
+  - bottom row: a small button to move the sidebar to the other side, and the session clock with a recording dot (red pulse while listening; shows Paused / Mic blocked).
+- **Recording starts automatically** when the session opens.
 - **Pencil auto-detect:** fingers draw on images until an Apple Pencil touches one; from then on (for that page load) only the pencil draws and fingers scroll, which stops palm marks. There is no toggle.
   - **End session** (confirm dialog).
 - **Smart annotation** (lasso): drawing a loop on an image in Smart mode creates a `pending` annotation. While it's pending:

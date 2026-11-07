@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Board from '../components/Board'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { MicIcon } from '../components/icons'
 import Sidebar from '../components/Sidebar'
 import { useAutoScroll } from '../hooks/useAutoScroll'
 import { useSessionData } from '../hooks/useSessionData'
@@ -15,24 +14,6 @@ import { useSettings } from '../store/settings'
 /** How often unrefined speech is batch-cleaned into a paragraph. */
 const REFINE_EVERY_MS = 15_000
 
-/** Session clock (hh:mm:ss since start). */
-function Elapsed({ since }: { since: string }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [])
-  const secs = Math.max(0, Math.floor((now - new Date(since).getTime()) / 1000))
-  const hh = String(Math.floor(secs / 3600)).padStart(2, '0')
-  const mm = String(Math.floor((secs % 3600) / 60)).padStart(2, '0')
-  const ss = String(secs % 60).padStart(2, '0')
-  return (
-    <span className="dock-time" aria-label="Session time">
-      {hh}:{mm}:{ss}
-    </span>
-  )
-}
-
 export default function Teach() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
@@ -40,7 +21,8 @@ export default function Teach() {
   const actions = useTeacherActions(data)
   const store = useSessionStore()
   const settings = useSettings()
-  const [micOn, setMicOn] = useState(false)
+  // Recording starts with the session; Pause/Resume lives in the title menu.
+  const [micOn, setMicOn] = useState(true)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [ending, setEnding] = useState(false)
   const aspects = useRef(new Map<string, number>())
@@ -88,14 +70,6 @@ export default function Teach() {
 
   const title = data.session.title || data.lecture?.title || 'Lecture'
 
-  const micLabel = !speech.supported
-    ? 'Mic not supported in this browser'
-    : micOn
-      ? speech.listening
-        ? 'Listening'
-        : 'Starting mic…'
-      : 'Record voice'
-
   return (
     <div className={`teach sidebar-${settings.sidebarSide}`}>
       <Sidebar
@@ -106,6 +80,14 @@ export default function Teach() {
         onDrop={(assetId, aspect, slot) => insertAt(assetId, slot, aspect)}
         onEnd={() => setConfirmEnd(true)}
         onImageAspect={(id, aspect) => aspects.current.set(id, aspect)}
+        recording={{
+          on: micOn && data.session.status === 'live',
+          listening: speech.listening,
+          supported: speech.supported,
+          error: speech.error,
+          startedAt: data.session.started_at,
+          toggle: () => setMicOn((v) => !v),
+        }}
       />
       <div className="teach-main">
         <div className="breadcrumb">
@@ -139,21 +121,6 @@ export default function Teach() {
           }}
         />
           </main>
-          <div className="dock">
-            <button
-              className={`mic-btn${micOn ? ' on' : ''}`}
-              onClick={() => setMicOn((v) => !v)}
-              disabled={!speech.supported || data.session.status !== 'live'}
-              aria-pressed={micOn}
-            >
-              <span className={`mic-dot${speech.listening ? ' live' : ''}`} aria-hidden="true" />
-              <MicIcon /> {micLabel}
-            </button>
-            <span className="dock-status" aria-live="polite">
-              {speech.error ? `Mic: ${speech.error}` : store.pendingAnnotationId ? 'Linking speech to the open annotation' : ''}
-            </span>
-            <Elapsed since={data.session.started_at} />
-          </div>
         </div>
       </div>
 
