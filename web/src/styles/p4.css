@@ -1,0 +1,366 @@
+/* Shared look for the P4 pages (Prep, All lectures, Notes, Raw view). Everything is scoped under .p4.
+   Kept from the app's rules: 64px tap targets, text contrast >= 4.5:1, no hover-only actions. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Inter:wght@400;500;600;700&display=swap');
+
+.p4 {
+  --d-bg: #efeeea;
+  --d-fg: #111111;
+  --d-text: #2b2b29;
+  --d-muted: #5c5c58; /* 5.8:1 on --d-bg */
+  --d-faded: #64645f;
+  --d-soft: #e2e1dc;
+  --d-card: #fbfbf9;
+  --d-danger: #b42318;
+  --d-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  min-height: 100vh;
+  background: var(--d-bg);
+  color: var(--d-fg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+}
+
+.p4-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 32px 64px;
+}
+
+.p4-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 12px 24px;
+}
+
+.p4-spacer {
+  flex: 1;
+}
+
+.p4-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.p4-title {
+  margin: 0;
+  font-family: var(--d-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: clamp(36px, 4.6vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.p4-sub {
+  margin: 12px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  font-size: 16px;
+  color: var(--d-muted);
+}
+
+.p4-sub > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.p4 svg {
+  flex-shrink: 0;
+}
+
+.p4-section {
+  margin-top: 48px;
+}
+
+.p4-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.p4-label {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--d-soft);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.p4-hint {
+  font-size: 14px;
+  color: var(--d-muted);
+}
+
+/* ---------- rows ---------- */
+.p4-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.p4-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.p4-avatar {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--d-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--d-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.p4-avatar.dark {
+  background: var(--d-fg);
+  color: var(--d-card);
+}
+
+.p4-main {
+  flex: 1;
+  min-width: 240px;
+}
+
+.p4-row-title {
+  margin: 0;
+  font-family: var(--d-display);
+  font-stretch: 125%;
+  font-weight: 700;
+  font-size: clamp(19px, 2vw, 23px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.p4-row.faded .p4-row-title {
+  color: var(--d-faded);
+}
+
+.p4-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  margin-top: 6px;
+  font-size: 15px;
+  color: var(--d-muted);
+}
+
+.p4-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.p4-meta svg {
+  width: 18px;
+  height: 18px;
+}
+
+.p4-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* ---------- buttons (override the global button look inside .p4 only) ---------- */
+.p4 .p4-btn {
+  min-width: var(--tap, 64px);
+  min-height: var(--tap, 64px);
+  padding: 0 20px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--d-fg);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.p4 .p4-btn.solid {
+  background: var(--d-fg);
+  color: var(--d-card);
+  padding: 0 26px;
+  font-weight: 600;
+}
+
+.p4 .p4-btn.outline {
+  box-shadow: inset 0 0 0 1.5px var(--d-soft);
+  background: var(--d-card);
+}
+
+.p4 .p4-btn.quiet {
+  color: var(--d-muted);
+}
+
+.p4 .p4-btn.danger {
+  color: var(--d-danger);
+}
+
+.p4 .p4-btn.icon-only {
+  width: var(--tap, 64px);
+  padding: 0;
+}
+
+.p4 .p4-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .p4 .p4-btn:not(.solid):not(:disabled):hover {
+    background: rgba(17, 17, 17, 0.06);
+  }
+  .p4 .p4-btn.solid:not(:disabled):hover {
+    background: #2a2a2a;
+  }
+}
+
+.p4 .p4-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* ---------- badges, chips ---------- */
+.p4-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--d-card);
+  color: var(--d-fg);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.p4-badge.dark {
+  background: var(--d-fg);
+  color: var(--d-card);
+}
+
+.p4-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.p4-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: var(--d-soft);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ---------- ··· menu ---------- */
+.p4-menu-wrap {
+  position: relative;
+}
+
+.p4-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.p4-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 11;
+  min-width: 240px;
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--d-card);
+  box-shadow: 0 2px 6px rgba(17, 17, 17, 0.08), 0 12px 32px rgba(17, 17, 17, 0.12);
+}
+
+.p4 .p4-menu-item {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 14px;
+  font-size: 16px;
+}
+
+/* ---------- notices, empty states ---------- */
+.p4-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 8px 8px 8px 20px;
+  border-radius: 16px;
+  background: var(--d-card);
+  font-size: 16px;
+}
+
+.p4-notice > span {
+  flex: 1;
+}
+
+.p4-notice.warn {
+  background: #fde8e6;
+  color: #8a1c12;
+}
+
+.p4-empty {
+  margin: 8px 0 0;
+  padding: 16px 0;
+  font-size: 16px;
+  color: var(--d-muted);
+}
+
+.p4-card {
+  background: var(--d-card);
+  border-radius: 22px;
+  padding: 20px 24px;
+}
+
+@media (max-width: 700px) {
+  .p4-inner {
+    padding: 28px 16px 56px;
+  }
+  .p4-top {
+    padding: 8px 12px;
+  }
+  .p4-actions {
+    width: 100%;
+    margin-left: 76px;
+  }
+}
