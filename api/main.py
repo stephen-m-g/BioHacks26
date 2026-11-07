@@ -82,12 +82,8 @@ def refine_session(session_id: str) -> RefineOut:
     db_read_ms = ms(t0)
 
     raw = " ".join(s["raw_text"].strip() for s in segs if s["raw_text"].strip())
-    prompt = (
-        f"Lecture vocabulary: {', '.join(vocab) if vocab else '(none)'}\n\n"
-        f"Previous paragraph: {prev_text[-600:] or '(none)'}\n\n"
-        f"New raw speech: {raw}"
-    )
-    out, gemini_ms = ai.generate("refine", prompts.REFINE, [prompt], RefineGemini, timeout_ms=10_000)
+    out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, raw)], RefineGemini,
+                                 timeout_ms=10_000)
     text = (out.text if out else "") or raw
 
     t_write = time.perf_counter()
@@ -102,6 +98,14 @@ def refine_session(session_id: str) -> RefineOut:
     log.info("[refine] segs=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids),
              db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
     return RefineOut(block=block, segment_ids=ids)
+
+
+def refine_prompt(vocab: list[str], prev_text: str, raw: str) -> str:
+    return (
+        f"Lecture vocabulary: {', '.join(vocab) if vocab else '(none)'}\n\n"
+        f"Previous paragraph: {prev_text[-600:] or '(none)'}\n\n"
+        f"New raw speech: {raw}"
+    )
 
 
 def lecture_vocab(db, session_id: str) -> list[str]:
