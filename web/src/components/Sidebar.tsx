@@ -22,8 +22,6 @@ export interface Recording {
   startedAt: string
   toggle: () => void
   provider: TranscriptionProvider
-  /** Demo sessions can't mint ElevenLabs tokens, so they stay on Chrome. */
-  providerLocked: boolean
   switching: boolean
   onProvider: (provider: TranscriptionProvider) => void
 }
@@ -247,8 +245,8 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
                     role="radio"
                     aria-checked={recording.provider === p.id}
                     className={`provider-btn${recording.provider === p.id ? ' on' : ''}`}
-                    title={p.id === 'elevenlabs' && recording.providerLocked ? 'Not available in the offline demo' : p.title}
-                    disabled={recording.switching || (p.id === 'elevenlabs' && recording.providerLocked)}
+                    title={p.title}
+                    disabled={recording.switching}
                     onClick={() => recording.onProvider(p.id)}
                   >
                     {p.label}

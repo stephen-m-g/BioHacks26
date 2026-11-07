@@ -10,7 +10,6 @@ import {
   describeScribeError,
   normalizeKeyterms,
   parseKeyterms,
-  resolveProvider,
 } from './scribeModel.ts'
 import { splitSentences } from './transcriptionModel.ts'
 
@@ -32,12 +31,6 @@ test('a keyterm env override replaces the defaults, and an empty one keeps them'
   assert.deepEqual(parseKeyterms('osmosis, Calvin cycle ,'), ['osmosis', 'Calvin cycle'])
   assert.deepEqual(parseKeyterms(undefined), DEFAULT_BIOLOGY_KEYTERMS)
   assert.deepEqual(parseKeyterms(' , '), DEFAULT_BIOLOGY_KEYTERMS)
-})
-
-test('demo sessions always use Chrome', () => {
-  assert.equal(resolveProvider('elevenlabs', false), 'elevenlabs')
-  assert.equal(resolveProvider('elevenlabs', true), 'chrome')
-  assert.equal(resolveProvider('chrome', false), 'chrome')
 })
 
 test('token failures that retrying cannot fix are fatal and point to Chrome', () => {

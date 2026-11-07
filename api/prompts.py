@@ -25,7 +25,10 @@ CLOSE = (
     "are likely, but not certainly, about it. Return JSON {label: 2-5 word name of the selected thing, "
     "bubble_text: the sentences from the transcript that are about the selected thing}. bubble_text must be "
     "HIS words copied from the transcript, max 70 words; you may drop unrelated sentences and filler words "
-    "(um, uh, okay so) and join the kept sentences; you may not add or paraphrase content."
+    "(um, uh, okay so) and join the kept sentences; you may not add or paraphrase content. "
+    "The transcript is raw speech recognition of a teacher with mild dysarthria: in bubble_text, fix words "
+    "that were clearly misheard (prefer terms from the lecture vocabulary when the sounds are similar) and fix "
+    "punctuation and capitalization; otherwise keep his exact wording."
 )
 
 COMPILE = (

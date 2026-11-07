@@ -63,11 +63,6 @@ export function parseKeyterms(value: string | undefined): string[] {
   return custom.length > 0 ? custom : normalizeKeyterms(DEFAULT_BIOLOGY_KEYTERMS)
 }
 
-/** ElevenLabs needs a real live session to mint a token, so demo sessions always use Chrome. */
-export function resolveProvider(selected: TranscriptionProvider, demo: boolean): TranscriptionProvider {
-  return selected === 'elevenlabs' && !demo ? 'elevenlabs' : 'chrome'
-}
-
 export interface ScribeFailure {
   message: string
   /** Fatal failures stop reconnecting until the teacher toggles the mic or switches provider. */
