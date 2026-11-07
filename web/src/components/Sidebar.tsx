@@ -1,6 +1,7 @@
 // P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
+import type { TranscriptionProvider } from '../hooks/scribeModel'
 import type { SpeechMetrics } from '../hooks/transcriptionModel'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
@@ -16,9 +17,21 @@ export interface Recording {
   error: string | null
   /** Rolling / baseline WPM and average confidence from the transcription hook (P3). */
   metrics: SpeechMetrics
+  /** False when the provider reports no confidence (ElevenLabs), so Clarity reads "unavailable". */
+  confidenceSupported: boolean
   startedAt: string
   toggle: () => void
+  provider: TranscriptionProvider
+  /** Demo sessions can't mint ElevenLabs tokens, so they stay on Chrome. */
+  providerLocked: boolean
+  switching: boolean
+  onProvider: (provider: TranscriptionProvider) => void
 }
+
+const PROVIDERS: { id: TranscriptionProvider; label: string; title: string }[] = [
+  { id: 'chrome', label: 'Chrome', title: 'Browser speech recognition (no setup needed)' },
+  { id: 'elevenlabs', label: 'ElevenLabs', title: 'ElevenLabs Scribe Realtime (needs ELEVENLABS_API_KEY on the API)' },
+]
 
 interface Props {
   title: string
@@ -218,12 +231,31 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
                   <span>Baseline {recording.metrics.baselineWpm ?? '—'} wpm</span>
                   <span>
                     Clarity{' '}
-                    {recording.metrics.averageConfidence === null
-                      ? '—'
-                      : `${Math.round(recording.metrics.averageConfidence * 100)}%`}
+                    {!recording.confidenceSupported
+                      ? 'unavailable'
+                      : recording.metrics.averageConfidence === null
+                        ? '—'
+                        : `${Math.round(recording.metrics.averageConfidence * 100)}%`}
                   </span>
                 </div>
               )}
+              <div className="speech-provider" role="radiogroup" aria-label="Speech recognition">
+                <span className="speech-provider-label">Speech</span>
+                {PROVIDERS.map((p) => (
+                  <button
+                    key={p.id}
+                    role="radio"
+                    aria-checked={recording.provider === p.id}
+                    className={`provider-btn${recording.provider === p.id ? ' on' : ''}`}
+                    title={p.id === 'elevenlabs' && recording.providerLocked ? 'Not available in the offline demo' : p.title}
+                    disabled={recording.switching || (p.id === 'elevenlabs' && recording.providerLocked)}
+                    onClick={() => recording.onProvider(p.id)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {recording.on && recording.error && <p className="hint speech-error">{recording.error}</p>}
               <button
                 role="menuitem"
                 className="menu-item"

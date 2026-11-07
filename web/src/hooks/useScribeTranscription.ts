@@ -1,0 +1,386 @@
+// P3 owns this hook. ElevenLabs Scribe v2 Realtime behind the same enabled/onFinal contract as
+// useTranscription, so Teach can swap providers without touching the segment pipeline.
+import { CommitStrategy, useScribe, type UseScribeReturn } from '@elevenlabs/react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ApiError, api } from '../lib/api'
+import {
+  SCRIBE_MODEL_ID,
+  ScribeUtteranceBuffer,
+  classifyTokenError,
+  describeMicrophoneError,
+  describeScribeError,
+  parseKeyterms,
+  type ScribeErrorKind,
+  type ScribeFailure,
+} from './scribeModel'
+import {
+  calculateSpeechMetrics,
+  countWords,
+  getRestartDelay,
+  splitSentences,
+  type SpeechMetrics,
+  type SpeechSample,
+  type TranscriptionContext,
+} from './transcriptionModel'
+import type { TranscriptionResultHandler, UseTranscriptionOptions } from './useTranscription'
+
+const KEYTERMS = parseKeyterms(import.meta.env.VITE_ELEVENLABS_KEYTERMS)
+const MICROPHONE = { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+/** How long an intentional stop waits for the server to commit the segment being spoken. */
+const STOP_FLUSH_TIMEOUT_MS = 1_500
+
+const EMPTY_METRICS: SpeechMetrics = { rollingWpm: null, averageConfidence: null, baselineWpm: null }
+
+interface UtteranceCapture {
+  onFinal: TranscriptionResultHandler
+  context: TranscriptionContext | null
+  startedAt: string
+}
+
+interface Attempt {
+  generation: number
+  buffer: ScribeUtteranceBuffer<UtteranceCapture>
+  /** scribe.connect() was called, so a close event belongs to this attempt. */
+  connected: boolean
+  stopping: Promise<void> | null
+  failure: ScribeFailure | null
+  onCommit: (() => void) | null
+}
+
+export interface UseScribeTranscriptionOptions extends UseTranscriptionOptions {
+  /** Live session the API mints the single-use token for. */
+  sessionId: string
+}
+
+function isSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof WebSocket !== 'undefined' &&
+    typeof AudioWorkletNode !== 'undefined' &&
+    typeof navigator.mediaDevices?.getUserMedia === 'function'
+  )
+}
+
+/** Surfaces permission errors with their DOMException name; the SDK only reports a message. */
+async function preflightMicrophone(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  for (const track of stream.getTracks()) track.stop()
+}
+
+export function useScribeTranscription({
+  enabled,
+  sessionId,
+  onFinal,
+  captureContext,
+  scopeKey,
+}: UseScribeTranscriptionOptions) {
+  const [interim, setInterim] = useState('')
+  const [listening, setListening] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [metrics, setMetrics] = useState<SpeechMetrics>(EMPTY_METRICS)
+  const supported = isSupported()
+
+  const onFinalRef = useRef(onFinal)
+  const captureContextRef = useRef(captureContext)
+  const sessionIdRef = useRef(sessionId)
+  const enabledRef = useRef(enabled)
+  const generationRef = useRef(0)
+  const attemptRef = useRef<Attempt | null>(null)
+  const shouldListenRef = useRef(false)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retriesRef = useRef(0)
+  const samplesRef = useRef<SpeechSample[]>([])
+  const metricsStartedAtRef = useRef<number | null>(null)
+  const scribeRef = useRef<UseScribeReturn | null>(null)
+
+  onFinalRef.current = onFinal
+  captureContextRef.current = captureContext
+  sessionIdRef.current = sessionId
+  enabledRef.current = enabled
+
+  const refreshMetrics = useCallback((now = Date.now()) => {
+    setMetrics(calculateSpeechMetrics(samplesRef.current, now, metricsStartedAtRef.current))
+  }, [])
+
+  // Everything below reads refs only, so closures from any render behave the same.
+  const isLive = (attempt: Attempt) => attemptRef.current === attempt && attempt.generation === generationRef.current
+
+  const capture = (): UtteranceCapture => ({
+    onFinal: onFinalRef.current,
+    context: captureContextRef.current?.() ?? null,
+    startedAt: new Date().toISOString(),
+  })
+
+  const save = ({ capture: captured, text }: { capture: UtteranceCapture; text: string }) => {
+    const completedAt = Date.now()
+    const endedAt = new Date(completedAt).toISOString()
+    for (const sentence of splitSentences(text)) {
+      captured.onFinal(sentence, null, captured.startedAt, endedAt, captured.context)
+    }
+    samplesRef.current = [...samplesRef.current, { completedAt, wordCount: countWords(text), confidence: null }]
+    refreshMetrics(completedAt)
+  }
+
+  const clearRetry = () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+    retryTimerRef.current = null
+  }
+
+  /** Closes the attempt. `flush` saves an uncommitted partial instead of dropping it. */
+  const endAttempt = (attempt: Attempt, flush: boolean) => {
+    if (attemptRef.current !== attempt) return
+    if (flush && attempt.generation === generationRef.current) {
+      const leftover = attempt.buffer.flushPartial()
+      if (leftover) save(leftover)
+    }
+    attemptRef.current = null
+    attempt.onCommit?.()
+    scribeRef.current?.disconnect()
+    setListening(false)
+    setInterim('')
+  }
+
+  const scheduleReconnect = (generation: number) => {
+    if (!shouldListenRef.current || retryTimerRef.current || generationRef.current !== generation) return
+    const delay = getRestartDelay(retriesRef.current)
+    if (delay === null) {
+      shouldListenRef.current = false
+      setError('ElevenLabs disconnected repeatedly. Switch to Chrome in the session menu, or turn the microphone off and on to retry.')
+      return
+    }
+    retriesRef.current += 1
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null
+      if (shouldListenRef.current && generationRef.current === generation && !attemptRef.current) void begin(generation)
+    }, delay)
+  }
+
+  const begin = async (generation: number) => {
+    const attempt: Attempt = {
+      generation,
+      buffer: new ScribeUtteranceBuffer<UtteranceCapture>(),
+      connected: false,
+      stopping: null,
+      failure: null,
+      onCommit: null,
+    }
+    attemptRef.current = attempt
+    const failed = (failure: ScribeFailure) => {
+      if (!isLive(attempt)) return
+      attemptRef.current = null
+      setError(failure.message)
+      if (failure.fatal) shouldListenRef.current = false
+      else scheduleReconnect(generation)
+    }
+
+    try {
+      await preflightMicrophone()
+    } catch (micError) {
+      failed(describeMicrophoneError(micError))
+      return
+    }
+    if (!isLive(attempt)) return
+
+    let token: string
+    try {
+      token = (await api.scribeToken(sessionIdRef.current)).token
+    } catch (tokenError) {
+      console.warn('scribe token failed', tokenError)
+      failed(classifyTokenError(tokenError instanceof ApiError ? tokenError.status : undefined))
+      return
+    }
+    if (!isLive(attempt) || !scribeRef.current) return
+
+    attempt.connected = true
+    try {
+      await scribeRef.current.connect({ token })
+    } catch (connectError) {
+      attempt.connected = false
+      failed(describeScribeError('other', connectError instanceof Error ? connectError.message : undefined))
+    }
+  }
+
+  const flushAndEnd = async (attempt: Attempt) => {
+    const scribe = scribeRef.current
+    if (scribe && attempt.connected && attempt.buffer.pendingText && isLive(attempt)) {
+      try {
+        scribe.mute()
+      } catch {
+        // microphone not attached yet
+      }
+      try {
+        scribe.commit()
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, STOP_FLUSH_TIMEOUT_MS)
+          attempt.onCommit = () => {
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+      } catch {
+        // socket already closed; endAttempt saves the partial
+      }
+    }
+    endAttempt(attempt, true)
+  }
+
+  const requestStop = (): Promise<void> => {
+    shouldListenRef.current = false
+    clearRetry()
+    const attempt = attemptRef.current
+    if (!attempt) {
+      setListening(false)
+      setInterim('')
+      return Promise.resolve()
+    }
+    attempt.stopping ??= flushAndEnd(attempt)
+    return attempt.stopping
+  }
+
+  const hardStop = () => {
+    shouldListenRef.current = false
+    clearRetry()
+    const attempt = attemptRef.current
+    attemptRef.current = null
+    attempt?.onCommit?.()
+    scribeRef.current?.disconnect()
+  }
+
+  const events = {
+    sessionStarted() {
+      const attempt = attemptRef.current
+      if (!attempt || !isLive(attempt)) return
+      if (metricsStartedAtRef.current === null) metricsStartedAtRef.current = Date.now()
+      setListening(true)
+      setError(null)
+      refreshMetrics()
+    },
+    partial(text: string) {
+      const attempt = attemptRef.current
+      if (!attempt || !isLive(attempt)) return
+      retriesRef.current = 0
+      attempt.buffer.partial(text, capture)
+      setInterim(attempt.buffer.pendingText)
+    },
+    committed(text: string) {
+      const attempt = attemptRef.current
+      if (!attempt || !isLive(attempt)) return
+      retriesRef.current = 0
+      const utterance = attempt.buffer.commit(text, capture)
+      setInterim('')
+      if (utterance) save(utterance)
+      // The SDK keeps every committed segment in state; the board already has them.
+      scribeRef.current?.clearTranscripts()
+      attempt.onCommit?.()
+    },
+    fail(kind: ScribeErrorKind, detail?: string) {
+      const attempt = attemptRef.current
+      if (!attempt || !isLive(attempt) || attempt.stopping) return
+      // The SDK reports a specific error first, then the same one again through onError.
+      if (kind === 'other' && attempt.failure) return
+      const failure = describeScribeError(kind, detail)
+      attempt.failure = failure
+      setError(failure.message)
+      if (failure.fatal) {
+        shouldListenRef.current = false
+        endAttempt(attempt, true)
+      }
+    },
+    closed() {
+      const attempt = attemptRef.current
+      // Intentional stops clear the attempt first; an attempt still fetching its token isn't connected.
+      if (!attempt || !attempt.connected) return
+      const generation = attempt.generation
+      endAttempt(attempt, true)
+      if (!attempt.failure && shouldListenRef.current) setError('ElevenLabs connection closed. Reconnecting…')
+      scheduleReconnect(generation)
+    },
+  }
+  const eventsRef = useRef(events)
+  eventsRef.current = events
+  const stopRef = useRef(requestStop)
+  stopRef.current = requestStop
+
+  const callbacks = useMemo(() => {
+    const fail = (kind: ScribeErrorKind) => (data: { error: string }) => eventsRef.current.fail(kind, data.error)
+    return {
+      onSessionStarted: () => eventsRef.current.sessionStarted(),
+      onPartialTranscript: (data: { text: string }) => eventsRef.current.partial(data.text),
+      onCommittedTranscript: (data: { text: string }) => eventsRef.current.committed(data.text),
+      onAuthError: fail('auth'),
+      onQuotaExceededError: fail('quota'),
+      onUnacceptedTermsError: fail('unaccepted_terms'),
+      onRateLimitedError: fail('rate_limited'),
+      onResourceExhaustedError: fail('resource_exhausted'),
+      onSessionTimeLimitExceededError: fail('session_time_limit'),
+      onInsufficientAudioActivityError: fail('insufficient_audio'),
+      onTranscriberError: fail('transcriber'),
+      onInputError: fail('input'),
+      onError: (err: Error | Event) => eventsRef.current.fail('other', err instanceof Error ? err.message : undefined),
+      onDisconnect: () => eventsRef.current.closed(),
+    }
+  }, [])
+
+  const scribe = useScribe({
+    modelId: SCRIBE_MODEL_ID,
+    commitStrategy: CommitStrategy.VAD,
+    languageCode: 'en',
+    keyterms: KEYTERMS,
+    microphone: MICROPHONE,
+    ...callbacks,
+  })
+  scribeRef.current = scribe
+
+  const stop = useCallback(() => stopRef.current(), [])
+
+  useEffect(() => {
+    if (!listening) return
+    const timer = window.setInterval(refreshMetrics, 1_000)
+    return () => window.clearInterval(timer)
+  }, [listening, refreshMetrics])
+
+  // Layout cleanup invalidates old callbacks before passive-effect cleanup runs on a route change.
+  useLayoutEffect(() => {
+    const generation = ++generationRef.current
+    samplesRef.current = []
+    metricsStartedAtRef.current = null
+    retriesRef.current = 0
+    setInterim('')
+    setListening(false)
+    setError(null)
+    setMetrics(EMPTY_METRICS)
+
+    return () => {
+      if (generationRef.current === generation) generationRef.current += 1
+    }
+  }, [scopeKey])
+
+  useEffect(() => {
+    if (!enabled) {
+      shouldListenRef.current = false
+      clearRetry()
+      setInterim('')
+      setListening(false)
+      return
+    }
+    if (!supported) {
+      setError('ElevenLabs needs microphone access on a secure page (HTTPS or localhost) in a modern browser.')
+      return
+    }
+
+    const generation = generationRef.current
+    shouldListenRef.current = true
+    retriesRef.current = 0
+    setError(null)
+    void begin(generation)
+
+    return () => {
+      const flushFinalResult = enabledRef.current === false && generationRef.current === generation
+      if (flushFinalResult) void requestStop()
+      else hardStop()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, scopeKey, supported])
+
+  return { interim, listening, supported, error, metrics, confidenceSupported: false, stop }
+}

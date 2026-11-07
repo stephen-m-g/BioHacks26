@@ -20,6 +20,11 @@ class RefineOut(BaseModel):
     segment_ids: list[str]
 
 
+# --- /sessions/{id}/scribe-token ---
+class ScribeTokenOut(BaseModel):
+    token: str
+
+
 # --- /annotations/{id}/close ---
 class CloseIn(BaseModel):
     crop_png_base64: str | None = None

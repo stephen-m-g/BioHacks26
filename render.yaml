@@ -20,3 +20,5 @@ services:
         value: gemini-3.6-flash
       - key: WEB_ORIGIN
         sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
