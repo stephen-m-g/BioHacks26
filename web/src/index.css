@@ -471,8 +471,9 @@ textarea {
 .menu {
   position: absolute;
   top: calc(100% + 4px);
-  left: 0;
-  right: 0;
+  /* Same width as the title cell, which extends 6px past the content edge on each side */
+  left: -6px;
+  right: -6px;
   z-index: 50;
   background: white;
   border: 1px solid var(--line);

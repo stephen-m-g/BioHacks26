@@ -65,12 +65,20 @@ function highlightSlot(el: HTMLElement | null) {
 
 /** Session clock with a recording dot: red pulse while listening, grey when paused. */
 function SessionClock({ recording }: { recording: Recording }) {
-  const [now, setNow] = useState(() => Date.now())
+  // Counts recorded time only: it freezes while recording is paused and continues on resume.
+  // On first load it starts from the session's start time (pauses before a reload aren't known).
+  const [secs, setSecs] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - new Date(recording.startedAt).getTime()) / 1000)),
+  )
+  const secsRef = useRef(secs)
+  secsRef.current = secs
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
+    if (!recording.on) return
+    const base = secsRef.current
+    const t0 = Date.now()
+    const t = setInterval(() => setSecs(base + Math.floor((Date.now() - t0) / 1000)), 250)
     return () => clearInterval(t)
-  }, [])
-  const secs = Math.max(0, Math.floor((now - new Date(recording.startedAt).getTime()) / 1000))
+  }, [recording.on])
   const pad = (n: number) => String(n).padStart(2, '0')
   const time = `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
   const status = !recording.supported
