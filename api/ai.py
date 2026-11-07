@@ -1,8 +1,8 @@
 """Gemini client + the one structured-output call every endpoint uses."""
 import logging
 import os
+import threading
 import time
-from functools import lru_cache
 from typing import Any, TypeVar
 
 from google import genai
@@ -17,9 +17,20 @@ QUOTA_COOLDOWN_S = 600  # skip a model whose daily quota is used up for this lon
 _cooldown_until: dict[str, float] = {}
 
 
-@lru_cache
+_client: genai.Client | None = None
+_client_lock = threading.Lock()
+
+
 def get_client() -> genai.Client:
-    return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    """One shared client, created under a lock. FastAPI runs requests in threads, and a second Client made by a
+    concurrent first call would be garbage-collected mid-request; Client.__del__ then closes its HTTP connection
+    ("Cannot send a request, as the client has been closed")."""
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    return _client
 
 
 def models_to_try() -> list[str]:
@@ -45,12 +56,13 @@ def generate(task: str, system: str, contents: list[Any], schema: type[T],
         http_options=types.HttpOptions(timeout=max(timeout_ms, 10_000)),
     )
     models = models_to_try()
+    client = get_client()  # keep a reference for the whole call
     t0 = time.perf_counter()
     for attempt in (1, 2):
         model = models[min(attempt - 1, len(models) - 1)]
         t_try = time.perf_counter()
         try:
-            resp = get_client().models.generate_content(model=model, contents=contents, config=config)
+            resp = client.models.generate_content(model=model, contents=contents, config=config)
             if isinstance(resp.parsed, schema):
                 log.info("[%s] %s attempt %d ok %.0fms", task, model, attempt, (time.perf_counter() - t_try) * 1000)
                 return resp.parsed, (time.perf_counter() - t0) * 1000

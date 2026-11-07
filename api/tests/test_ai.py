@@ -1,4 +1,6 @@
 """ai.generate: retries, backup model, quota cool-down, timeout floor. The Gemini client is faked."""
+import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -92,6 +94,24 @@ def test_if_every_model_is_cooling_down_try_them_anyway(client, monkeypatch):
 def test_backup_equal_to_main_is_ignored(client, monkeypatch):
     monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "main-model")
     assert ai.models_to_try() == ["main-model"]
+
+
+def test_concurrent_first_calls_share_one_client(monkeypatch):
+    """A second Client from a racing first call gets garbage-collected mid-request, and Client.__del__ closes its
+    HTTP connection ("client has been closed"). Seen with 6 parallel calls in eval_refine.py."""
+    made = []
+
+    class SlowClient:
+        def __init__(self, api_key):
+            time.sleep(0.05)  # widen the race window
+            made.append(self)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr(ai.genai, "Client", SlowClient)
+    monkeypatch.setattr(ai, "_client", None)
+    with ThreadPoolExecutor(8) as pool:
+        got = list(pool.map(lambda _: ai.get_client(), range(8)))
+    assert len(made) == 1 and all(g is made[0] for g in got)
 
 
 def test_timeout_is_floored_at_10_seconds(client):
