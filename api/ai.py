@@ -42,8 +42,11 @@ def generate(task: str, system: str, contents: list[Any], schema: type[T],
                 return resp.parsed, (time.perf_counter() - t0) * 1000
             log.warning("[%s] gemini attempt %d: unparseable response", task, attempt)
         except Exception as e:  # noqa: BLE001 - never let Gemini 500 an endpoint
+            msg = str(e)
             log.warning("[%s] gemini attempt %d failed after %.0fms: %s",
-                        task, attempt, (time.perf_counter() - t_try) * 1000, e)
+                        task, attempt, (time.perf_counter() - t_try) * 1000, msg[:200])
+            if "RESOURCE_EXHAUSTED" in msg:  # quota used up: a retry can't succeed
+                break
     return None, (time.perf_counter() - t0) * 1000
 
 
