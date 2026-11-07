@@ -1,6 +1,7 @@
 """FastAPI app: CORS, routes, GET /health. Run: uvicorn main:app --reload --port 8000
 Spec: docs/CONTEXT.md (v2)."""
 import logging
+import mimetypes
 import os
 import time
 
@@ -8,12 +9,12 @@ from dotenv import load_dotenv
 
 load_dotenv()  # before anything reads os.environ
 
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 import ai  # noqa: E402
 import prompts  # noqa: E402
-from db import get_db  # noqa: E402
+from db import download, get_db  # noqa: E402
 from schemas import CloseIn, CloseOut, DescribeOut, NotesContent, RefineGemini, RefineOut  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -96,12 +97,53 @@ def refine_session(session_id: str) -> RefineOut:
     return RefineOut(block=block, segment_ids=ids)
 
 
-# --- Stubs: return each endpoint's empty fallback until it is built ---
-
 @app.post("/assets/{asset_id}/describe", response_model=DescribeOut)
 def describe_asset(asset_id: str) -> DescribeOut:
-    # TODO: image -> image part; pdf -> Part.from_bytes(mime_type="application/pdf"); text -> text_content.
-    return DescribeOut(label="", description="", key_terms=[])
+    """Label an uploaded image / PDF / text and store label, description, key_terms on the row.
+    Fallback: label = file name (or "Text note"), the rest empty."""
+    t0 = time.perf_counter()
+    db = get_db()
+    rows = db.table("assets").select("*").eq("id", asset_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(404, "asset not found")
+    asset = rows[0]
+    fallback = DescribeOut(label=asset.get("file_name") or "Text note", description="", key_terms=[])
+
+    contents = asset_contents(asset)
+    db_ms = ms(t0)
+    out, gemini_ms = (None, 0.0)
+    if contents:
+        out, gemini_ms = ai.generate("describe", prompts.DESCRIBE, contents, DescribeOut, timeout_ms=30_000)
+    result = DescribeOut(label=out.label, description=out.description, key_terms=out.key_terms[:15]) if out else fallback
+
+    t_write = time.perf_counter()
+    db.table("assets").update(result.model_dump()).eq("id", asset_id).execute()
+    log.info("[describe] kind=%s db=%.0fms gemini=%.0fms total=%.0fms%s", asset.get("kind"),
+             db_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback)")
+    return result
+
+
+def asset_contents(asset: dict) -> list | None:
+    """Gemini contents for an asset: the file as a part (image/pdf) or its text. None if unavailable."""
+    name = asset.get("file_name") or ""
+    if asset.get("kind") == "text":
+        text = (asset.get("text_content") or "").strip()
+        return [f"File name: {name or '(typed text)'}\n\nTeaching material:\n{text[:30_000]}"] if text else None
+    path = asset.get("storage_path") or ""
+    if not path:
+        return None
+    try:
+        t0 = time.perf_counter()
+        data = download(path)
+        log.info("[describe] downloaded %d KB in %.0fms", len(data) // 1024, ms(t0))
+    except Exception as e:  # noqa: BLE001 - missing file -> fallback, not a 500
+        log.warning("[describe] download failed for %s: %s", path, e)
+        return None
+    mime = "application/pdf" if asset["kind"] == "pdf" else (mimetypes.guess_type(path)[0] or "image/png")
+    return [ai.image_part(data, mime), f"File name: {name}"]
+
+
+# --- Stubs: return each endpoint's empty fallback until it is built ---
 
 
 @app.post("/annotations/{annotation_id}/close", response_model=CloseOut)

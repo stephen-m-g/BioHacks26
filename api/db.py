@@ -12,3 +12,8 @@ def get_db() -> Client:
 
 def public_url(storage_path: str) -> str:
     return get_db().storage.from_("assets").get_public_url(storage_path)
+
+
+def download(storage_path: str) -> bytes:
+    """Fetch a file from the "assets" bucket with the service role (works even if the bucket is private)."""
+    return get_db().storage.from_("assets").download(storage_path)

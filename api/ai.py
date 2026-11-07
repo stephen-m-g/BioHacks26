@@ -48,4 +48,5 @@ def generate(task: str, system: str, contents: list[Any], schema: type[T],
 
 
 def image_part(data: bytes, mime_type: str = "image/png") -> types.Part:
+    """Inline file part: images, and PDFs with mime_type="application/pdf"."""
     return types.Part.from_bytes(data=data, mime_type=mime_type)
