@@ -1,86 +1,306 @@
-// P3 owns this hook. Basic Web Speech API version so the board works end to end; harden it or
-// swap in Deepgram (see the P3 role notes) if iPad Safari is unreliable.
-import { useEffect, useRef, useState } from 'react'
+// P3 owns this hook. Browser recognition is kept behind this provider boundary so a future
+// realtime provider can preserve the same enabled/onFinal contract.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  CrossRunFinalDeduper,
+  FinalResultTracker,
+  calculateSpeechMetrics,
+  countWords,
+  getRecognitionErrorMessage,
+  getRestartDelay,
+  isFatalRecognitionError,
+  stopRecognitionEngine,
+  type SpeechMetrics,
+  type SpeechSample,
+  type TranscriptionContext,
+} from './transcriptionModel'
 
-type OnFinal = (text: string, confidence: number | null, tStart: string, tEnd: string) => void
+type SpeechAlternative = { transcript: string; confidence: number }
+type SpeechResult = { isFinal: boolean; 0: SpeechAlternative }
+type SpeechEvent = { resultIndex: number; results: ArrayLike<SpeechResult> }
+type SpeechErrorEvent = { error: string }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function getRecognitionCtor(): any {
-  if (typeof window === 'undefined') return null
-  const w = window as any
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
+interface SpeechEngine {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onstart: (() => void) | null
+  onresult: ((event: SpeechEvent) => void) | null
+  onerror: ((event: SpeechErrorEvent) => void) | null
+  onend: (() => void) | null
+  start(): void
+  stop(): void
 }
 
-/** Split long results into roughly sentence-length pieces. */
+type SpeechConstructor = new () => SpeechEngine
+export type TranscriptionResultHandler = (
+  text: string,
+  confidence: number | null,
+  tStart: string,
+  tEnd: string,
+  context: TranscriptionContext | null,
+) => void
+
+export interface UseTranscriptionOptions {
+  enabled: boolean
+  onFinal: TranscriptionResultHandler
+  /** Snapshot v2 session/annotation ownership when an utterance first appears. */
+  captureContext?: () => TranscriptionContext
+  /** Invalidates recognizer callbacks and metrics when the active session changes. */
+  scopeKey?: string
+}
+
+interface UtteranceCapture {
+  onFinal: TranscriptionResultHandler
+  context: TranscriptionContext | null
+  startedAt: string
+}
+
+const EMPTY_METRICS: SpeechMetrics = {
+  rollingWpm: null,
+  averageConfidence: null,
+  baselineWpm: null,
+}
+
+function getRecognitionCtor(): SpeechConstructor | null {
+  if (typeof window === 'undefined') return null
+  const browser = window as Window & {
+    SpeechRecognition?: SpeechConstructor
+    webkitSpeechRecognition?: SpeechConstructor
+  }
+  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition ?? null
+}
+
+/** Split long final results into board-friendly sentence segments. */
 function splitSentences(text: string): string[] {
   const parts = text.match(/[^.!?]+[.!?]*/g) ?? [text]
-  return parts.map((p) => p.trim()).filter(Boolean)
+  return parts.map((part) => part.trim()).filter(Boolean)
 }
 
-export function useTranscription({ enabled, onFinal }: { enabled: boolean; onFinal: OnFinal }) {
+export function useTranscription({ enabled, onFinal, captureContext, scopeKey }: UseTranscriptionOptions) {
   const [interim, setInterim] = useState('')
   const [listening, setListening] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [metrics, setMetrics] = useState<SpeechMetrics>(EMPTY_METRICS)
   const supported = getRecognitionCtor() !== null
+
   const onFinalRef = useRef(onFinal)
+  const captureContextRef = useRef(captureContext)
+  const enabledRef = useRef(enabled)
+  const generationRef = useRef(0)
+  const shouldListenRef = useRef(false)
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const restartAttemptsRef = useRef(0)
+  const samplesRef = useRef<SpeechSample[]>([])
+  const metricsStartedAtRef = useRef<number | null>(null)
+  const stopCurrentRef = useRef<() => Promise<void>>(() => Promise.resolve())
+
   onFinalRef.current = onFinal
+  captureContextRef.current = captureContext
+  enabledRef.current = enabled
+
+  const stop = useCallback(() => stopCurrentRef.current(), [])
+
+  const refreshMetrics = useCallback((now = Date.now()) => {
+    setMetrics(calculateSpeechMetrics(samplesRef.current, now, metricsStartedAtRef.current))
+  }, [])
 
   useEffect(() => {
-    const Ctor = getRecognitionCtor()
-    if (!enabled || !Ctor) return
-    let stopped = false
-    let rec: any = null
-    let utteranceStart: string | null = null
+    if (!listening) return
+    const timer = window.setInterval(refreshMetrics, 1_000)
+    return () => window.clearInterval(timer)
+  }, [listening, refreshMetrics])
 
-    const start = () => {
-      rec = new Ctor()
-      rec.continuous = true
-      rec.interimResults = true
-      rec.lang = 'en-CA'
-      rec.onstart = () => {
-        setListening(true)
-        setError(null)
-      }
-      rec.onresult = (e: any) => {
-        let interimText = ''
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const r = e.results[i]
-          utteranceStart ??= new Date().toISOString()
-          if (r.isFinal) {
-            const text = String(r[0].transcript ?? '').trim()
-            const end = new Date().toISOString()
-            for (const part of splitSentences(text)) onFinalRef.current(part, r[0].confidence || null, utteranceStart, end)
-            utteranceStart = null
-          } else {
-            interimText += r[0].transcript
-          }
-        }
-        setInterim(interimText)
-      }
-      rec.onerror = (e: any) => {
-        setError(e.error)
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') stopped = true
-      }
-      // Safari and Chrome stop on their own after silence; restart unless we were turned off.
-      rec.onend = () => {
-        setListening(false)
-        if (!stopped) setTimeout(() => !stopped && start(), 250)
-      }
-      try {
-        rec.start()
-      } catch (err) {
-        console.warn('speech start failed', err)
-      }
-    }
+  // Layout cleanup invalidates old callbacks before passive-effect cleanup runs on a route change.
+  useLayoutEffect(() => {
+    const generation = ++generationRef.current
+    samplesRef.current = []
+    metricsStartedAtRef.current = null
+    restartAttemptsRef.current = 0
+    setInterim('')
+    setListening(false)
+    setError(null)
+    setMetrics(EMPTY_METRICS)
 
-    start()
     return () => {
-      stopped = true
-      rec?.stop()
+      if (generationRef.current === generation) generationRef.current += 1
+    }
+  }, [scopeKey])
+
+  useEffect(() => {
+    const Engine = getRecognitionCtor()
+    if (!enabled) {
+      shouldListenRef.current = false
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current)
+        restartTimerRef.current = null
+      }
       setInterim('')
       setListening(false)
+      return
     }
-  }, [enabled])
+    if (!Engine) {
+      setError('Speech recognition is not supported in this browser. Try Chrome or Safari.')
+      return
+    }
 
-  return { interim, listening, supported, error }
+    const recognition = new Engine()
+    const generation = generationRef.current
+    const tracker = new FinalResultTracker()
+    const crossRunDeduper = new CrossRunFinalDeduper()
+    let recognitionRun = 0
+    let disposed = false
+    let stopPromise: Promise<void> | null = null
+    let resolveStop: (() => void) | null = null
+    let stopFallbackTimer: ReturnType<typeof setTimeout> | null = null
+    const isCurrent = () => !disposed && generationRef.current === generation
+
+    const detach = () => {
+      if (disposed) return
+      disposed = true
+      if (stopFallbackTimer) clearTimeout(stopFallbackTimer)
+      recognition.onstart = null
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      resolveStop?.()
+      resolveStop = null
+    }
+
+    const requestStop = (): Promise<void> => {
+      if (disposed) return Promise.resolve()
+      if (stopPromise) return stopPromise
+      shouldListenRef.current = false
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current)
+        restartTimerRef.current = null
+      }
+      stopPromise = new Promise<void>((resolve) => {
+        resolveStop = resolve
+      })
+      stopRecognitionEngine(recognition, true, detach)
+      if (!disposed) stopFallbackTimer = setTimeout(detach, 1_000)
+      return stopPromise
+    }
+
+    stopCurrentRef.current = requestStop
+
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-CA'
+    shouldListenRef.current = true
+    restartAttemptsRef.current = 0
+    setError(null)
+
+    const scheduleRestart = () => {
+      if (!isCurrent() || !shouldListenRef.current || restartTimerRef.current) return
+      const delay = getRestartDelay(restartAttemptsRef.current)
+      if (delay === null) {
+        shouldListenRef.current = false
+        setError('Speech recognition stopped repeatedly. Turn the microphone off and on to try again.')
+        return
+      }
+
+      restartAttemptsRef.current += 1
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null
+        if (!isCurrent() || !shouldListenRef.current) return
+        try {
+          recognition.start()
+        } catch (startError) {
+          console.warn('speech restart failed', startError)
+          scheduleRestart()
+        }
+      }, delay)
+    }
+
+    recognition.onstart = () => {
+      if (!isCurrent()) return
+      if (metricsStartedAtRef.current === null) metricsStartedAtRef.current = Date.now()
+      setListening(true)
+      setError(null)
+      refreshMetrics()
+    }
+
+    recognition.onresult = (event) => {
+      if (!isCurrent()) return
+      restartAttemptsRef.current = 0
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index]
+        const captured = tracker.contextFor<UtteranceCapture>(index, () => ({
+          onFinal: onFinalRef.current,
+          context: captureContextRef.current?.() ?? null,
+          startedAt: new Date().toISOString(),
+        }))
+        if (!result.isFinal || !tracker.claimFinal(index)) continue
+
+        const text = String(result[0]?.transcript ?? '').trim()
+        if (!text) continue
+        const confidence = Number.isFinite(result[0]?.confidence) ? result[0].confidence : null
+        const completedAt = Date.now()
+        const endedAt = new Date(completedAt).toISOString()
+        if (!crossRunDeduper.claim(text, confidence, index, recognitionRun, completedAt)) continue
+
+        for (const sentence of splitSentences(text)) {
+          captured.onFinal(sentence, confidence, captured.startedAt, endedAt, captured.context)
+        }
+        samplesRef.current = [
+          ...samplesRef.current,
+          { completedAt, wordCount: countWords(text), confidence },
+        ]
+        refreshMetrics(completedAt)
+      }
+
+      const partials: string[] = []
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index]
+        if (!result.isFinal) {
+          const text = String(result[0]?.transcript ?? '').trim()
+          if (text) partials.push(text)
+        }
+      }
+      setInterim(partials.join(' '))
+    }
+
+    recognition.onerror = (event) => {
+      if (!isCurrent()) return
+      if (event.error === 'aborted' && !shouldListenRef.current) return
+      setError(getRecognitionErrorMessage(event.error))
+      if (isFatalRecognitionError(event.error)) shouldListenRef.current = false
+    }
+
+    recognition.onend = () => {
+      if (!isCurrent()) return
+      setListening(false)
+      setInterim('')
+      tracker.reset()
+      recognitionRun += 1
+      if (!shouldListenRef.current) {
+        detach()
+        return
+      }
+      scheduleRestart()
+    }
+
+    try {
+      recognition.start()
+    } catch (startError) {
+      console.warn('speech start failed', startError)
+      scheduleRestart()
+    }
+
+    return () => {
+      shouldListenRef.current = false
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current)
+        restartTimerRef.current = null
+      }
+      const flushFinalResult = enabledRef.current === false && generationRef.current === generation
+      if (flushFinalResult) void requestStop()
+      else stopRecognitionEngine(recognition, false, detach)
+    }
+  }, [enabled, refreshMetrics, scopeKey])
+
+  return { interim, listening, supported, error, metrics, stop }
 }
