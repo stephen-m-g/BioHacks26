@@ -1,11 +1,12 @@
 // P1 owns this component. Live-session sidebar: fits the screen without scrolling (only the image
 // grid scrolls internally if there are many images).
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { assetUrl } from '../lib/assets'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
-import { HandIcon, LassoIcon, PenIcon, SwapIcon, UndoIcon } from './icons'
+import { ChevronDownIcon, HandIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
 
 interface Props {
   title: string
@@ -55,6 +56,7 @@ export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageA
   const settings = useSettings()
   const locked = s.pendingAnnotationId !== null
   const [ghost, setGhost] = useState<{ src: string; x: number; y: number } | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const press = useRef<{ assetId: string; x: number; y: number; dragging: boolean; aspect: number } | null>(null)
 
   const onThumbDown = (e: ReactPointerEvent<HTMLButtonElement>, asset: Asset) => {
@@ -108,61 +110,110 @@ export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageA
 
   return (
     <aside className="sidebar" aria-label="Board tools">
-      <div className="sidebar-title" title={title}>
-        {title}
-      </div>
-
-      <div className="mode-toggle" role="radiogroup" aria-label="Drawing mode">
-        <button role="radio" aria-checked={s.mode === 'ink'} className={s.mode === 'ink' ? 'on' : ''} onClick={() => s.setMode('ink')}>
-          <PenIcon /> Ink
+      <div className="title-menu">
+        <button
+          className="title-btn"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          title={title}
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          <span className="title-text">{title}</span>
+          <ChevronDownIcon />
         </button>
-        <button role="radio" aria-checked={s.mode === 'smart'} className={s.mode === 'smart' ? 'on' : ''} onClick={() => s.setMode('smart')}>
-          <LassoIcon /> Smart
-        </button>
-      </div>
-
-      <div className="tool-panel">
-        {s.mode === 'ink' ? (
+        {menuOpen && (
           <>
-            <div className="swatches" role="radiogroup" aria-label="Ink color">
-              {INK_COLORS.map((c) => (
-                <button
-                  key={c}
-                  role="radio"
-                  aria-checked={s.inkColor === c}
-                  aria-label={COLOR_NAMES[c] ?? c}
-                  className={`swatch${s.inkColor === c ? ' on' : ''}`}
-                  onClick={() => s.setInkColor(c)}
-                >
-                  <span className="swatch-dot" style={{ background: c }} />
-                </button>
-              ))}
-            </div>
-            <div className="widths" role="radiogroup" aria-label="Ink width">
-              {INK_WIDTHS.map((w) => (
-                <button
-                  key={w.value}
-                  role="radio"
-                  aria-checked={s.inkWidth === w.value}
-                  aria-label={w.label}
-                  title={w.label}
-                  className={s.inkWidth === w.value ? 'on' : ''}
-                  onClick={() => s.setInkWidth(w.value)}
-                >
-                  <span className="width-dot" style={{ width: 4 + w.value * 900, height: 4 + w.value * 900 }} />
-                </button>
-              ))}
-              <button aria-label="Undo last stroke" title="Undo" onClick={onUndo}>
-                <UndoIcon />
+            <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
+            <div className="menu" role="menu">
+              <Link role="menuitem" className="menu-item" to="/">
+                Back to lectures
+              </Link>
+              <button
+                role="menuitem"
+                className="menu-item danger-item"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onEnd()
+                }}
+              >
+                End session
               </button>
             </div>
           </>
-        ) : (
-          <p className="hint">
-            {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image, then talk about it.'}
-          </p>
         )}
       </div>
+
+      <div className="mode-row" role="radiogroup" aria-label="Drawing mode">
+        <button
+          role="radio"
+          aria-checked={s.mode === 'ink'}
+          aria-label="Ink"
+          title="Ink"
+          className={`icon-btn${s.mode === 'ink' ? ' on' : ''}`}
+          onClick={() => s.setMode('ink')}
+        >
+          <span className="ic">
+            <PenIcon />
+          </span>
+        </button>
+        <button
+          role="radio"
+          aria-checked={s.mode === 'smart'}
+          aria-label="Smart annotation"
+          title="Smart annotation"
+          className={`icon-btn${s.mode === 'smart' ? ' on' : ''}`}
+          onClick={() => s.setMode('smart')}
+        >
+          <span className="ic">
+            <WandIcon />
+          </span>
+        </button>
+      </div>
+
+      {s.mode === 'ink' ? (
+        <div className="tool-panel">
+          <div className="swatches" role="radiogroup" aria-label="Ink color">
+            {INK_COLORS.map((c) => (
+              <button
+                key={c}
+                role="radio"
+                aria-checked={s.inkColor === c}
+                aria-label={COLOR_NAMES[c] ?? c}
+                className={`swatch${s.inkColor === c ? ' on' : ''}`}
+                onClick={() => s.setInkColor(c)}
+              >
+                <span className="swatch-dot" style={{ background: c }} />
+              </button>
+            ))}
+          </div>
+          <div className="widths" role="radiogroup" aria-label="Ink width">
+            {INK_WIDTHS.map((w) => (
+              <button
+                key={w.value}
+                role="radio"
+                aria-checked={s.inkWidth === w.value}
+                aria-label={w.label}
+                title={w.label}
+                className={`width-btn${s.inkWidth === w.value ? ' on' : ''}`}
+                onClick={() => s.setInkWidth(w.value)}
+              >
+                <span className="width-chip">
+                  <span className="width-dot" style={{ width: 3 + w.value * 700, height: 3 + w.value * 700 }} />
+                </span>
+              </button>
+            ))}
+            <button className="width-btn" aria-label="Undo last stroke" title="Undo" onClick={onUndo}>
+              <span className="width-chip">
+                <UndoIcon />
+              </span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="hint">
+          {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image, then talk about it.'}
+        </p>
+      )}
 
       <div className="sidebar-images">
         <div className="sidebar-label">Images</div>
@@ -203,25 +254,27 @@ export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageA
         </div>
       </div>
 
-      <div className="sidebar-card">
-        <div className="settings-row">
-          <button
-            onClick={() => settings.setSidebarSide(settings.sidebarSide === 'left' ? 'right' : 'left')}
-            aria-label={`Move sidebar to the ${settings.sidebarSide === 'left' ? 'right' : 'left'}`}
-          >
-            <SwapIcon /> Side
-          </button>
-          <button
-            aria-pressed={settings.fingerDraws}
-            onClick={() => settings.setFingerDraws(!settings.fingerDraws)}
-            className={settings.fingerDraws ? 'on' : ''}
-            aria-label={`Finger drawing ${settings.fingerDraws ? 'on' : 'off'}`}
-          >
-            <HandIcon /> {settings.fingerDraws ? 'On' : 'Off'}
-          </button>
-        </div>
-        <button className="end-btn" onClick={onEnd}>
-          End session
+      <div className="sidebar-footer">
+        <button
+          className="icon-btn small"
+          onClick={() => settings.setSidebarSide(settings.sidebarSide === 'left' ? 'right' : 'left')}
+          aria-label={`Move sidebar to the ${settings.sidebarSide === 'left' ? 'right' : 'left'}`}
+          title="Move sidebar to the other side"
+        >
+          <span className="ic">
+            <SwapIcon />
+          </span>
+        </button>
+        <button
+          className={`icon-btn small${settings.fingerDraws ? ' on' : ''}`}
+          aria-pressed={settings.fingerDraws}
+          onClick={() => settings.setFingerDraws(!settings.fingerDraws)}
+          aria-label={settings.fingerDraws ? 'Finger drawing on (tap for pencil only)' : 'Pencil only (tap to let fingers draw)'}
+          title={settings.fingerDraws ? 'Finger drawing on' : 'Pencil only'}
+        >
+          <span className="ic">
+            <HandIcon />
+          </span>
         </button>
       </div>
 

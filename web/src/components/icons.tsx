@@ -25,6 +25,20 @@ export const LassoIcon = () => (
   </svg>
 )
 
+export const WandIcon = () => (
+  <svg {...base}>
+    <path d="M4 20L15 9" />
+    <path d="M13.5 7.5l3 3" />
+    <path d="M18 3v3M16.5 4.5h3M20 9v2M19 10h2M10 3v2M9 4h2" />
+  </svg>
+)
+
+export const ChevronDownIcon = () => (
+  <svg {...base} width={18} height={18}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+)
+
 export const UndoIcon = () => (
   <svg {...base}>
     <path d="M9 14L4 9l5-5" />
