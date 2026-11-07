@@ -6,7 +6,7 @@ import { assetUrl } from '../lib/assets'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
-import { ChevronDownIcon, HandIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
+import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
 
 interface Props {
   title: string
@@ -263,17 +263,6 @@ export default function Sidebar({ title, images, onUndo, onDrop, onEnd, onImageA
         >
           <span className="ic">
             <SwapIcon />
-          </span>
-        </button>
-        <button
-          className={`icon-btn small${settings.fingerDraws ? ' on' : ''}`}
-          aria-pressed={settings.fingerDraws}
-          onClick={() => settings.setFingerDraws(!settings.fingerDraws)}
-          aria-label={settings.fingerDraws ? 'Finger drawing on (tap for pencil only)' : 'Pencil only (tap to let fingers draw)'}
-          title={settings.fingerDraws ? 'Finger drawing on' : 'Pencil only'}
-        >
-          <span className="ic">
-            <HandIcon />
           </span>
         </button>
       </div>

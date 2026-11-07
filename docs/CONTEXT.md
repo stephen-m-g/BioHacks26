@@ -29,7 +29,8 @@ A prepared lecture can be launched any number of times; each launch is a new ses
   - **mode toggle: Ink / Smart**;
   - ink presets: 4 colors × 3 widths, plus Undo;
   - image bank;
-  - settings (sidebar side, finger draws on/off);
+  - a small button at the bottom to move the sidebar to the other side.
+- **Pencil auto-detect:** fingers draw on images until an Apple Pencil touches one; from then on (for that page load) only the pencil draws and fingers scroll, which stops palm marks. There is no toggle.
   - **End session** (confirm dialog).
 - **Smart annotation** (lasso): drawing a loop on an image in Smart mode creates a `pending` annotation. While it's pending:
   - the outline has an animated **shimmer**;

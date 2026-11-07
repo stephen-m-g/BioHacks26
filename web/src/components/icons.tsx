@@ -60,8 +60,3 @@ export const SwapIcon = () => (
   </svg>
 )
 
-export const HandIcon = () => (
-  <svg {...base}>
-    <path d="M9 11V5a1.5 1.5 0 013 0v5M12 10V4a1.5 1.5 0 013 0v6M15 10V6a1.5 1.5 0 013 0v7a7 7 0 01-7 7h-1a6 6 0 01-5-3l-2.5-4a1.5 1.5 0 012.5-1.6L9 14" />
-  </svg>
-)

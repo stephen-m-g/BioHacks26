@@ -10,7 +10,10 @@ export interface ImageBlockInteraction {
   mode: BoardMode
   inkColor: string
   inkWidth: number
+  /** False once a pencil has been seen: then only the pencil draws and fingers scroll. */
   fingerDraws: boolean
+  /** Called when an Apple Pencil touches the image (switches the board to pencil-only). */
+  onPen?: () => void
   pendingId: string | null
   onStroke: (blockId: string, points: Point[]) => void
   onLasso: (blockId: string, points: Point[], drawnAt: string) => void
@@ -42,7 +45,7 @@ export default function ImageBlock({ block, src, alt, strokes, annotations, inte
   const [activeId, setActiveId] = useState<string | null>(null)
   const lastPointerType = useRef<string>('mouse')
 
-  // Apple Pencil: stop the page from scrolling under the pen even when finger drawing is off.
+  // Apple Pencil: stop the page from scrolling under the pen once fingers are set to scroll.
   useEffect(() => {
     const el = svgRef.current
     if (!el || !interactive) return
@@ -68,7 +71,9 @@ export default function ImageBlock({ block, src, alt, strokes, annotations, inte
   }
 
   const canDraw = (e: ReactPointerEvent) => {
-    if (!interactive || drawing.current) return false // one pointer at a time rejects the palm
+    if (!interactive) return false
+    if (e.pointerType === 'pen' && interactive.fingerDraws) interactive.onPen?.()
+    if (drawing.current) return false // one pointer at a time rejects the palm
     if (e.pointerType === 'touch' && !interactive.fingerDraws) return false
     if (e.pointerType === 'mouse' && e.button !== 0) return false
     if (interactive.mode === 'smart' && interactive.pendingId) return false // finish the open lasso first
