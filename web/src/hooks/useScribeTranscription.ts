@@ -1,5 +1,5 @@
-// P3 owns this hook. ElevenLabs Scribe v2 Realtime behind the same enabled/onFinal contract as
-// useTranscription, so Teach can swap providers without touching the segment pipeline.
+// P3 owns this hook. ElevenLabs Scribe v2 Realtime is the only speech-to-text engine; it feeds
+// final utterances to the segment pipeline through onFinal.
 import { CommitStrategy, useScribe, type UseScribeReturn } from '@elevenlabs/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api } from '../lib/api'
@@ -21,8 +21,8 @@ import {
   type SpeechMetrics,
   type SpeechSample,
   type TranscriptionContext,
+  type TranscriptionResultHandler,
 } from './transcriptionModel'
-import type { TranscriptionResultHandler, UseTranscriptionOptions } from './useTranscription'
 
 const KEYTERMS = parseKeyterms(import.meta.env.VITE_ELEVENLABS_KEYTERMS)
 const MICROPHONE = { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -47,9 +47,15 @@ interface Attempt {
   onCommit: (() => void) | null
 }
 
-export interface UseScribeTranscriptionOptions extends UseTranscriptionOptions {
+export interface UseScribeTranscriptionOptions {
+  enabled: boolean
   /** Live session the API mints the single-use token for. */
   sessionId: string
+  onFinal: TranscriptionResultHandler
+  /** Snapshot v2 session/annotation ownership when an utterance first appears. */
+  captureContext?: () => TranscriptionContext
+  /** Invalidates callbacks and metrics when the active session changes. */
+  scopeKey?: string
 }
 
 function isSupported(): boolean {
@@ -145,7 +151,7 @@ export function useScribeTranscription({
     const delay = getRestartDelay(retriesRef.current)
     if (delay === null) {
       shouldListenRef.current = false
-      setError('ElevenLabs disconnected repeatedly. Switch to Chrome in the session menu, or turn the microphone off and on to retry.')
+      setError('ElevenLabs disconnected repeatedly. Turn the microphone off and on to retry.')
       return
     }
     retriesRef.current += 1

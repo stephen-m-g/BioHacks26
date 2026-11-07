@@ -10,7 +10,7 @@ Wearables & Quality of Life track. A teacher-only web app, projected in class, t
 |---|---|---|
 | `web/src/pages/Teach.tsx`, `components/{Board,ImageBlock,Sidebar}.tsx` | Live session: board, ink, lasso + shimmer + ✓/✗, image bank, settings | P1 |
 | `web/src/hooks/useTeacherActions.ts`, `useSessionData.ts` | Optimistic board actions; session loading + realtime | P1 / shared |
-| `web/src/hooks/useTranscription.ts` | Speech recognition (basic Web Speech version) | P3 |
+| `web/src/hooks/useScribeTranscription.ts` | Speech recognition (ElevenLabs Scribe v2 Realtime) | P3 |
 | `web/src/pages/{Dashboard,AllLectures,Prep,Notes,RawSession}.tsx` | Dashboard, archive, chat-style prep, study document, raw board | P4 |
 | `web/src/store/session.ts`, `store/settings.ts` | Live UI state (mode, ink, pending lasso); persisted device settings | shared |
 | `web/src/types.ts`, `web/src/lib/api.ts` | DB types, typed API client | shared |
@@ -38,12 +38,12 @@ cd api
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env         # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+cp .env.example .env         # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ELEVENLABS_API_KEY
 uvicorn main:app --reload --port 8000
 python smoke.py              # hits every endpoint
 ```
 
-The Gemini key and the service role key live only in `api/.env`. Never put them in `web/`.
+The Gemini, ElevenLabs and service role keys live only in `api/.env`. Never put them in `web/`.
 
 ## Coordinates
 

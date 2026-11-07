@@ -33,18 +33,23 @@ test('a keyterm env override replaces the defaults, and an empty one keeps them'
   assert.deepEqual(parseKeyterms(' , '), DEFAULT_BIOLOGY_KEYTERMS)
 })
 
-test('token failures that retrying cannot fix are fatal and point to Chrome', () => {
+test('token failures that retrying cannot fix are fatal and say transcription is unavailable', () => {
   for (const status of [503, 404, 409]) {
     const failure = classifyTokenError(status)
     assert.equal(failure.fatal, true)
-    assert.match(failure.message, /Chrome/)
+    assert.match(failure.message, /Transcription is unavailable/)
+    assert.doesNotMatch(failure.message, /Chrome/i)
   }
   for (const status of [undefined, 429, 502, 500]) assert.equal(classifyTokenError(status).fatal, false)
   assert.match(classifyTokenError(503).message, /not configured/)
 })
 
 test('auth, quota and terms errors stop reconnecting; transient ones retry', () => {
-  for (const kind of ['auth', 'quota', 'unaccepted_terms', 'input']) assert.equal(describeScribeError(kind).fatal, true)
+  for (const kind of ['auth', 'quota', 'unaccepted_terms', 'input']) {
+    const failure = describeScribeError(kind)
+    assert.equal(failure.fatal, true)
+    assert.doesNotMatch(failure.message, /Chrome/i)
+  }
   for (const kind of ['rate_limited', 'session_time_limit', 'insufficient_audio', 'transcriber', 'other']) {
     assert.equal(describeScribeError(kind).fatal, false)
   }

@@ -425,39 +425,6 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* Speech provider switch (P3): Chrome or ElevenLabs, inside the title dropdown */
-.speech-provider {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  font-size: 0.8rem;
-}
-
-.speech-provider-label {
-  color: var(--muted);
-  margin-right: auto;
-}
-
-.provider-btn {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: none;
-  color: var(--fg);
-  font-size: 0.8rem;
-}
-
-.provider-btn.on {
-  border-color: var(--fg);
-  font-weight: 600;
-}
-
-.provider-btn:disabled {
-  opacity: 0.45;
-}
-
 .speech-error {
   padding: 0 12px 8px;
   font-size: 0.75rem;

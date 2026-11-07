@@ -1,7 +1,6 @@
 // P1 owns this component. Live-session sidebar. Scrolls only if the screen is too short.
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { assetUrl } from '../lib/assets'
-import type { TranscriptionProvider } from '../hooks/scribeModel'
 import type { SpeechMetrics } from '../hooks/transcriptionModel'
 import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
@@ -21,15 +20,7 @@ export interface Recording {
   confidenceSupported: boolean
   startedAt: string
   toggle: () => void
-  provider: TranscriptionProvider
-  switching: boolean
-  onProvider: (provider: TranscriptionProvider) => void
 }
-
-const PROVIDERS: { id: TranscriptionProvider; label: string; title: string }[] = [
-  { id: 'chrome', label: 'Chrome', title: 'Browser speech recognition (no setup needed)' },
-  { id: 'elevenlabs', label: 'ElevenLabs', title: 'ElevenLabs Scribe Realtime (needs ELEVENLABS_API_KEY on the API)' },
-]
 
 interface Props {
   title: string
@@ -98,7 +89,7 @@ function SessionClock({ recording }: { recording: Recording }) {
   const status = !recording.supported
     ? 'No mic'
     : recording.error && recording.on
-      ? 'Mic blocked'
+      ? 'Speech error'
       : !recording.on
         ? 'Paused'
         : null
@@ -237,22 +228,6 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
                   </span>
                 </div>
               )}
-              <div className="speech-provider" role="radiogroup" aria-label="Speech recognition">
-                <span className="speech-provider-label">Speech</span>
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.id}
-                    role="radio"
-                    aria-checked={recording.provider === p.id}
-                    className={`provider-btn${recording.provider === p.id ? ' on' : ''}`}
-                    title={p.title}
-                    disabled={recording.switching}
-                    onClick={() => recording.onProvider(p.id)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
               {recording.on && recording.error && <p className="hint speech-error">{recording.error}</p>}
               <button
                 role="menuitem"

@@ -1,6 +1,4 @@
-// Pure helpers for the ElevenLabs Scribe Realtime provider (P3). No SDK imports so node:test can load it.
-export type TranscriptionProvider = 'chrome' | 'elevenlabs'
-
+// Pure helpers for ElevenLabs Scribe Realtime transcription (P3). No SDK imports so node:test can load it.
 export const SCRIBE_MODEL_ID = 'scribe_v2_realtime'
 
 /** Scribe v2 Realtime accepts at most 50 keyterms of up to 20 characters each. */
@@ -65,11 +63,11 @@ export function parseKeyterms(value: string | undefined): string[] {
 
 export interface ScribeFailure {
   message: string
-  /** Fatal failures stop reconnecting until the teacher toggles the mic or switches provider. */
+  /** Fatal failures stop reconnecting until the teacher toggles the mic. */
   fatal: boolean
 }
 
-const SWITCH_HINT = 'Switch to Chrome in the session menu to keep transcribing.'
+const UNAVAILABLE_HINT = 'Transcription is unavailable until this is fixed; then turn the microphone off and on.'
 
 /** `status` is the token endpoint's HTTP status, or undefined when the request never got a response. */
 export function classifyTokenError(status: number | undefined): ScribeFailure {
@@ -77,10 +75,10 @@ export function classifyTokenError(status: number | undefined): ScribeFailure {
     case undefined:
       return { message: 'Could not reach the API for an ElevenLabs token. Retrying…', fatal: false }
     case 503:
-      return { message: `ElevenLabs is not configured on the API server. ${SWITCH_HINT}`, fatal: true }
+      return { message: `ElevenLabs is not configured on the API server (ELEVENLABS_API_KEY). ${UNAVAILABLE_HINT}`, fatal: true }
     case 404:
     case 409:
-      return { message: `ElevenLabs needs a live session saved in the database. ${SWITCH_HINT}`, fatal: true }
+      return { message: `ElevenLabs needs a live session saved in the database. ${UNAVAILABLE_HINT}`, fatal: true }
     case 429:
       return { message: 'Too many ElevenLabs token requests. Retrying…', fatal: false }
     default:
@@ -106,13 +104,13 @@ export function describeScribeError(kind: ScribeErrorKind, detail?: string): Scr
   const fatal = FATAL_SCRIBE_ERRORS.has(kind)
   switch (kind) {
     case 'auth':
-      return { message: `ElevenLabs rejected the session token. ${SWITCH_HINT}`, fatal }
+      return { message: `ElevenLabs rejected the session token. ${UNAVAILABLE_HINT}`, fatal }
     case 'quota':
-      return { message: `The ElevenLabs quota is used up. ${SWITCH_HINT}`, fatal }
+      return { message: `The ElevenLabs quota is used up. ${UNAVAILABLE_HINT}`, fatal }
     case 'unaccepted_terms':
-      return { message: `Accept the ElevenLabs terms in the ElevenLabs dashboard. ${SWITCH_HINT}`, fatal }
+      return { message: `Accept the ElevenLabs terms in the ElevenLabs dashboard. ${UNAVAILABLE_HINT}`, fatal }
     case 'input':
-      return { message: `ElevenLabs rejected the connection settings${detail ? ` (${detail})` : ''}. ${SWITCH_HINT}`, fatal }
+      return { message: `ElevenLabs rejected the connection settings${detail ? ` (${detail})` : ''}. ${UNAVAILABLE_HINT}`, fatal }
     case 'rate_limited':
     case 'resource_exhausted':
       return { message: 'ElevenLabs is busy. Reconnecting…', fatal }
@@ -147,7 +145,7 @@ interface Utterance<T> {
 
 /**
  * Tracks the in-progress Scribe segment. Context is captured when the first partial appears (like the
- * Chrome provider), and the last partial can be flushed if the stream ends before the server commits it.
+ * board segment pipeline expects), and the last partial can be flushed if the stream ends before the server commits it.
  */
 export class ScribeUtteranceBuffer<T> {
   private current: Utterance<T> | null = null
