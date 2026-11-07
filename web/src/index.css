@@ -651,7 +651,7 @@ textarea {
   flex-direction: column;
   gap: 8px;
   padding-top: 14px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--fg);
 }
 
 /* "PEN" / "SMART ANNOTATE" under the mode circles, aligned with the circle edge */
@@ -660,7 +660,13 @@ textarea {
   margin-top: -4px;
 }
 
-.sidebar-right .mode-label {
+.mode-hint {
+  padding: 0 10px;
+  margin-bottom: 4px;
+}
+
+.sidebar-right .mode-label,
+.sidebar-right .mode-hint {
   text-align: right;
 }
 

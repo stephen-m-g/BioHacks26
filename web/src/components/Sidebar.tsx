@@ -209,6 +209,7 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
 
       {s.mode === 'ink' ? (
         <div className="tool-panel">
+          <p className="hint mode-hint">Directly annotate diagrams.</p>
           <div className="swatches" role="radiogroup" aria-label="Ink color">
             {INK_COLORS.map((c) => (
               <button
@@ -247,8 +248,8 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
           </div>
         </div>
       ) : (
-        <p className="hint">
-          {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image, then talk about it.'}
+        <p className="hint mode-hint">
+          {locked ? 'Talk about what you circled, then press ✓ to save or ✗ to cancel.' : 'Draw a loop around part of an image to link it to your words.'}
         </p>
       )}
 
@@ -261,7 +262,7 @@ export default function Sidebar({ title, onRename, images, onUndo, onDrop, onEnd
               ? 'Now tap a spot on the board.'
               : images.length === 0
                 ? 'No images uploaded for this lecture.'
-                : 'Drag onto the board, or tap then tap a spot.'}
+                : 'Drag onto the board or tap and place.'}
         </p>
         <div className="thumb-grid">
           {images.map((a) => (
