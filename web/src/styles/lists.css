@@ -1,0 +1,730 @@
+/* List pages (P4): /lectures, /archive and /sessions.
+   Header and content width match the lecture editor (Prep): round back arrow + title, 868px column.
+   The card and rows are the dashboard's bento lists scaled up 1.25x, which puts every tap area
+   at 64px (Alex's minimum). Colors, type and spacing come from tokens.css. */
+
+.lp {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- header: ← + title, same grid as the lecture editor ---------- */
+.lp-header {
+  --overhang: 56px; /* 48px arrow column + 8px gap */
+  flex-shrink: 0;
+  width: 100%;
+  max-width: calc(868px + 2 * var(--overhang));
+  margin: 0 auto;
+  padding: var(--sp-4) var(--sp-5) var(--sp-1);
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  column-gap: var(--sp-2);
+}
+
+.lp-back {
+  min-width: 48px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  color: var(--c-fg);
+  text-decoration: none;
+}
+
+.lp-back-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.lp-back-circle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.lp-back:focus-visible {
+  outline: none;
+}
+
+.lp-back:focus-visible .lp-back-circle {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+.lp-title {
+  margin: 0;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- body: the editor's 868px column; the card takes the remaining height ---------- */
+.lp-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 868px; /* 820px content + 24px gutters */
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.lp-body .p4-notice {
+  margin: 0;
+}
+
+/* ---------- card (bento cell x1.25) ---------- */
+.lp-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+.lp-card-head {
+  flex-shrink: 0;
+  height: 70px;
+  padding: 0 var(--sp-5) 0 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.lp-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.lp-label {
+  margin: 0;
+  color: var(--c-muted);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lp-count {
+  min-width: 35px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  background: var(--c-soft);
+  color: var(--c-muted);
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lp-hint {
+  font-size: 15px;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+/* List scrolls inside the card, with the dashboard's fade at the top and bottom edges. */
+.lp-scroll {
+  --fade: 30px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 30px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.25) 0, #000 var(--fade), #000 calc(100% - var(--fade)), rgba(0, 0, 0, 0.25) 100%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.25) 0, #000 var(--fade), #000 calc(100% - var(--fade)), rgba(0, 0, 0, 0.25) 100%);
+}
+
+.lp-scroll:hover,
+.lp-scroll:focus-within {
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+.lp-scroll::-webkit-scrollbar {
+  width: 12px;
+}
+
+.lp-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 10px 0 20px;
+}
+
+.lp-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--r-pill);
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+
+.lp-scroll:hover::-webkit-scrollbar-thumb,
+.lp-scroll:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--c-line-strong);
+}
+
+.lp-empty {
+  margin: 10px 0;
+  font-size: 18px;
+  color: var(--c-muted);
+}
+
+/* ---------- rows (bento row x1.25) ---------- */
+.lp-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lp-list > li + li {
+  border-top: 1px solid var(--c-line);
+}
+
+.lp-row {
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.lp-dot {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-muted);
+}
+
+/* 64px tap area around the 30px circle. */
+.lp-dot .class-dot-btn {
+  --hit: var(--tap);
+  margin: -17px;
+}
+
+.lp-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.lp-row-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lp-row.faded .lp-row-title {
+  color: var(--c-faded);
+}
+
+.lp-meta {
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 16px;
+  color: var(--c-muted);
+}
+
+.lp-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lp-meta svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.lp-badge {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--c-line);
+  background: var(--c-card);
+  color: var(--c-fg);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lp-badge.live {
+  border-color: var(--c-fg);
+  background: var(--c-fg);
+  color: var(--c-card);
+}
+
+.lp-actions {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ---------- buttons: a 40px visible pill inside a 64px tap area ---------- */
+.p4 .lp-tap,
+.lp-tap {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0 5px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-fg);
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.p4 .lp-tap.icon,
+.lp-tap.icon {
+  width: var(--tap);
+  padding: 0;
+}
+
+.lp-tap:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.lp-pill {
+  height: 40px;
+  padding: 0 15px;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lp-pill svg {
+  width: 20px;
+  height: 20px;
+}
+
+.lp-pill.outline {
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+.lp-pill.solid {
+  background: var(--c-fg);
+  color: var(--c-card);
+}
+
+.lp-pill.round {
+  width: 40px;
+  padding: 0;
+}
+
+@media (hover: hover) {
+  .lp-tap:not(:disabled):hover .lp-pill.outline {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+  .lp-tap:not(:disabled):hover .lp-pill.round,
+  .lp-back:hover .lp-back-circle {
+    background: var(--c-soft);
+  }
+  .lp-tap:not(:disabled):hover .lp-pill.solid {
+    background: #2a2a2a;
+  }
+}
+
+/* Focus ring on the visible pill, not the invisible tap area. */
+.lp-tap:focus-visible {
+  outline: none;
+}
+
+.lp-tap:focus-visible .lp-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+/* ---------- ⋯ menu: rendered at the page root (fixed) so the scrolling card can't clip it ---------- */
+.lp-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.lp-menu {
+  position: fixed;
+  z-index: 51;
+  padding: 6px;
+  border-radius: 18px;
+  border: 1px solid var(--c-line);
+  background: var(--c-card);
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-sans);
+}
+
+.lp-menu .lp-menu-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 60px;
+  padding: 0 15px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--c-fg);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+}
+
+.lp-menu .lp-menu-item.danger {
+  color: var(--c-danger);
+}
+
+@media (hover: hover) {
+  .lp-menu .lp-menu-item:hover {
+    background: var(--c-soft);
+  }
+  .lp-menu .lp-menu-item.danger:hover {
+    background: var(--c-danger-bg);
+  }
+}
+
+/* ---------- small screens ---------- */
+@media (max-width: 1000px) {
+  .lp-header {
+    --overhang: 0px;
+  }
+}
+
+/* Short screens (iPad landscape with the keyboard, small laptops): let the page scroll instead. */
+@media (max-height: 560px) {
+  .lp {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .lp-scroll {
+    max-height: 70vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .lp-body,
+  .lp-header {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+  .lp-scroll {
+    padding: 0 var(--sp-4) 10px;
+  }
+  .lp-card-head {
+    padding-left: var(--sp-4);
+  }
+  .lp-hint {
+    display: none;
+  }
+}
+
+/* =====================================================================
+   Refinement: no card container (rows sit on the page background), rows
+   aligned with the title's left edge across the full 820px column, and
+   rows sized up slightly so they don't feel stretched at that width.
+   ===================================================================== */
+.lp-card {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.lp-card-head {
+  height: 56px;
+  padding: 0;
+}
+
+.lp-scroll {
+  padding: 0 0 10px;
+}
+
+.lp-row {
+  min-height: 88px;
+  gap: 18px;
+}
+
+.lp-dot {
+  width: 32px;
+  height: 32px;
+}
+
+.lp-dot .class-dot-btn {
+  margin: -16px;
+}
+
+.lp-row-title {
+  font-size: 23px;
+}
+
+.lp-meta {
+  margin-top: 6px;
+  font-size: 17px;
+}
+
+.lp-meta svg {
+  width: 19px;
+  height: 19px;
+}
+
+.lp-pill {
+  height: 44px;
+  padding: 0 17px;
+  font-size: 18px;
+}
+
+.lp-pill svg {
+  width: 21px;
+  height: 21px;
+}
+
+.lp-pill.round {
+  width: 44px;
+}
+
+@media (max-width: 640px) {
+  .lp-scroll {
+    padding: 0 0 10px;
+  }
+  .lp-card-head {
+    padding-left: 0;
+  }
+}
+
+/* =====================================================================
+   Class filter row (mirrors the dashboard's chips, sized for this page:
+   44px pills, 17px text, 64px tap areas). Left edge lines up with the title.
+   ===================================================================== */
+.lp-filter {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* room for focus rings without shifting the first chip off the title's edge */
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
+.lp-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.p4 .lp-chip,
+.lp-chip {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-fg);
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.lp-chip-pill {
+  height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-card);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.lp-chip.on .lp-chip-pill {
+  background: var(--c-fg);
+  border-color: var(--c-fg);
+  color: var(--c-card);
+}
+
+.lp-chip-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lp-chip.on .lp-chip-dot {
+  box-shadow: 0 0 0 2px var(--c-card);
+}
+
+.lp-chip.add {
+  justify-content: center;
+}
+
+.lp-chip.add .lp-chip-pill {
+  width: 44px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border: 1px dashed var(--c-line-strong);
+  color: var(--c-muted);
+}
+
+.lp-chip.add svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (hover: hover) {
+  .lp-chip:not(.on):hover .lp-chip-pill {
+    background: var(--c-soft);
+  }
+}
+
+.lp-chip:focus-visible {
+  outline: none;
+}
+
+.lp-chip:focus-visible .lp-chip-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+/* The filter sits right under the title; tighten the gap to the list header. */
+.lp-body {
+  gap: 0;
+}
+
+.lp-body .p4-notice {
+  margin-bottom: var(--sp-2);
+}
+
+/* The scrolling list clips anything outside its edges, which cut off the class dot's hover/focus
+   ring (up to 6px past the dot). Give it 8px of room each side and pull it out by the same amount,
+   so rows stay aligned with the title. */
+.lp-scroll {
+  margin: 0 -8px;
+  padding: 0 8px 10px;
+}
+
+/* The card is invisible now, so it no longer needs to clip (its old overflow: hidden was cutting
+   off the class dot's ring at the list's left edge). The list itself still scrolls and clips. */
+.lp-card {
+  overflow: visible;
+}
+
+/* =====================================================================
+   Sort button in the list header: same tap area and menu as "⋯"; the pill
+   shows the sort icon and the current order, in a quieter tone.
+   ===================================================================== */
+.lp-card-head {
+  /* the 64px tap area may be taller than the 56px row; keep it centered */
+  overflow: visible;
+}
+
+.lp-pill.sort {
+  padding: 0 14px;
+  gap: 8px;
+  color: var(--c-muted);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.lp-pill.sort svg {
+  width: 19px;
+  height: 19px;
+}
+
+@media (hover: hover) {
+  .lp-tap:not(:disabled):hover .lp-pill.sort {
+    background: var(--c-soft);
+    color: var(--c-fg);
+  }
+}
+
+.lp-tap[aria-expanded='true'] .lp-pill.sort,
+.lp-tap[aria-expanded='true'] .lp-pill.round {
+  background: var(--c-soft);
+  color: var(--c-fg);
+}
+
+/* Check mark on the chosen option in a choice menu (sort). */
+.lp-menu .lp-menu-check {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* Resume and Notes share one width so their edges line up down the list (min-width, so a larger
+   system font can still grow the pill instead of clipping the text). */
+.lp-pill.same-width {
+  min-width: 128px;
+}
+
+/* Title row sits lower (more air above it) and closer to the class filter below it:
+   title-to-chips ~24px, now less than chips-to-list-header (~30px). */
+.lp-header {
+  padding-top: 36px;
+  padding-bottom: 0;
+}
+
+.lp-body {
+  padding-top: 0;
+}

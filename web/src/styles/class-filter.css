@@ -1,0 +1,233 @@
+/* Class filter chips (shared by the Dashboard and the list pages).
+   - Activating a chip: a dark fill grows from the center while the pill balloons slightly.
+   - "All" becoming active: the filled chips hand their fill over, right to left, into "All".
+   Sizes: .cf.compact (dashboard: 36px pills, 48px taps) and .cf.large (list pages: 44px, 64px).
+   Colors come from tokens.css. With "Reduce motion" on, chips just switch states. */
+
+.cf {
+  --cf-tap: 48px;
+  --cf-h: 36px;
+  --cf-pad: 16px;
+  --cf-font: 15px;
+  --cf-gap: 8px;
+  --cf-dot: 10px;
+  --cf-icon: 18px;
+  --cf-fill-ms: 320ms;
+  --cf-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.cf.large {
+  --cf-tap: 64px;
+  --cf-h: 44px;
+  --cf-pad: 20px;
+  --cf-font: 17px;
+  --cf-gap: 10px;
+  --cf-dot: 12px;
+  --cf-icon: 20px;
+}
+
+.cf .cf-chip {
+  min-height: var(--cf-tap);
+  min-width: var(--cf-tap);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-fg);
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.cf .cf-chip.add {
+  justify-content: center;
+}
+
+.cf-pill {
+  position: relative;
+  isolation: isolate; /* keeps the fill layer behind the label */
+  overflow: hidden;
+  height: var(--cf-h);
+  padding: 0 var(--cf-pad);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-card);
+  color: var(--c-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cf-gap);
+  font-size: var(--cf-font);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    color var(--cf-fill-ms) var(--cf-ease),
+    border-color var(--cf-fill-ms) var(--cf-ease),
+    background-color 0.15s var(--cf-ease);
+}
+
+/* The fill: a dark layer revealed by clip-path. Off = a zero circle in the center. */
+.cf-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--c-fg);
+  clip-path: circle(0% at 50% 50%);
+  transition: clip-path var(--cf-fill-ms) var(--cf-ease);
+}
+
+.cf-dot {
+  width: var(--cf-dot);
+  height: var(--cf-dot);
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: box-shadow var(--cf-fill-ms) var(--cf-ease);
+}
+
+.cf-chip.add .cf-pill {
+  width: var(--cf-h);
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border: 1px dashed var(--c-line-strong);
+  color: var(--c-muted);
+}
+
+.cf-chip.add svg {
+  width: var(--cf-icon);
+  height: var(--cf-icon);
+}
+
+/* ---------- on: fill grows from the center ---------- */
+.cf-chip.on .cf-pill {
+  color: var(--c-card);
+  border-color: var(--c-fg);
+}
+
+.cf-chip.on .cf-pill::before {
+  clip-path: circle(100% at 50% 50%);
+}
+
+.cf-chip.on .cf-dot {
+  box-shadow: 0 0 0 2px var(--c-card);
+}
+
+/* ---------- balloon on activation ---------- */
+@keyframes cf-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cf-chip.pop .cf-pill {
+  animation: cf-pop 420ms cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+/* Inverse balloon when a chip is tapped off: a small dip, then back (the fill shrinks to the center). */
+@keyframes cf-shrink {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.93);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cf-chip.shrink .cf-pill {
+  animation: cf-shrink 420ms cubic-bezier(0.3, 0, 0.2, 1);
+}
+
+/* ---------- handover to "All" ---------- */
+/* hold: the chips that hand over are full, drawn as a rectangle so the next step can slide it */
+.cf-chip.cf-hold .cf-pill::before {
+  clip-path: inset(0 0 0 0);
+  transition: none;
+}
+
+.cf-chip.cf-hold .cf-pill {
+  color: var(--c-card);
+  border-color: var(--c-fg);
+}
+
+.cf-chip.cf-hold .cf-dot {
+  box-shadow: 0 0 0 2px var(--c-card);
+}
+
+/* out: the fill retracts toward the left edge. Timing comes from the component: --t = when the
+   right-to-left front reaches this chip, --d = how long it takes to cross it (constant speed). */
+.cf-chip.cf-out .cf-pill::before {
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path var(--d, 200ms) linear var(--t, 0ms);
+}
+
+.cf-chip.cf-out .cf-pill {
+  color: var(--c-fg);
+  border-color: var(--c-line);
+  transition-delay: calc(var(--t, 0ms) + var(--d, 200ms) * 0.5);
+}
+
+.cf-chip.cf-out .cf-dot {
+  transition-delay: calc(var(--t, 0ms) + var(--d, 200ms) * 0.5);
+}
+
+/* "All": empty, ready to fill from its right edge … */
+.cf-chip.cf-from .cf-pill::before {
+  clip-path: inset(0 0 0 100%);
+  transition: none;
+}
+
+/* … then filled by the front as it arrives, easing out at the very end so it lands softly. */
+.cf-chip.cf-in .cf-pill::before {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path var(--d, 200ms) cubic-bezier(0.3, 0.6, 0.4, 1) var(--t, 0ms);
+}
+
+.cf-chip.cf-in .cf-pill {
+  color: var(--c-card);
+  border-color: var(--c-fg);
+  transition-delay: calc(var(--t, 0ms) + var(--d, 200ms) * 0.5);
+}
+
+/* ---------- hover, focus ---------- */
+@media (hover: hover) {
+  .cf-chip:not(.on):not(.cf-hold):not(.add):hover .cf-pill {
+    background-color: var(--c-soft);
+  }
+  .cf-chip.add:hover .cf-pill {
+    background-color: var(--c-soft);
+  }
+}
+
+.cf .cf-chip:focus-visible {
+  outline: none;
+}
+
+.cf .cf-chip:focus-visible .cf-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-pill,
+  .cf-pill::before,
+  .cf-dot {
+    transition: none !important;
+  }
+  .cf-chip.pop .cf-pill,
+  .cf-chip.shrink .cf-pill {
+    animation: none;
+  }
+}

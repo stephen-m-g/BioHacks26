@@ -135,3 +135,16 @@ export const IconBook = (p: P) => (
     <path d="M4 21V5M8 7h7" />
   </Svg>
 )
+
+export const IconCheck = (p: P) => (
+  <Svg {...p}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </Svg>
+)
+
+export const IconSort = (p: P) => (
+  <Svg {...p}>
+    <path d="M7 4v16M3.5 16.5L7 20l3.5-3.5" />
+    <path d="M17 20V4M13.5 7.5L17 4l3.5 3.5" />
+  </Svg>
+)

@@ -9,7 +9,7 @@
 // Class membership follows the same rule (applied on Save). A brand-new class is created right away,
 // since classes are shared across lectures rather than part of this one.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowLeft, IconArrowUp, IconFile, IconImage, IconPaperclip, IconPlus, IconSparkle, IconX } from '../components/DashIcons'
 import { api, apiErrorMessage } from '../lib/api'
@@ -35,11 +35,19 @@ function kindOf(file: File): AssetKind | null {
   return null
 }
 
+/** Pages the editor can return to, with how the back arrow names them. */
+const RETURN_LABELS: Record<string, string> = { '/': 'the dashboard', '/lectures': 'lectures', '/archive': 'the archive' }
+
 export default function Prep() {
   const { lectureId = '' } = useParams()
   const [searchParams] = useSearchParams()
   const isNew = searchParams.get('new') === '1'
   const navigate = useNavigate()
+  // Where the back arrow, Save and Don't save return to: the list page that opened the editor
+  // (passed as router state), else the dashboard. Only known pages are accepted.
+  const location = useLocation()
+  const from = (location.state as { from?: unknown } | null)?.from
+  const returnTo = typeof from === 'string' && Object.prototype.hasOwnProperty.call(RETURN_LABELS, from) ? from : '/'
   const [lecture, setLecture] = useState<Lecture | null>(null)
   const [title, setTitle] = useState('')
   const [items, setItems] = useState<Asset[]>([])
@@ -278,7 +286,8 @@ export default function Prep() {
           : undefined,
         deleteRemoved: () => deleteAssets(removed),
         updateClasses: classesAvailable && classesChanged ? () => setLectureClasses(lectureId, classIds) : undefined,
-        navigate,
+        // saveLecture always passes "/"; go back to the list page that opened the editor instead.
+        navigate: () => navigate(returnTo),
       })
     } catch (e) {
       fail(e)
@@ -292,7 +301,7 @@ export default function Prep() {
     try {
       if (isNew) await deleteLecture(lectureId)
       else await deleteAssets(added)
-      navigate('/')
+      navigate(returnTo)
     } catch (e) {
       fail(e)
     }
@@ -302,7 +311,7 @@ export default function Prep() {
    *  always asks (leaving without saving deletes it); an unchanged one just goes back. */
   const back = () => {
     if (backAction(hasUnsavedWork, isNew) === 'confirm') setConfirmDiscard(true)
-    else navigate('/')
+    else navigate(returnTo)
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
@@ -316,8 +325,8 @@ export default function Prep() {
           className="pp-icon-btn back"
           onClick={back}
           disabled={busy}
-          aria-label="Back to the dashboard"
-          title="Back to the dashboard"
+          aria-label={`Back to ${RETURN_LABELS[returnTo]}`}
+          title={`Back to ${RETURN_LABELS[returnTo]}`}
         >
           <span className="pp-icon-circle">
             <IconArrowLeft />
