@@ -5,7 +5,6 @@ import Join from './pages/Join'
 import Live from './pages/Live'
 import Notes from './pages/Notes'
 import Prep from './pages/Prep'
-import RawSession from './pages/RawSession'
 import Sessions from './pages/Sessions'
 import Teach from './pages/Teach'
 
@@ -20,8 +19,8 @@ export default function App() {
       <Route path="/sessions" element={<Sessions />} />
       <Route path="/prep/:lectureId" element={<Prep />} />
       <Route path="/teach/:sessionId" element={<Teach />} />
-      <Route path="/notes/:sessionId" element={<Notes />} />
-      <Route path="/sessions/:sessionId/raw" element={<RawSession />} />
+      <Route path="/notes/:sessionId" element={<Notes view="notes" />} />
+      <Route path="/sessions/:sessionId/raw" element={<Notes view="transcript" />} />
       <Route path="/join" element={<Join />} />
       <Route path="/join/:code" element={<Join />} />
       <Route path="/live/:sessionId" element={<Live />} />
