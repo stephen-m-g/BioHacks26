@@ -8,10 +8,18 @@ import { supabase } from '../lib/supabase'
 import { useSessionStore } from '../store/session'
 import { slotPositions } from '../lib/pdfPages'
 import type { Annotation, Asset, Block, Point, Stroke, TranscriptSegment } from '../types'
-import { RefineCoordinator, buildTranscriptSegment, flushSpeechAndWaitForPendingWrites } from './teacherActionsModel'
+import {
+  RefineCoordinator,
+  buildTranscriptSegment,
+  flushSpeechAndWaitForPendingWrites,
+  segmentInsertRow,
+} from './teacherActionsModel'
 import type { AnnotationCaptureInterval } from './scribeModel'
 import type { TranscriptionContext } from './transcriptionModel'
 import type { SessionData } from './useSessionData'
+
+/** Refine calls per tick: one page's speech each, so switching pages in 15 s doesn't leave a backlog. */
+const MAX_REFINE_CALLS = 4
 
 function logError(what: string) {
   return ({ error }: { error: { message: string } | null }) => {
@@ -180,6 +188,7 @@ export function useTeacherActions(data: SessionData) {
         id: newId(),
         defaultSessionId: sessionId,
         defaultAnnotationId: useSessionStore.getState().pendingAnnotationId,
+        defaultPageBlockId: useSessionStore.getState().activePageBlockId,
         context,
         rawText,
         confidence,
@@ -188,26 +197,35 @@ export function useTeacherActions(data: SessionData) {
         createdAt: nowIso(),
       })
       upsert('transcript_segments', row)
-      const write = Promise.resolve(supabase.from('transcript_segments').insert(row)).then(logError('insert segment'))
+      const write = Promise.resolve(supabase.from('transcript_segments').insert(segmentInsertRow(row))).then(
+        logError('insert segment'),
+      )
       pendingSegmentWrites.current.add(write)
       void write.finally(() => pendingSegmentWrites.current.delete(write))
     },
     [sessionId, upsert],
   )
 
-  /** Batch-clean unrefined speech into a new text block at the end of the board. */
+  /** Batch-clean unrefined speech into text blocks: at the end of the board, or under the PDF page it was about.
+   *  Each call cleans one page's speech, so a backlog spanning pages takes a few calls. */
   const performRefine = useCallback(async () => {
     if (!sessionId) return
     try {
       if (pendingSegmentWrites.current.size > 0) {
         await Promise.allSettled([...pendingSegmentWrites.current])
       }
-      const pending = ref.current.segmentList.filter((s) => !s.text_block_id)
-      if (pending.length === 0) return
-      const res = await api.refineSession(sessionId)
-      if (res.block) {
+      const refined = new Set<string>()
+      for (let call = 0; call < MAX_REFINE_CALLS; call++) {
+        const pending = ref.current.segmentList.filter((s) => !s.text_block_id && !refined.has(s.id))
+        if (pending.length === 0) return
+        const res = await api.refineSession(sessionId)
+        if (!res.block) return
+        for (const moved of res.moved_blocks ?? []) upsert('blocks', moved)
         upsert('blocks', res.block)
-        for (const id of res.segment_ids) upsert('transcript_segments', { id, text_block_id: res.block.id })
+        for (const id of res.segment_ids) {
+          refined.add(id)
+          upsert('transcript_segments', { id, text_block_id: res.block.id })
+        }
       }
     } catch (e) {
       console.error('refine', e)

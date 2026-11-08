@@ -855,6 +855,25 @@ textarea {
   white-space: nowrap;
 }
 
+/* The page his speech is going to. */
+.pdf-page-label.active {
+  color: var(--fg);
+  font-weight: 600;
+  align-items: center;
+}
+
+.pdf-page-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--fg);
+}
+
+.st-pdf-page .pdf-page-label {
+  margin: 0 0 8px;
+}
+
 .drag-ghost {
   position: fixed;
   width: 140px;

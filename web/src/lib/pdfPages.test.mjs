@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { pageInfo, pageLabel, pagesOf, pdfFirstBlockOnBoard, pdfPagesReady, slotPositions } from './pdfPages.ts'
+import { pageInfo, pageLabel, pageOwners, pagesOf, pdfFirstBlockOnBoard, pdfPagesReady, slotPositions } from './pdfPages.ts'
 
 const pdf = { id: 'pdf', kind: 'pdf', file_name: 'forces.pdf', label: 'Forces', page_count: 3 }
 const page = (n, source = 'pdf') => ({ id: `${source}-p${n}`, kind: 'pdf_page', source_asset_id: source, page_number: n })
@@ -56,4 +56,23 @@ test('finds a PDF already on the board so it is not placed twice', () => {
   ]
   assert.equal(pdfFirstBlockOnBoard(blocks, assets, 'pdf'), 'b-p1')
   assert.equal(pdfFirstBlockOnBoard(blocks, assets, 'other'), null)
+})
+
+test('each block belongs to its page: the page itself and the paragraphs refined under it', () => {
+  const blocks = [
+    { id: 'b-p1', kind: 'image', asset_id: 'pdf-p1' },
+    { id: 't-1', kind: 'text', asset_id: null, page_block_id: 'b-p1' },
+    { id: 'b-img', kind: 'image', asset_id: 'img' },
+    { id: 't-plain', kind: 'text', asset_id: null, page_block_id: null },
+    { id: 't-gone', kind: 'text', asset_id: null, page_block_id: 'deleted-page' },
+    { id: 't-img', kind: 'text', asset_id: null, page_block_id: 'b-img' }, // not a PDF page
+  ]
+  assert.deepEqual(Object.fromEntries(pageOwners(blocks, assets)), {
+    'b-p1': 'b-p1',
+    't-1': 'b-p1',
+    'b-img': null,
+    't-plain': null,
+    't-gone': null,
+    't-img': null,
+  })
 })

@@ -56,6 +56,20 @@ export function pageLabel(info: Pick<PageInfo, 'pageNumber' | 'pageCount'>): str
   return info.pageCount ? `Page ${info.pageNumber} of ${info.pageCount}` : `Page ${info.pageNumber}`
 }
 
+/**
+ * The page each board block belongs to: a page block itself, or a paragraph refined from speech under that page
+ * (blocks.page_block_id). Ordinary images and paragraphs, and paragraphs whose page isn't on the board, get null.
+ */
+export function pageOwners(
+  blocks: Pick<Block, 'id' | 'kind' | 'asset_id' | 'page_block_id'>[],
+  assets: Record<string, Asset>,
+): Map<string, string | null> {
+  const pages = new Set(blocks.filter((b) => pageInfo(b, assets)).map((b) => b.id))
+  return new Map(
+    blocks.map((b) => [b.id, pages.has(b.id) ? b.id : b.page_block_id && pages.has(b.page_block_id) ? b.page_block_id : null]),
+  )
+}
+
 /** The first board block showing a page of this PDF, if the PDF is already on the board. */
 export function pdfFirstBlockOnBoard(
   blocks: Pick<Block, 'id' | 'kind' | 'asset_id'>[],

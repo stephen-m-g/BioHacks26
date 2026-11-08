@@ -47,6 +47,7 @@ create table blocks (
   text text,                  -- text blocks: refined paragraph
   asset_id uuid references assets on delete set null,  -- image blocks
   aspect real,                -- image blocks: width / height
+  page_block_id uuid references blocks on delete set null,  -- text blocks: the PDF page block this speech is under
   created_at timestamptz default now()
 );
 
@@ -84,6 +85,7 @@ create table transcript_segments (
   confidence real,
   annotation_id uuid references annotations on delete set null,
   text_block_id uuid references blocks on delete set null,  -- null = not refined yet
+  page_block_id uuid references blocks on delete set null,  -- PDF page block that was active when this was said
   text_start integer,      -- half-open UTF-16 range inside the cleaned text block (browser String units)
   text_end integer,
   created_at timestamptz default now()

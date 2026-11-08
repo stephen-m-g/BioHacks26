@@ -30,6 +30,7 @@ class RefineGemini(BaseModel):
 class RefineOut(BaseModel):
     block: dict | None
     segment_ids: list[str]
+    moved_blocks: list[dict] = Field(default_factory=list)  # blocks shifted down to make room under a PDF page
 
 
 # --- /sessions/{id}/scribe-token ---

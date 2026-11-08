@@ -27,6 +27,9 @@ export interface SessionState {
    * fingers scroll (palm rejection). Not persisted, so a session without a pencil still lets fingers draw.
    */
   pencilSeen: boolean
+  /** PDF page block the teacher is on: new speech is saved with it and refined under that page. */
+  activePageBlockId: string | null
+  setActivePage: (blockId: string | null) => void
   setPencilSeen: () => void
   reset: (sessionId: string | null) => void
   setPendingAnnotation: (id: string | null) => void
@@ -46,9 +49,11 @@ export const useSessionStore = create<SessionState>((set) => ({
   selectedAssetId: null,
   draggingAssetId: null,
   pencilSeen: false,
+  activePageBlockId: null,
+  setActivePage: (activePageBlockId) => set({ activePageBlockId }),
   setPencilSeen: () => set({ pencilSeen: true }),
   reset: (sessionId) =>
-    set({ sessionId, pendingAnnotationId: null, selectedAssetId: null, draggingAssetId: null }),
+    set({ sessionId, pendingAnnotationId: null, selectedAssetId: null, draggingAssetId: null, activePageBlockId: null }),
   setPendingAnnotation: (id) => set({ pendingAnnotationId: id }),
   setMode: (mode) => set({ mode }),
   setInkColor: (inkColor) => set({ inkColor }),

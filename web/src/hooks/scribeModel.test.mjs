@@ -205,7 +205,59 @@ test('preserves the whole utterance when any word timing is missing instead of d
     tStart: '2026-11-07T19:00:02.100Z',
     tEnd: '2026-11-07T19:00:03.800Z',
     annotationId: 'ann-a',
+    pageBlockId: null,
   }])
+})
+
+test('splits an utterance at page changes using when each word was spoken, not when it arrived', () => {
+  const t0 = Date.parse('2026-11-07T19:00:00.000Z')
+  const changes = [
+    [t0 + 0, 'p1'],
+    [t0 + 3_000, 'p2'],
+    [t0 + 6_000, 'p1'],
+  ]
+  const at = (ms) => changes.filter(([from]) => from <= ms).at(-1)?.[1]
+  const parts = partitionTimestampedTranscript(
+    'On this page. Next page here. Back again.',
+    [
+      { text: 'On this page. ', start: 1, end: 2.5, type: 'word' },
+      { text: 'Next page here. ', start: 3.5, end: 5, type: 'word' },
+      { text: 'Back again.', start: 6.5, end: 7.5, type: 'word' },
+    ],
+    t0,
+    '2026-11-07T19:00:09.000Z',
+    '2026-11-07T19:00:10.000Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:03.200Z', closedAt: '2026-11-07T19:00:05.500Z' }],
+    { at, fallback: 'p9' },
+  )
+
+  assert.deepEqual(parts.map(({ text, annotationId, pageBlockId }) => ({ text, annotationId, pageBlockId })), [
+    { text: 'On this page.', annotationId: null, pageBlockId: 'p1' },
+    { text: 'Next page here.', annotationId: 'ann-a', pageBlockId: 'p2' }, // annotations stay independent of pages
+    { text: 'Back again.', annotationId: null, pageBlockId: 'p1' },
+  ])
+})
+
+test('without word timing, the page captured when speech began is used', () => {
+  const parts = partitionTimestampedTranscript(
+    'No timings.',
+    undefined,
+    null,
+    '2026-11-07T19:00:01.000Z',
+    '2026-11-07T19:00:02.000Z',
+    [],
+    { at: () => 'p2', fallback: 'p1' },
+  )
+  assert.equal(parts[0].pageBlockId, 'p1')
+})
+
+test('words before any recorded page change fall back to the captured page; no lookup means no page', () => {
+  const t0 = Date.parse('2026-11-07T19:00:00.000Z')
+  const words = [{ text: 'Hello.', start: 1, end: 2, type: 'word' }]
+  const args = ['Hello.', words, t0, '2026-11-07T19:00:01.000Z', '2026-11-07T19:00:02.000Z', []]
+  assert.equal(partitionTimestampedTranscript(...args, { at: () => undefined, fallback: 'p1' })[0].pageBlockId, 'p1')
+  assert.equal(partitionTimestampedTranscript(...args, { at: () => null, fallback: 'p1' })[0].pageBlockId, null)
+  assert.equal(partitionTimestampedTranscript(...args)[0].pageBlockId, null)
 })
 
 test('does not attach a boundary-crossing word to either side', () => {

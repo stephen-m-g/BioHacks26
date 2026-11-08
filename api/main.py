@@ -79,34 +79,39 @@ def refine_session(session_id: str) -> RefineOut:
 
 
 def refine_batch(db, session_id: str) -> RefineOut:
-    """Refine the oldest unrefined segments (up to ~MAX_REFINE_WORDS) into one text block. Call under refine_lock."""
+    """Refine the oldest unrefined segments (up to ~MAX_REFINE_WORDS, all from the same PDF page or all from no
+    page) into one text block. Call under refine_lock.
+
+    No page: the paragraph is appended to the end of the board. A page: it goes right after that page's existing
+    paragraphs (before whatever follows the page), so each page's speech stays under it in spoken order."""
     t0 = time.perf_counter()
     unrefined = (
         db.table("transcript_segments")
-        .select("id, raw_text, t_start, t_end, created_at")
+        .select("*")
         .eq("session_id", session_id)
         .is_("text_block_id", "null")
         .execute()
         .data
     )
+    if not unrefined:
+        return RefineOut(block=None, segment_ids=[])
     unrefined.sort(key=segment_order_key)
+    blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
+    image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
+    page_of = lambda s: s.get("page_block_id") if s.get("page_block_id") in image_ids else None  # noqa: E731
+    page_id = page_of(unrefined[0])
     segs, words = [], 0
     for s in unrefined:
+        if page_of(s) != page_id:
+            break  # speech about another page (or none) is its own paragraph, in the next call
         segs.append(s)
         words += len(s["raw_text"].split())
         if words >= MAX_REFINE_WORDS:
             break  # the rest goes in the next call
-    if not segs:
-        return RefineOut(block=None, segment_ids=[])
 
     vocab = lecture_vocab(db, session_id)
-    blocks = (
-        db.table("blocks").select("*").eq("session_id", session_id)
-        .order("position", desc=True).execute().data
-    )
-    max_pos = blocks[0]["position"] if blocks else 0.0
-    prev_block = next((b for b in blocks if b["kind"] == "text" and b.get("text")), None)
-    prev_text = prev_block["text"] if prev_block else ""
+    position, prev_block, moved = paragraph_slot(db, blocks, page_id)
+    prev_text = prev_block["text"] if prev_block and prev_block["kind"] == "text" else ""
     db_read_ms = ms(t0)
 
     # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
@@ -117,23 +122,54 @@ def refine_batch(db, session_id: str) -> RefineOut:
 
     t_write = time.perf_counter()
     if text or not prev_block:
-        block = (
-            db.table("blocks")
-            .insert({"session_id": session_id, "kind": "text", "position": max_pos + 1, "text": text})
-            .execute()
-            .data[0]
-        )
+        row = {"session_id": session_id, "kind": "text", "position": position, "text": text}
+        if page_id:
+            row["page_block_id"] = page_id
+        block = db.table("blocks").insert(row).execute().data[0]
     else:
-        block = prev_block  # only filler was said: mark it refined without adding an empty paragraph
+        # Only filler was said: mark it refined without adding an empty paragraph (under a page with no
+        # paragraphs yet, the page block itself holds it; it has no text, so nothing is shown).
+        block = prev_block
     ids = [s["id"] for s in segs]
     for segment, (text_start, text_end) in zip(segs, offsets):
         db.table("transcript_segments").update({
             "text_block_id": block["id"], "text_start": text_start, "text_end": text_end,
         }).eq("id", segment["id"]).execute()
-    log.info("[refine] segs=%d words_in=%d words_out=%d left=%d gemini=%s outcomes=%s db=%.0fms gemini=%.0fms "
-             "total=%.0fms", len(ids), words, len(text.split()), len(unrefined) - len(ids),
-             "ok" if out else "failed", dict(sorted(outcomes.items())), db_read_ms + ms(t_write), gemini_ms, ms(t0))
-    return RefineOut(block=block, segment_ids=ids)
+    log.info("[refine] segs=%d words_in=%d words_out=%d left=%d page=%s gemini=%s outcomes=%s db=%.0fms "
+             "gemini=%.0fms total=%.0fms", len(ids), words, len(text.split()), len(unrefined) - len(ids),
+             "yes" if page_id else "no", "ok" if out else "failed", dict(sorted(outcomes.items())),
+             db_read_ms + ms(t_write), gemini_ms, ms(t0))
+    return RefineOut(block=block, segment_ids=ids, moved_blocks=moved)
+
+
+MIN_POSITION_GAP = 1e-6
+
+
+def paragraph_slot(db, blocks: list[dict], page_id: str | None) -> tuple[float, dict | None, list[dict]]:
+    """(position for a new paragraph, the block before it, blocks shifted to make room).
+
+    `blocks` is the board in position order. No page: after the last block, following the last ordinary
+    paragraph. A page: after the page's last paragraph (or the page itself), before the next block. If
+    repeated midpoints have worn the gap down, the blocks from the next one on move down by 1 (and are returned
+    so the teacher's board can update without waiting for realtime)."""
+    if page_id is None:
+        prev = next((b for b in reversed(blocks) if b["kind"] == "text" and b.get("text")
+                     and not b.get("page_block_id")), None)
+        return (blocks[-1]["position"] + 1 if blocks else 1.0), prev, []
+    index = max(i for i, b in enumerate(blocks) if b["id"] == page_id or b.get("page_block_id") == page_id)
+    prev = blocks[index]
+    following = blocks[index + 1:]
+    if not following:
+        return prev["position"] + 1, prev, []
+    gap = following[0]["position"] - prev["position"]
+    moved = []
+    if gap < MIN_POSITION_GAP:
+        for b in following:
+            b["position"] += 1
+            db.table("blocks").update({"position": b["position"]}).eq("id", b["id"]).execute()
+            moved.append(dict(b))
+        gap += 1
+    return prev["position"] + gap / 2, prev, moved
 
 
 def refine_prompt(vocab: list[str], prev_text: str, segments: list[dict]) -> str:
@@ -592,7 +628,7 @@ def compile_session(session_id: str) -> NotesContent:
         doc = compile_input(title, blocks, anns, assets)
         out, gemini_ms = ai.generate("compile", prompts.COMPILE, [doc], NotesContent, timeout_ms=120_000)
     notes = clean_notes(out, blocks, anns, title) if out else fallback_notes(title, blocks, anns)
-    ensure_page_figures(notes, blocks, assets)
+    arrange_pdf_pages(notes, blocks, anns, assets)
 
     t_write = time.perf_counter()
     db.table("lecture_notes").upsert({"session_id": session_id, "content": notes.model_dump()}).execute()
@@ -602,7 +638,10 @@ def compile_session(session_id: str) -> NotesContent:
 
 
 def chronological_blocks(blocks: list[dict], segments: list[dict]) -> list[dict]:
-    """Order text blocks by their earliest spoken segment while leaving image slots in place."""
+    """Order text blocks by their earliest spoken segment while leaving image slots in place.
+
+    Paragraphs under a PDF page stay where they are: refine already put them under their page in spoken order,
+    and moving them by time would carry a page's explanation to another page."""
     ordered = sorted(blocks, key=lambda block: (block.get("position", 0), block.get("id") or ""))
     by_block: dict[str, list[dict]] = {}
     for segment in segments:
@@ -610,7 +649,7 @@ def chronological_blocks(blocks: list[dict], segments: list[dict]) -> list[dict]
             by_block.setdefault(segment["text_block_id"], []).append(segment)
     timed_indexes = [
         index for index, block in enumerate(ordered)
-        if block["kind"] == "text" and by_block.get(block["id"])
+        if block["kind"] == "text" and by_block.get(block["id"]) and not block.get("page_block_id")
     ]
     timed_blocks = sorted(
         (ordered[index] for index in timed_indexes),
@@ -666,24 +705,62 @@ def page_block_ids(blocks: list, assets: list) -> list[str]:
     return [b["id"] for b in blocks if b["kind"] == "image" and b.get("asset_id") in page_assets]
 
 
-def ensure_page_figures(notes: NotesContent, blocks: list, assets: list) -> None:
-    """Every PDF page on the board appears once in the notes, even if nobody talked about it: a page Gemini
-    didn't place joins the section of the nearest text before it on the board (or the first section)."""
-    pages = page_block_ids(blocks, assets)
+def page_heading(page: dict, assets_by_id: dict) -> str:
+    pdf = assets_by_id.get(page.get("source_asset_id"), {})
+    return f"{pdf.get('label') or pdf.get('file_name') or 'PDF'}, page {page.get('page_number')}"
+
+
+def arrange_pdf_pages(notes: NotesContent, blocks: list, anns: list, assets: list) -> None:
+    """Give every PDF page on the board its own section: the page, then exactly the paragraphs spoken under it.
+
+    Deterministic, from the board (blocks.page_block_id), never from Gemini: a page nobody talked about is shown
+    with no text, each cleaned paragraph appears once, and paragraphs that aren't about a page keep Gemini's
+    sections (split where a page interrupts them), headings, key terms and figure captions. Does nothing on
+    boards without PDF pages."""
+    pages = set(page_block_ids(blocks, assets))
     if not pages:
         return
-    placed = {f.image_block_id for s in notes.sections for f in s.figures}
-    if not notes.sections:
-        notes.sections.append(Section(id="s1", heading="Pages", paragraphs=[], key_terms=[], figures=[],
-                                      annotation_ids=[]))
-    section_of_text = {block_id: s for s in notes.sections for block_id in s.paragraph_block_ids}
-    current = notes.sections[0]
-    for block in blocks:
-        if block["id"] in section_of_text:
-            current = section_of_text[block["id"]]
-        elif block["id"] in pages and block["id"] not in placed:
-            current.figures.append(Figure(image_block_id=block["id"], caption=""))
-            placed.add(block["id"])
+    assets_by_id = {a["id"]: a for a in assets}
+    origin = {block_id: s for s in notes.sections for block_id in s.paragraph_block_ids}
+    captions = {f.image_block_id: f.caption for s in notes.sections for f in s.figures}
+    out: list[Section] = []
+    page_sections: dict[str, Section] = {}
+    terms_placed: set[int] = set()
+    current: Section | None = None
+    current_origin: int | None = None  # id() of the Gemini section the current section continues
+
+    def start(heading: str) -> Section:
+        section = Section(id="", heading=heading, paragraphs=[], key_terms=[], figures=[], annotation_ids=[])
+        out.append(section)
+        return section
+
+    for b in blocks:
+        if b["id"] in pages:
+            current = start(page_heading(assets_by_id.get(b.get("asset_id"), {}), assets_by_id))
+            current.figures.append(Figure(image_block_id=b["id"], caption=captions.get(b["id"], "")))
+            page_sections[b["id"]], current_origin = current, None
+        elif b["kind"] == "text" and (b.get("text") or "").strip():
+            source = origin.get(b["id"])
+            target = page_sections.get(b.get("page_block_id"))
+            if target is None:
+                if current is None or current_origin != id(source):
+                    current = start(source.heading if source else "Notes")
+                    current_origin = id(source)
+                target = current
+            target.paragraphs.append(b["text"].strip())
+            target.paragraph_block_ids.append(b["id"])
+            if source is not None and id(source) not in terms_placed:
+                target.key_terms = target.key_terms + source.key_terms
+                terms_placed.add(id(source))
+        elif b["kind"] == "image" and b["id"] in captions:
+            if current is None:
+                current, current_origin = start("Notes"), None
+            current.figures.append(Figure(image_block_id=b["id"], caption=captions[b["id"]]))
+
+    notes.sections = [s for s in out if s.paragraphs or s.figures]
+    for i, s in enumerate(notes.sections, 1):
+        s.id = f"s{i}"
+    ensure_annotation_figures(notes, blocks, anns)
 
 
 DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he renames it

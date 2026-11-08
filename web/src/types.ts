@@ -79,6 +79,8 @@ export interface Block {
   asset_id: UUID | null
   /** image width / height */
   aspect: number | null
+  /** Text blocks: the PDF page block this speech was given under. Absent before the page_speech migration. */
+  page_block_id?: UUID | null
   created_at: Timestamp
 }
 
@@ -118,6 +120,8 @@ export interface TranscriptSegment {
   annotation_id: UUID | null
   /** null = not refined into a text block yet */
   text_block_id: UUID | null
+  /** PDF page block that was active when this was said; null/absent = ordinary speech. */
+  page_block_id?: UUID | null
   /** Half-open UTF-16 range inside the cleaned text block (browser String units). Null on legacy rows. */
   text_start: number | null
   text_end: number | null

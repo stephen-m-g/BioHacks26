@@ -5,6 +5,7 @@ import {
   RefineCoordinator,
   buildTranscriptSegment,
   flushSpeechAndWaitForPendingWrites,
+  segmentInsertRow,
   waitForPendingWrites,
 } from './teacherActionsModel.ts'
 
@@ -53,6 +54,34 @@ test('preserves an explicitly captured null annotation when a new annotation ope
 
   assert.equal(row.session_id, 'session-captured')
   assert.equal(row.annotation_id, null)
+})
+
+test('persists the page captured with the speech, or the active page without capture context', () => {
+  const captured = buildTranscriptSegment({
+    ...base,
+    context: { sessionId: 'session-captured', annotationId: null, pageBlockId: 'page-2' },
+    defaultPageBlockId: 'page-5',
+  })
+  assert.equal(captured.page_block_id, 'page-2')
+
+  const capturedNone = buildTranscriptSegment({
+    ...base,
+    context: { sessionId: 'session-captured', annotationId: null, pageBlockId: null },
+    defaultPageBlockId: 'page-5',
+  })
+  assert.equal(capturedNone.page_block_id, null)
+
+  const uncaptured = buildTranscriptSegment({ ...base, context: null, defaultPageBlockId: 'page-5' })
+  assert.equal(uncaptured.page_block_id, 'page-5')
+})
+
+test('a segment without a page is inserted without the column, so it works before the migration', () => {
+  const plain = buildTranscriptSegment({ ...base, context: null })
+  assert.equal('page_block_id' in segmentInsertRow(plain), false)
+  assert.equal(segmentInsertRow(plain).raw_text, base.rawText)
+
+  const onPage = buildTranscriptSegment({ ...base, context: null, defaultPageBlockId: 'page-1' })
+  assert.equal(segmentInsertRow(onPage).page_block_id, 'page-1')
 })
 
 test('waits for an active refine and then runs one final drain', async () => {

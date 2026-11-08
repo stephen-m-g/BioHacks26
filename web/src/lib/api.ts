@@ -49,9 +49,9 @@ export const api = {
     post<{ label: string; description: string; key_terms: string[] }>(`/assets/${assetId}/describe`),
   /** Render a PDF's pages to page-image assets (once; later calls return the same pages). */
   renderPdfPages: (assetId: string) => post<{ page_count: number; pages: Asset[] }>(`/assets/${assetId}/pages`),
-  /** Batch-clean unrefined speech into one text block appended to the board. */
+  /** Batch-clean unrefined speech into one text block: appended to the board, or under its PDF page. */
   refineSession: (sessionId: string) =>
-    post<{ block: Block | null; segment_ids: string[] }>(`/sessions/${sessionId}/refine`),
+    post<{ block: Block | null; segment_ids: string[]; moved_blocks?: Block[] }>(`/sessions/${sessionId}/refine`),
   closeAnnotation: (annotationId: string, cropPngBase64?: string) =>
     post<{ label: string | null; bubble_text: string | null }>(`/annotations/${annotationId}/close`, {
       crop_png_base64: cropPngBase64,
