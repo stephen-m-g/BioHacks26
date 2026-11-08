@@ -11,9 +11,11 @@ Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illeg
 ## Screens
 | Route | Screen |
 |---|---|
-| `/` | **Dashboard.** *Prepared lectures* (not archived): New, Start, Edit, Archive, plus a link to *All lectures*. *Past sessions*: View notes, Delete (confirm). A still-live session shows Resume. |
-| `/lectures` | **All lectures**, including archived: Edit, Archive/Restore, Delete. Deleting a lecture also deletes its past sessions; the confirm dialog says so. |
-| `/prep/:lectureId` | **Prep**, chat-style. He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title. **Save** applies the title and removals and returns to the dashboard (it does not start a session). **← Dashboard** leaves without saving: uploads from this visit are deleted again, removed items come back, and a brand-new lecture (opened with `?new=1`) is deleted entirely. It asks to confirm only if something would be lost. |
+| `/` | **Dashboard**, bento layout that fits one screen (no page scroll). Row 1: aside logo, **New lecture**. Row 2: class filter (All + multi-select class chips; selecting every class or none returns to All; a lecture/session shows if it's in any selected class; **+** adds or edits classes). Grid: top left **Ready to present** (count next to the title, arrow to `/lectures`; list scrolls in its card: Start, Edit, ⋯ Classes…/Archive/Delete); bottom left **Archive** (link card to `/archive`); right **Recorded sessions** (count next to the title, arrow to `/sessions`; list scrolls in its card: Notes or Resume, ⋯ Transcript/Classes…/Delete). Portrait iPad stacks the cards; phones and very short windows let the page scroll. |
+| `/lectures` | **Lectures**: active lectures only (Start, Edit, ⋯ Archive/Delete). Opened from the arrow on the dashboard's Ready to present card. |
+| `/archive` | **Archive**: archived lectures only (Edit, ⋯ Restore/Delete permanently). Opened from the dashboard's Archive card. Deleting a lecture also deletes its past sessions; the confirm dialog says so. |
+| `/sessions` | **Recorded sessions**: every session, newest first (Notes or Resume, Transcript, ⋯ Classes…/Delete). Opened from the arrow on the dashboard's Recorded sessions card. |
+| `/prep/:lectureId` | **Prep**, chat-style. A **Classes** row toggles which classes the lecture is in (applied on Save, undone by ← Lectures; "New class" creates one immediately). He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title. **Save** applies the title and removals and returns to the dashboard (it does not start a session). **← Dashboard** leaves without saving: uploads from this visit are deleted again, removed items come back, and a brand-new lecture (opened with `?new=1`) is deleted entirely. It asks to confirm only if something would be lost. |
 | `/teach/:sessionId` | **Live session** (below). Projected for the class. |
 | `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land, plus Recompile and Print/PDF buttons. |
 | `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. Not linked from anywhere for now. |
@@ -90,3 +92,13 @@ Figures render the image with one card per confirmed annotation. Selecting a cir
 - Nothing has been tested against a real Supabase project (no keys yet), and nothing has been tested on an iPad.
 - The crop image for `/close` isn't sent yet. The backend can crop the asset image to `bbox` itself.
 - Adaptive volume and speech metrics (P3) aren't started.
+
+## Classes
+Named, colored groupings: different classes, or sections of one class. Tables `classes(id, name, color)`, `lecture_classes(lecture_id, class_id)`,
+`session_classes(session_id, class_id)` (many-to-many; migration `supabase/migrations/2026-11-07_classes.sql`). A new session copies its lecture's
+classes. A lecture created while the dashboard is filtered to a class starts in that class. Deleting a class keeps its lectures and sessions.
+
+## Design system
+Colors, type, spacing and radii live in `web/src/styles/tokens.css` (SF Pro system font, neutral black-and-white palette, contrast >= 4.5:1, 64px tap targets). Page stylesheets reference these tokens instead of defining their own.
+
+Exception (chosen): the dashboard bento lists, row buttons, card-header arrows and class chips use 48px tap areas so rows can be thin. "New lecture" and every other page keep 64px.

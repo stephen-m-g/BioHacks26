@@ -94,7 +94,8 @@ export default function Notes() {
         <Link className="p4-btn" to="/">
           <IconArrowLeft /> Lectures
         </Link>
-        <button onClick={compile} disabled={compiling}>
+        <div className="p4-spacer" />
+        <button className="p4-btn outline" onClick={compile} disabled={compiling}>
           {compiling ? 'Compiling…' : hasContent ? 'Recompile' : 'Compile notes'}
         </button>
         {hasContent && (
@@ -134,7 +135,9 @@ export default function Notes() {
                 <span>
                   <IconClock /> {formatDate(data.session?.started_at)}
                 </span>
-                <span>{content.sections.length} sections</span>
+                <span>
+                  {content.sections.length} section{content.sections.length === 1 ? '' : 's'}
+                </span>
               </p>
               {content.overview && (
                 <section className="st-overview-block" aria-labelledby="overview-heading">

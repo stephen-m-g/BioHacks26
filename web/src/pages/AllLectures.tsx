@@ -1,35 +1,47 @@
-// P4 owns this page. Every lecture, archived or not: edit, archive/restore, delete.
+// P4 owns this page. Two modes: /lectures lists active lectures (start, edit, archive, delete) and
+// /archive lists archived ones (restore, edit, delete).
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { ClassDotButton, ClassPickerDialog } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { IconArrowLeft, IconClock, IconDots, IconEdit } from '../components/DashIcons'
-import { deleteLecture, setArchived } from '../lib/lectures'
+import { IconArrowLeft, IconClock, IconDots, IconEdit, IconPlay } from '../components/DashIcons'
+import { createClass, listClasses, setLectureClasses } from '../lib/classes'
+import { deleteLecture, setArchived, startSession } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
-import type { Lecture } from '../types'
+import type { ClassGroup, Lecture } from '../types'
 import '../styles/p4.css'
 
-type Row = Lecture & { sessions: { count: number }[] }
+type Row = Lecture & { sessions: { count: number }[]; lecture_classes?: { class_id: string }[] | null }
+
+const EMPTY: string[] = []
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-function initials(title: string | null | undefined) {
-  const words = (title ?? '').trim().split(/\s+/).filter(Boolean)
-  return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '?'
-}
-
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
-export default function AllLectures() {
+export default function AllLectures({ mode }: { mode: 'active' | 'archived' }) {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Row | null>(null)
+  const [classes, setClasses] = useState<ClassGroup[]>([])
+  const [picker, setPicker] = useState<{ id: string; title: string; selected: string[] } | null>(null)
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from('lectures').select('*, sessions(count)').order('created_at', { ascending: false })
-    setError(error?.message ?? null)
-    setRows((data as Row[]) ?? [])
+    const query = (withClasses: boolean) =>
+      supabase
+        .from('lectures')
+        .select(`*, sessions(count)${withClasses ? ', lecture_classes(class_id)' : ''}`)
+        .order('created_at', { ascending: false })
+    let res = await query(true)
+    if (res.error) res = await query(false) // classes migration not run yet
+    setError(res.error?.message ?? null)
+    setRows((res.data as unknown as Row[]) ?? [])
+    setClasses(await listClasses().catch(() => []))
   }, [])
+
+  const byId = new Map(classes.map((c) => [c.id, c]))
 
   useEffect(() => {
     load()
@@ -45,8 +57,7 @@ export default function AllLectures() {
     }
   }
 
-  const active = rows.filter((r) => !r.archived_at)
-  const archived = rows.filter((r) => r.archived_at)
+  const shown = rows.filter((r) => (mode === 'archived' ? !!r.archived_at : !r.archived_at))
   const sessionCount = toDelete?.sessions?.[0]?.count ?? 0
 
   const renderRow = (l: Row) => {
@@ -54,8 +65,13 @@ export default function AllLectures() {
     const sessions = l.sessions?.[0]?.count ?? 0
     return (
       <li key={l.id} className={`p4-row${isArchived ? ' faded' : ''}`}>
-        <div className={`p4-avatar${isArchived ? '' : ' dark'}`} aria-hidden="true">
-          {initials(l.title)}
+        <div className="p4-avatar class-holder">
+          <ClassDotButton
+            size={28}
+            itemTitle={l.title}
+            classes={(l.lecture_classes ?? []).map((x) => byId.get(x.class_id)).filter((x): x is ClassGroup => !!x)}
+            onClick={() => setPicker({ id: l.id, title: l.title, selected: (l.lecture_classes ?? []).map((x) => x.class_id) })}
+          />
         </div>
         <div className="p4-main">
           <h3 className="p4-row-title">{l.title}</h3>
@@ -68,6 +84,11 @@ export default function AllLectures() {
           </div>
         </div>
         <div className="p4-actions">
+          {!isArchived && (
+            <button className="p4-btn outline-strong" onClick={() => act(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}>
+              <IconPlay /> Start
+            </button>
+          )}
           <Link className="p4-btn" to={`/prep/${l.id}`}>
             <IconEdit /> Edit
           </Link>
@@ -111,13 +132,19 @@ export default function AllLectures() {
     <div className="p4">
       <header className="p4-top">
         <Link className="p4-btn" to="/">
-          <IconArrowLeft /> Lectures
+          <IconArrowLeft /> Dashboard
+        </Link>
+        <div className="p4-spacer" />
+        <Link className="p4-btn quiet" to={mode === 'archived' ? '/lectures' : '/archive'}>
+          {mode === 'archived' ? 'Active lectures' : 'Archive'}
         </Link>
       </header>
       <div className="p4-inner">
-        <h1 className="p4-title">All lectures</h1>
+        <h1 className="p4-title">{mode === 'archived' ? 'Archive' : 'Lectures'}</h1>
         <p className="p4-sub">
-          {plural(active.length, 'active lecture')} · {archived.length} archived
+          {mode === 'archived'
+            ? `${plural(shown.length, 'archived lecture')} · hidden from the dashboard, sessions and notes kept`
+            : `${plural(shown.length, 'active lecture')} · newest first`}
         </p>
 
         {error && (
@@ -129,26 +156,15 @@ export default function AllLectures() {
           </div>
         )}
 
-        <section className="p4-section" aria-labelledby="active-heading">
-          <div className="p4-section-head">
-            <h2 id="active-heading" className="p4-label">
-              Active
-            </h2>
-            {active.length > 1 && <span className="p4-hint">Newest first</span>}
-          </div>
-          {active.length === 0 && <p className="p4-empty">No active lectures. Create one from the dashboard.</p>}
-          <ul className="p4-list">{active.map(renderRow)}</ul>
-        </section>
-
-        <section className="p4-section" aria-labelledby="archived-heading">
-          <div className="p4-section-head">
-            <h2 id="archived-heading" className="p4-label">
-              Archived
-            </h2>
-            <span className="p4-hint">Hidden from the dashboard</span>
-          </div>
-          {archived.length === 0 && <p className="p4-empty">Archived lectures show up here. Their sessions and notes are kept.</p>}
-          <ul className="p4-list">{archived.map(renderRow)}</ul>
+        <section className="p4-section" aria-label={mode === 'archived' ? 'Archived lectures' : 'Active lectures'}>
+          {shown.length === 0 && (
+            <p className="p4-empty">
+              {mode === 'archived'
+                ? 'Nothing archived. Archive a lecture from its ⋯ menu to hide it from the dashboard.'
+                : 'No active lectures. Create one from the dashboard.'}
+            </p>
+          )}
+          <ul className="p4-list">{shown.map(renderRow)}</ul>
         </section>
       </div>
 
@@ -174,6 +190,22 @@ export default function AllLectures() {
         )}
         . This can't be undone. To just hide it, archive it instead.
       </ConfirmDialog>
+
+      <ClassPickerDialog
+        open={picker !== null}
+        title={picker?.title ?? ''}
+        classes={classes}
+        selected={picker?.selected ?? EMPTY}
+        onCancel={() => setPicker(null)}
+        onSave={(ids, fresh) =>
+          act(async () => {
+            if (!picker) return
+            const created = await Promise.all(fresh.map((f) => createClass(f.name, f.color)))
+            await setLectureClasses(picker.id, [...ids, ...created.map((c) => c.id)])
+            setPicker(null)
+          })
+        }
+      />
     </div>
   )
 }

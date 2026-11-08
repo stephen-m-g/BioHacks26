@@ -1,0 +1,52 @@
+/* Design tokens: the single source for color, type, spacing and radii across every page.
+   Sleek black-and-white, accessibility first:
+   - text contrast >= 4.5:1 on --c-bg and --c-card (ratios noted below)
+   - tap targets >= 64px (patient rule; the visible shape may be smaller inside the hit area)
+   - SF Pro via the system stack (no web-font download, so no layout shift while fonts load) */
+:root {
+  /* color */
+  --c-bg: #f5f5f4; /* page */
+  --c-card: #ffffff; /* raised surfaces: cards, chips, menus, composer */
+  --c-sunken: #fafaf9; /* sidebars, quiet fills */
+  --c-soft: #ebebe9; /* chip fills, hovered rows */
+  --c-line: #e3e3e0; /* hairline dividers and borders */
+  --c-line-strong: #c9c9c5; /* control borders */
+  --c-fg: #111111; /* text, solid buttons (17.9:1 on --c-bg) */
+  --c-text: #2a2a28; /* long-form body text (13.6:1) */
+  --c-muted: #5c5c58; /* secondary text (6.1:1 on --c-bg, 6.6:1 on white) */
+  --c-faded: #6b6b67; /* past items (4.9:1 on --c-bg) */
+  --c-danger: #b42318; /* (6.3:1 on white) */
+  --c-danger-bg: #fdecea;
+  --c-ok: #15803d;
+  --c-hover: rgba(17, 17, 17, 0.06);
+
+  /* type */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --fs-eyebrow: 12px; /* uppercase section labels */
+  --fs-meta: 14px;
+  --fs-body: 16px;
+  --fs-row-title: 19px;
+  --fs-page-title: clamp(30px, 3.6vw, 40px);
+
+  /* spacing (4px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* shape and depth */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+  --shadow-pop: 0 2px 6px rgba(17, 17, 17, 0.06), 0 12px 32px rgba(17, 17, 17, 0.1);
+
+  --tap: 64px;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
