@@ -1,15 +1,17 @@
 // P3 owns this hook. ElevenLabs Scribe v2 Realtime is the only speech-to-text engine; it feeds
 // final utterances to the segment pipeline through onFinal.
-import { CommitStrategy, useScribe, type UseScribeReturn } from '@elevenlabs/react'
+import { CommitStrategy, RealtimeEvents, useScribe, type UseScribeReturn, type WordTimestamp } from '@elevenlabs/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ApiError, api } from '../lib/api'
 import {
   SCRIBE_MODEL_ID,
   ScribeUtteranceBuffer,
+  TimestampedCommitQueue,
   classifyTokenError,
   describeMicrophoneError,
   describeScribeError,
   parseKeyterms,
+  timestampedTranscript,
   type ScribeErrorKind,
   type ScribeFailure,
 } from './scribeModel'
@@ -17,7 +19,6 @@ import {
   calculateSpeechMetrics,
   countWords,
   getRestartDelay,
-  splitSentences,
   type SpeechMetrics,
   type SpeechSample,
   type TranscriptionContext,
@@ -40,6 +41,10 @@ interface UtteranceCapture {
 interface Attempt {
   generation: number
   buffer: ScribeUtteranceBuffer<UtteranceCapture>
+  pendingCommits: TimestampedCommitQueue<{ capture: UtteranceCapture; text: string }>
+  /** Wall-clock time of the first microphone audio frame; Scribe word times use this cumulative audio clock. */
+  audioStartedAt: number | null
+  detachAudioStarted: (() => void) | null
   /** scribe.connect() was called, so a close event belongs to this attempt. */
   connected: boolean
   stopping: Promise<void> | null
@@ -117,15 +122,15 @@ export function useScribeTranscription({
     startedAt: new Date().toISOString(),
   })
 
-  const save = ({ capture: captured, text }: { capture: UtteranceCapture; text: string }) => {
+  const save = (captured: UtteranceCapture, text: string, tStart: string, tEnd: string) => {
     const completedAt = Date.now()
-    const endedAt = new Date(completedAt).toISOString()
-    for (const sentence of splitSentences(text)) {
-      captured.onFinal(sentence, null, captured.startedAt, endedAt, captured.context)
-    }
+    captured.onFinal(text, null, tStart, tEnd, captured.context)
     samplesRef.current = [...samplesRef.current, { completedAt, wordCount: countWords(text), confidence: null }]
     refreshMetrics(completedAt)
   }
+
+  const saveFallback = ({ capture: captured, text }: { capture: UtteranceCapture; text: string }) =>
+    save(captured, text, captured.startedAt, new Date().toISOString())
 
   const clearRetry = () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
@@ -137,8 +142,12 @@ export function useScribeTranscription({
     if (attemptRef.current !== attempt) return
     if (flush && attempt.generation === generationRef.current) {
       const leftover = attempt.buffer.flushPartial()
-      if (leftover) save(leftover)
+      if (leftover) saveFallback(leftover)
+      for (const pending of attempt.pendingCommits.drain()) {
+        saveFallback(pending)
+      }
     }
+    attempt.detachAudioStarted?.()
     attemptRef.current = null
     attempt.onCommit?.()
     scribeRef.current?.disconnect()
@@ -165,6 +174,9 @@ export function useScribeTranscription({
     const attempt: Attempt = {
       generation,
       buffer: new ScribeUtteranceBuffer<UtteranceCapture>(),
+      pendingCommits: new TimestampedCommitQueue<{ capture: UtteranceCapture; text: string }>(),
+      audioStartedAt: null,
+      detachAudioStarted: null,
       connected: false,
       stopping: null,
       failure: null,
@@ -200,6 +212,14 @@ export function useScribeTranscription({
     attempt.connected = true
     try {
       await scribeRef.current.connect({ token })
+      const connection = scribeRef.current.getConnection()
+      if (connection) {
+        const markAudioStarted = () => {
+          if (isLive(attempt) && attempt.audioStartedAt === null) attempt.audioStartedAt = Date.now()
+        }
+        connection.on(RealtimeEvents.AUDIO_STARTED, markAudioStarted)
+        attempt.detachAudioStarted = () => connection.off(RealtimeEvents.AUDIO_STARTED, markAudioStarted)
+      }
     } catch (connectError) {
       attempt.connected = false
       failed(describeScribeError('other', connectError instanceof Error ? connectError.message : undefined))
@@ -274,7 +294,22 @@ export function useScribeTranscription({
       retriesRef.current = 0
       const utterance = attempt.buffer.commit(text, capture)
       setInterim('')
-      if (utterance) save(utterance)
+      if (utterance) attempt.pendingCommits.push(utterance.text, utterance)
+      else attempt.onCommit?.()
+    },
+    timestamped(text: string, words: WordTimestamp[] | undefined) {
+      const attempt = attemptRef.current
+      if (!attempt || !isLive(attempt)) return
+      const pending = attempt.pendingCommits.take(text)
+      if (!pending) return
+      const timed = timestampedTranscript(
+        text,
+        words,
+        attempt.audioStartedAt,
+        pending.capture.startedAt,
+        new Date().toISOString(),
+      )
+      save(pending.capture, timed.text, timed.tStart, timed.tEnd)
       // The SDK keeps every committed segment in state; the board already has them.
       scribeRef.current?.clearTranscripts()
       attempt.onCommit?.()
@@ -313,6 +348,8 @@ export function useScribeTranscription({
       onSessionStarted: () => eventsRef.current.sessionStarted(),
       onPartialTranscript: (data: { text: string }) => eventsRef.current.partial(data.text),
       onCommittedTranscript: (data: { text: string }) => eventsRef.current.committed(data.text),
+      onCommittedTranscriptWithTimestamps: (data: { text: string; words?: WordTimestamp[] }) =>
+        eventsRef.current.timestamped(data.text, data.words),
       onAuthError: fail('auth'),
       onQuotaExceededError: fail('quota'),
       onUnacceptedTermsError: fail('unaccepted_terms'),
@@ -333,6 +370,7 @@ export function useScribeTranscription({
     languageCode: 'en',
     keyterms: KEYTERMS,
     microphone: MICROPHONE,
+    includeTimestamps: true,
     ...callbacks,
   })
   scribeRef.current = scribe

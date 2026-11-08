@@ -143,6 +143,58 @@ interface Utterance<T> {
   text: string
 }
 
+export interface ScribeWordTimestamp {
+  text?: string
+  start?: number
+  end?: number
+  type?: 'word' | 'spacing' | 'audio_event'
+}
+
+export interface TimestampedTranscript {
+  text: string
+  tStart: string
+  tEnd: string
+}
+
+/** Convert Scribe's cumulative input-audio clock to persisted wall-clock occurrence times. */
+export function timestampedTranscript(
+  text: string,
+  words: readonly ScribeWordTimestamp[] | undefined,
+  audioStartedAt: number | null,
+  fallbackStart: string,
+  fallbackEnd: string,
+): TimestampedTranscript {
+  const starts = (words ?? []).map((word) => word.start).filter((value): value is number => Number.isFinite(value))
+  const ends = (words ?? []).map((word) => word.end).filter((value): value is number => Number.isFinite(value))
+  if (audioStartedAt === null || starts.length === 0 || ends.length === 0) {
+    return { text, tStart: fallbackStart, tEnd: fallbackEnd }
+  }
+  return {
+    text,
+    tStart: new Date(audioStartedAt + Math.min(...starts) * 1_000).toISOString(),
+    tEnd: new Date(audioStartedAt + Math.max(...ends) * 1_000).toISOString(),
+  }
+}
+
+/** Correlates delayed timestamp messages with stable commits, including repeated identical text. */
+export class TimestampedCommitQueue<T> {
+  private pending: Array<{ text: string; value: T }> = []
+
+  push(text: string, value: T): void {
+    this.pending.push({ text, value })
+  }
+
+  take(text: string): T | null {
+    const index = this.pending.findIndex((item) => item.text === text)
+    if (index < 0) return null
+    return this.pending.splice(index, 1)[0].value
+  }
+
+  drain(): T[] {
+    return this.pending.splice(0).map((item) => item.value)
+  }
+}
+
 /**
  * Tracks the in-progress Scribe segment. Context is captured when the first partial appears (like the
  * board segment pipeline expects), and the last partial can be flushed if the stream ends before the server commits it.

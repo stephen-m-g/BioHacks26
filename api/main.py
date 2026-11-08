@@ -82,13 +82,13 @@ def refine_batch(db, session_id: str) -> RefineOut:
     t0 = time.perf_counter()
     unrefined = (
         db.table("transcript_segments")
-        .select("id, raw_text, t_start, created_at")
+        .select("id, raw_text, t_start, t_end, created_at")
         .eq("session_id", session_id)
         .is_("text_block_id", "null")
-        .order("created_at")
         .execute()
         .data
     )
+    unrefined.sort(key=segment_order_key)
     segs, words = [], 0
     for s in unrefined:
         segs.append(s)
@@ -133,6 +133,14 @@ def refine_prompt(vocab: list[str], prev_text: str, raw: str) -> str:
         f"Previous paragraph: {prev_text[-600:] or '(none)'}\n\n"
         f"New raw speech: {raw}"
     )
+
+
+def segment_order_key(segment: dict) -> tuple[str, str, str, str]:
+    """Speech occurrence first; callback/save time and id only break ties deterministically."""
+    created = segment.get("created_at") or ""
+    start = segment.get("t_start") or created
+    end = segment.get("t_end") or start
+    return start, end, created, segment.get("id") or ""
 
 
 def choose_refined_text(raw: str, candidate: str | None) -> str:
@@ -401,6 +409,9 @@ def compile_session(session_id: str) -> NotesContent:
         while refine_batch(db, session_id).block is not None:
             pass
     blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
+    segments = (db.table("transcript_segments").select("id, text_block_id, t_start, t_end, created_at")
+                .eq("session_id", session_id).execute().data)
+    blocks = chronological_blocks(blocks, segments)
     anns = (db.table("annotations").select("id, block_id, label, bubble_text")
             .eq("session_id", session_id).eq("status", "confirmed").execute().data)
     assets = (db.table("assets").select("id, kind, label, description, text_content, file_name")
@@ -418,6 +429,26 @@ def compile_session(session_id: str) -> NotesContent:
     log.info("[compile] blocks=%d anns=%d sections=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(blocks),
              len(anns), len(notes.sections), db_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback)")
     return notes
+
+
+def chronological_blocks(blocks: list[dict], segments: list[dict]) -> list[dict]:
+    """Order text blocks by their earliest spoken segment while leaving image slots in place."""
+    ordered = sorted(blocks, key=lambda block: (block.get("position", 0), block.get("id") or ""))
+    by_block: dict[str, list[dict]] = {}
+    for segment in segments:
+        if segment.get("text_block_id"):
+            by_block.setdefault(segment["text_block_id"], []).append(segment)
+    timed_indexes = [
+        index for index, block in enumerate(ordered)
+        if block["kind"] == "text" and by_block.get(block["id"])
+    ]
+    timed_blocks = sorted(
+        (ordered[index] for index in timed_indexes),
+        key=lambda block: (min(segment_order_key(segment) for segment in by_block[block["id"]]), block["id"]),
+    )
+    for index, block in zip(timed_indexes, timed_blocks):
+        ordered[index] = block
+    return ordered
 
 
 def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:

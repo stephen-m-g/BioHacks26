@@ -257,6 +257,35 @@ def test_compile_keeps_each_cleaned_transcript_block_once_in_chronological_order
     assert [section.heading for section in notes.sections] == ["Introduction", "ATP"]
 
 
+def test_compile_recovers_spoken_order_when_earlier_speech_was_refined_later(db, gemini):
+    lec = db.add("lectures", title="Mountain ranges")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    later_block = db.add(
+        "blocks", session_id=ses["id"], kind="text", position=1,
+        text="So here we have the tip of the mountain.", created_at=ts(5),
+    )
+    earlier_block = db.add(
+        "blocks", session_id=ses["id"], kind="text", position=2,
+        text="Today we're going to be learning about mountain ranges.", created_at=ts(8),
+    )
+    db.add(
+        "transcript_segments", session_id=ses["id"], raw_text=later_block["text"],
+        t_start=ts(3), t_end=ts(4), created_at=ts(5), text_block_id=later_block["id"],
+    )
+    db.add(
+        "transcript_segments", session_id=ses["id"], raw_text=earlier_block["text"],
+        t_start=ts(1), t_end=ts(2), created_at=ts(8), text_block_id=earlier_block["id"],
+    )
+    gemini.result = None
+
+    notes = main.compile_session(ses["id"])
+
+    assert [paragraph for section in notes.sections for paragraph in section.paragraphs] == [
+        "Today we're going to be learning about mountain ranges.",
+        "So here we have the tip of the mountain.",
+    ]
+
+
 @pytest.mark.parametrize("session_title, lecture_title, expected", [
     ("Cell energy, period 3", "Cells", "Cell energy, period 3"),   # his session name wins over Gemini's
     (None, "Cells", "Cells"),                                     # then his lecture name
@@ -313,6 +342,44 @@ def test_refine_appends_a_block_and_marks_segments(db, gemini):
     assert db.get("transcript_segments", s1["id"])["text_block_id"] == out.block["id"]
     prompt = gemini.calls[0][2][0]
     assert "ATP" in prompt and "Earlier paragraph." in prompt and "makes a tee pee" in prompt
+
+
+def test_refine_orders_rapid_segments_by_speech_time_not_delayed_save_time(db, gemini):
+    lec = db.add("lectures", title="Mountains")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    later = db.add(
+        "transcript_segments", session_id=ses["id"], raw_text="So here we have the tip of the mountain.",
+        t_start=ts(4), t_end=ts(5), created_at=ts(6), text_block_id=None,
+    )
+    earlier = db.add(
+        "transcript_segments", session_id=ses["id"], raw_text="Today we're going to learn about mountain ranges.",
+        t_start=ts(1), t_end=ts(3), created_at=ts(8), text_block_id=None,
+    )
+    gemini.result = None
+
+    out = main.refine_session(ses["id"])
+
+    assert out.segment_ids == [earlier["id"], later["id"]]
+    assert out.block["text"] == (
+        "Today we're going to learn about mountain ranges. "
+        "So here we have the tip of the mountain."
+    )
+
+
+def test_refine_uses_stable_ids_when_speech_times_are_identical(db, gemini):
+    lec = db.add("lectures", title="Mountains")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    for segment_id, text in [("segment-b", "second"), ("segment-a", "first")]:
+        db.add(
+            "transcript_segments", id=segment_id, session_id=ses["id"], raw_text=text,
+            t_start=ts(1), t_end=ts(2), created_at=ts(3), text_block_id=None,
+        )
+    gemini.result = None
+
+    out = main.refine_session(ses["id"])
+
+    assert out.segment_ids == ["segment-a", "segment-b"]
+    assert out.block["text"] == "first second"
 
 
 def test_refine_accepts_near_verbatim_cleanup_that_only_removes_fillers_and_a_false_start():

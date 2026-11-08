@@ -5,11 +5,13 @@ import {
   DEFAULT_BIOLOGY_KEYTERMS,
   MAX_KEYTERMS,
   ScribeUtteranceBuffer,
+  TimestampedCommitQueue,
   classifyTokenError,
   describeMicrophoneError,
   describeScribeError,
   normalizeKeyterms,
   parseKeyterms,
+  timestampedTranscript,
 } from './scribeModel.ts'
 import { splitSentences } from './transcriptionModel.ts'
 
@@ -99,4 +101,43 @@ test('flushes an uncommitted partial exactly once', () => {
 test('splits committed text into sentence segments', () => {
   assert.deepEqual(splitSentences('Cells divide. Then what? They grow!'), ['Cells divide.', 'Then what?', 'They grow!'])
   assert.deepEqual(splitSentences('no punctuation here'), ['no punctuation here'])
+})
+
+test('uses word occurrence times instead of delayed finalization time', () => {
+  const timed = timestampedTranscript(
+    'Today we learn mountains.',
+    [
+      { text: 'Today', start: 1.25, end: 1.6, type: 'word' },
+      { text: ' ', start: 1.6, end: 1.6, type: 'spacing' },
+      { text: 'we learn mountains.', start: 1.6, end: 2.8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:09.000Z',
+    '2026-11-07T19:00:10.000Z',
+  )
+
+  assert.deepEqual(timed, {
+    text: 'Today we learn mountains.',
+    tStart: '2026-11-07T19:00:01.250Z',
+    tEnd: '2026-11-07T19:00:02.800Z',
+  })
+})
+
+test('matches delayed timestamp callbacks to the correct rapid commits', () => {
+  const queue = new TimestampedCommitQueue()
+  queue.push('Today we learn mountains.', { utterance: 'first' })
+  queue.push('This is the summit.', { utterance: 'second' })
+
+  assert.deepEqual(queue.take('This is the summit.'), { utterance: 'second' })
+  assert.deepEqual(queue.take('Today we learn mountains.'), { utterance: 'first' })
+  assert.equal(queue.take('Today we learn mountains.'), null)
+})
+
+test('keeps duplicate rapid commits stable when timestamp callbacks have identical text', () => {
+  const queue = new TimestampedCommitQueue()
+  queue.push('Okay.', { occurrence: 1 })
+  queue.push('Okay.', { occurrence: 2 })
+
+  assert.deepEqual(queue.take('Okay.'), { occurrence: 1 })
+  assert.deepEqual(queue.take('Okay.'), { occurrence: 2 })
 })
