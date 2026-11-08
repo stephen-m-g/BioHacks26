@@ -1109,3 +1109,68 @@
     transition: none;
   }
 }
+
+/* =====================================================================
+   Compact dashboard (chosen trade-off): list rows, row buttons, the card
+   header arrow and class chips use 48px tap areas instead of the app-wide
+   64px (still above the common 44px guideline). "New lecture" and every
+   other page keep 64px.
+   ===================================================================== */
+.bento-page {
+  --tap-compact: 48px;
+}
+
+.bento .dash-row {
+  min-height: var(--tap-compact);
+}
+
+.bento .dash-actions .dash-btn,
+.bento .dash-actions .dash-btn.icon-only {
+  min-height: var(--tap-compact);
+  min-width: var(--tap-compact);
+}
+
+.bento .dash-actions .dash-btn.icon-only {
+  width: var(--tap-compact);
+}
+
+.bento .btn-pill {
+  height: 32px;
+}
+
+.bento .btn-pill.round {
+  width: 32px;
+}
+
+.cell-head {
+  min-height: var(--tap-compact);
+  padding-top: var(--sp-2);
+}
+
+.cell-go {
+  min-width: var(--tap-compact);
+  min-height: var(--tap-compact);
+}
+
+.dash .chip {
+  min-height: var(--tap-compact);
+  min-width: var(--tap-compact);
+}
+
+.chip-pill {
+  height: 36px;
+}
+
+.chip.add .chip-pill {
+  width: 36px;
+}
+
+/* Compact status badges so session rows stay 48px. */
+.bento .dash-badge {
+  padding: 0 6px;
+  font-size: 10.5px;
+  line-height: 16px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+}

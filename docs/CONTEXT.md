@@ -99,3 +99,5 @@ classes. A lecture created while the dashboard is filtered to a class starts in 
 
 ## Design system
 Colors, type, spacing and radii live in `web/src/styles/tokens.css` (SF Pro system font, neutral black-and-white palette, contrast >= 4.5:1, 64px tap targets). Page stylesheets reference these tokens instead of defining their own.
+
+Exception (chosen): the dashboard bento lists, row buttons, card-header arrows and class chips use 48px tap areas so rows can be thin. "New lecture" and every other page keep 64px.
