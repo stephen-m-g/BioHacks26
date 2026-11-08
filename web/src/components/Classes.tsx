@@ -47,6 +47,31 @@ export function ClassDot({ classes, size = 44 }: { classes: ClassGroup[]; size?:
   )
 }
 
+/**
+ * The class circle as a button: tap it to change which classes a lecture or session is in.
+ * The tap area is set by the page's CSS (.class-dot-btn); the circle itself doesn't move.
+ */
+export function ClassDotButton({
+  classes,
+  size,
+  itemTitle,
+  onClick,
+}: {
+  classes: ClassGroup[]
+  size: number
+  itemTitle: string
+  onClick: () => void
+}) {
+  const names = classes.length ? classes.map((c) => c.name).join(', ') : 'no class'
+  return (
+    <button type="button" className="class-dot-btn" aria-label={`Classes for ${itemTitle}: ${names}. Change`} title="Change classes" onClick={onClick}>
+      <span className="class-dot-ring" aria-hidden="true">
+        <ClassDot classes={classes} size={size} />
+      </span>
+    </button>
+  )
+}
+
 /** "Classes…" for one lecture or session: tick the classes it belongs to, or add a new one. */
 export function ClassPickerDialog({
   open,
@@ -105,14 +130,18 @@ export function ClassPickerDialog({
         {classes.map((cls) => (
           <label key={cls.id} className="class-option">
             <input type="checkbox" checked={picked.has(cls.id)} onChange={() => toggle(cls.id)} />
-            <ClassDot classes={[cls]} size={22} />
+            <span aria-hidden="true" className="class-option-dot">
+              <ClassDot classes={[cls]} size={22} />
+            </span>
             <span>{cls.name}</span>
           </label>
         ))}
         {drafts.map((d) => (
           <label key={d.key} className="class-option">
             <input type="checkbox" checked readOnly aria-label={`${d.name} (new, will be added)`} />
-            <ClassDot classes={[{ id: d.key, name: d.name, color: d.color, created_at: '' }]} size={22} />
+            <span aria-hidden="true" className="class-option-dot">
+              <ClassDot classes={[{ id: d.key, name: d.name, color: d.color, created_at: '' }]} size={22} />
+            </span>
             <span>
               {d.name} <em className="class-new-tag">new</em>
             </span>

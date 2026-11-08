@@ -3,7 +3,7 @@
 // Recorded sessions card. Same layout as the Lectures and Archive pages.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClassDot, ClassPickerDialog } from '../components/Classes'
+import { ClassDotButton, ClassPickerDialog } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowLeft, IconArrowRight, IconClock, IconDots, IconPlay, IconText } from '../components/DashIcons'
 import { createClass, listClasses, setSessionClasses } from '../lib/classes'
@@ -86,9 +86,11 @@ export default function Sessions() {
     return (
       <li key={s.id} className={`p4-row${isLive ? '' : ' faded'}`}>
         <div className="p4-avatar class-holder">
-          <ClassDot
+          <ClassDotButton
             size={28}
+            itemTitle={title}
             classes={(s.session_classes ?? []).map((x) => byId.get(x.class_id)).filter((x): x is ClassGroup => !!x)}
+            onClick={() => setPicker({ id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })}
           />
         </div>
         <div className="p4-main">

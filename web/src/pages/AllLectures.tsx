@@ -2,16 +2,18 @@
 // /archive lists archived ones (restore, edit, delete).
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ClassDot } from '../components/Classes'
+import { ClassDotButton, ClassPickerDialog } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowLeft, IconClock, IconDots, IconEdit, IconPlay } from '../components/DashIcons'
-import { listClasses } from '../lib/classes'
+import { createClass, listClasses, setLectureClasses } from '../lib/classes'
 import { deleteLecture, setArchived, startSession } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { ClassGroup, Lecture } from '../types'
 import '../styles/p4.css'
 
 type Row = Lecture & { sessions: { count: number }[]; lecture_classes?: { class_id: string }[] | null }
+
+const EMPTY: string[] = []
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -24,6 +26,7 @@ export default function AllLectures({ mode }: { mode: 'active' | 'archived' }) {
   const [menu, setMenu] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Row | null>(null)
   const [classes, setClasses] = useState<ClassGroup[]>([])
+  const [picker, setPicker] = useState<{ id: string; title: string; selected: string[] } | null>(null)
 
   const load = useCallback(async () => {
     const query = (withClasses: boolean) =>
@@ -63,9 +66,11 @@ export default function AllLectures({ mode }: { mode: 'active' | 'archived' }) {
     return (
       <li key={l.id} className={`p4-row${isArchived ? ' faded' : ''}`}>
         <div className="p4-avatar class-holder">
-          <ClassDot
+          <ClassDotButton
             size={28}
+            itemTitle={l.title}
             classes={(l.lecture_classes ?? []).map((x) => byId.get(x.class_id)).filter((x): x is ClassGroup => !!x)}
+            onClick={() => setPicker({ id: l.id, title: l.title, selected: (l.lecture_classes ?? []).map((x) => x.class_id) })}
           />
         </div>
         <div className="p4-main">
@@ -185,6 +190,22 @@ export default function AllLectures({ mode }: { mode: 'active' | 'archived' }) {
         )}
         . This can't be undone. To just hide it, archive it instead.
       </ConfirmDialog>
+
+      <ClassPickerDialog
+        open={picker !== null}
+        title={picker?.title ?? ''}
+        classes={classes}
+        selected={picker?.selected ?? EMPTY}
+        onCancel={() => setPicker(null)}
+        onSave={(ids, fresh) =>
+          act(async () => {
+            if (!picker) return
+            const created = await Promise.all(fresh.map((f) => createClass(f.name, f.color)))
+            await setLectureClasses(picker.id, [...ids, ...created.map((c) => c.id)])
+            setPicker(null)
+          })
+        }
+      />
     </div>
   )
 }

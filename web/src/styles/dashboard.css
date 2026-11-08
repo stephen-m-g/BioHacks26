@@ -1322,3 +1322,98 @@
   width: 18px;
   height: 18px;
 }
+
+/* Class circle as a button: the tap area grows outward around the circle (negative margin),
+   so the row layout doesn't move. Hover/focus show a ring on the circle itself. */
+.class-dot-btn {
+  --hit: var(--tap);
+  width: var(--hit);
+  height: var(--hit);
+  min-width: 0;
+  min-height: 0;
+  margin: calc((100% - var(--hit)) / 2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.class-dot-ring {
+  display: block;
+  border-radius: 50%;
+  line-height: 0;
+  transition: box-shadow 0.15s var(--ease);
+}
+
+@media (hover: hover) {
+  .class-dot-btn:hover .class-dot-ring {
+    box-shadow: 0 0 0 3px var(--c-card), 0 0 0 5px var(--c-line-strong);
+  }
+}
+
+.class-dot-btn:focus-visible {
+  outline: none;
+}
+
+.class-dot-btn:focus-visible .class-dot-ring {
+  box-shadow: 0 0 0 3px var(--c-card), 0 0 0 6px var(--c-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .class-dot-ring {
+    transition: none;
+  }
+}
+
+/* Dashboard (compact): 48px tap area around the 24px circle (holder is 24px). */
+.dash-avatar.class-holder .class-dot-btn {
+  --hit: var(--tap-compact, 48px);
+  margin: -12px;
+}
+
+.class-option-dot {
+  display: inline-flex;
+  line-height: 0;
+}
+
+/* Header breathing room: bigger logo and more space between the logo row, the class row and the
+   cards. The lists take the remaining height, so they get a little shorter (the page still fits). */
+.bento-inner {
+  padding: var(--sp-6) var(--sp-6) 40px;
+  gap: 0;
+}
+
+.bento-header .dash-logo img {
+  height: 56px;
+}
+
+.bento-filter {
+  margin-top: 20px;
+}
+
+.bento-notices {
+  margin-top: var(--sp-3);
+}
+
+.bento {
+  margin-top: var(--sp-5);
+}
+
+@media (max-width: 960px) {
+  .bento-inner {
+    padding: var(--sp-5) var(--sp-5) var(--sp-6);
+  }
+}
+
+@media (max-width: 600px), (max-height: 560px) {
+  .bento-inner {
+    padding: var(--sp-4) var(--sp-4) var(--sp-5);
+  }
+  .bento-header .dash-logo img {
+    height: 44px;
+  }
+}

@@ -2,7 +2,7 @@
 // and Recorded sessions (list). The page fits one screen; each list scrolls inside its own card.
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ClassDot, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
+import { ClassDot, ClassDotButton, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowRight, IconClock, IconDots, IconEdit, IconFile, IconImage, IconPlay, IconPlus } from '../components/DashIcons'
 import { createClass, deleteClass, listClasses, setLectureClasses, setSessionClasses, updateClass } from '../lib/classes'
@@ -346,7 +346,18 @@ export default function Dashboard() {
                   return (
                     <li key={l.id} className="dash-row">
                       <div className="dash-avatar class-holder">
-                        <ClassDot classes={classesOf(l.lecture_classes)} size={24} />
+                        {classesMissing ? (
+                          <ClassDot classes={[]} size={24} />
+                        ) : (
+                          <ClassDotButton
+                            classes={classesOf(l.lecture_classes)}
+                            size={24}
+                            itemTitle={l.title}
+                            onClick={() =>
+                              setPicker({ kind: 'lecture', id: l.id, title: l.title, selected: (l.lecture_classes ?? []).map((x) => x.class_id) })
+                            }
+                          />
+                        )}
                       </div>
                       <div className="dash-main">
                         <h3 className="dash-row-title">{l.title}</h3>
@@ -445,7 +456,18 @@ export default function Dashboard() {
                   return (
                     <li key={s.id} className={`dash-row${live ? '' : ' past'}`}>
                       <div className="dash-avatar class-holder">
-                        <ClassDot classes={classesOf(s.session_classes)} size={24} />
+                        {classesMissing ? (
+                          <ClassDot classes={[]} size={24} />
+                        ) : (
+                          <ClassDotButton
+                            classes={classesOf(s.session_classes)}
+                            size={24}
+                            itemTitle={title}
+                            onClick={() =>
+                              setPicker({ kind: 'session', id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })
+                            }
+                          />
+                        )}
                       </div>
                       <div className="dash-main">
                         <h3 className="dash-row-title">{title}</h3>
