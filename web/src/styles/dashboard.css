@@ -1305,3 +1305,20 @@
     rgba(0, 0, 0, 0.25) 100%
   );
 }
+
+/* Header balance: a slightly larger logo, a ~20% smaller New lecture button (52px, still a full tap target). */
+.bento-header .dash-logo img {
+  height: 48px;
+}
+
+.dash .dash-btn.new-lecture {
+  min-height: 52px;
+  padding: 0 var(--sp-5);
+  gap: var(--sp-2);
+  font-size: 15px;
+}
+
+.dash .dash-btn.new-lecture svg {
+  width: 18px;
+  height: 18px;
+}

@@ -261,7 +261,7 @@ export default function Dashboard() {
             <img src="/aside-logo.png" alt="aside" width={1065} height={321} />
           </h1>
           <button
-            className="dash-btn solid"
+            className="dash-btn solid new-lecture"
             disabled={busy || !supabaseConfigured}
             onClick={() => run(async () => navigate(`/prep/${await createLecture(undefined, filter)}?new=1`))}
           >
@@ -376,17 +376,6 @@ export default function Dashboard() {
                           </span>
                         </Link>
                         {moreMenu(`l:${l.id}`, l.title, [
-                          ...(classesMissing
-                            ? []
-                            : [
-                                {
-                                  label: 'Classes…',
-                                  onClick: () => {
-                                    setMenu(null)
-                                    setPicker({ kind: 'lecture', id: l.id, title: l.title, selected: (l.lecture_classes ?? []).map((x) => x.class_id) })
-                                  },
-                                },
-                              ]),
                           {
                             label: 'Archive',
                             onClick: () =>
