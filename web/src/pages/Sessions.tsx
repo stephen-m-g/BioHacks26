@@ -2,15 +2,18 @@
 // open the transcript, set classes, delete. Opened from the arrow on the dashboard's
 // Recorded sessions card. Same layout as the Lectures and Archive pages.
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ClassDotButton, ClassPickerDialog } from '../components/Classes'
+import { Link, useNavigate } from 'react-router-dom'
+import { ClassFilterBar, useClassFilter } from '../components/ClassFilter'
+import { ClassDotButton, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { IconArrowLeft, IconArrowRight, IconClock, IconDots, IconPlay, IconText } from '../components/DashIcons'
-import { createClass, listClasses, setSessionClasses } from '../lib/classes'
+import { IconArrowLeft, IconArrowRight, IconClock, IconPlay } from '../components/DashIcons'
+import RowMenu, { SortMenu, sortRows, useSortOrder } from '../components/RowMenu'
+import { createClass, deleteClass, listClasses, setSessionClasses, updateClass } from '../lib/classes'
 import { deleteSession, formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { ClassGroup, Session } from '../types'
 import '../styles/p4.css'
+import '../styles/lists.css'
 
 type Row = Session & {
   lectures: { title: string } | null
@@ -39,16 +42,18 @@ function sessionWhen(s: Session) {
   return `${day}, ${time}${mins ? ` · ${mins} min` : ''}`
 }
 
-const hasNotes = (s: Row) => (Array.isArray(s.lecture_notes) ? s.lecture_notes.length > 0 : !!s.lecture_notes)
 const titleOf = (s: Row) => s.title || s.lectures?.title || 'Lecture'
 
 export default function Sessions() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [menu, setMenu] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Row | null>(null)
   const [classes, setClasses] = useState<ClassGroup[]>([])
   const [picker, setPicker] = useState<{ id: string; title: string; selected: string[] } | null>(null)
+  const [classesOk, setClassesOk] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
 
   const load = useCallback(async () => {
     const query = (withClasses: boolean) =>
@@ -57,10 +62,13 @@ export default function Sessions() {
         .select(`*, lectures(title), lecture_notes(session_id)${withClasses ? ', session_classes(class_id)' : ''}`)
         .order('started_at', { ascending: false })
     let res = await query(true)
-    if (res.error) res = await query(false) // classes migration not run yet
+    const withClasses = !res.error
+    if (!withClasses) res = await query(false) // classes migration not run yet
+    setClassesOk(withClasses)
     setError(res.error?.message ?? null)
     setRows((res.data as unknown as Row[]) ?? [])
     setClasses(await listClasses().catch(() => []))
+    setLoaded(true)
   }, [])
 
   useEffect(() => {
@@ -68,7 +76,6 @@ export default function Sessions() {
   }, [load])
 
   const act = async (fn: () => Promise<void>) => {
-    setMenu(null)
     try {
       await fn()
       await load()
@@ -78,98 +85,84 @@ export default function Sessions() {
   }
 
   const byId = new Map(classes.map((c) => [c.id, c]))
-  const live = rows.filter((r) => r.status === 'live').length
+  const { filter, setFilter, toggle, matches, filterName } = useClassFilter(classes, loaded)
+  const { order, setOrder } = useSortOrder('sessions')
+  const shown = sortRows(
+    rows.filter((r) => matches(r.session_classes)),
+    order,
+    titleOf,
+    (r) => r.started_at,
+  )
+  const live = shown.filter((r) => r.status === 'live').length
+
+  const saveClassEdits = (edits: ClassEdits) =>
+    act(async () => {
+      await Promise.all(edits.updates.map((u) => updateClass(u.id, { name: u.name, color: u.color })))
+      await Promise.all(edits.deletes.map((id) => deleteClass(id)))
+      await Promise.all(edits.creates.map((c) => createClass(c.name, c.color)))
+      setManageOpen(false)
+    })
 
   const renderRow = (s: Row) => {
     const title = titleOf(s)
     const isLive = s.status === 'live'
     return (
-      <li key={s.id} className={`p4-row${isLive ? '' : ' faded'}`}>
-        <div className="p4-avatar class-holder">
+      <li key={s.id} className={`lp-row${isLive ? '' : ' faded'}`}>
+        <div className="lp-dot">
           <ClassDotButton
-            size={28}
+            size={32}
             itemTitle={title}
             classes={(s.session_classes ?? []).map((x) => byId.get(x.class_id)).filter((x): x is ClassGroup => !!x)}
             onClick={() => setPicker({ id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })}
           />
         </div>
-        <div className="p4-main">
-          <h3 className="p4-row-title">{title}</h3>
-          <div className="p4-meta">
+        <div className="lp-main">
+          <h3 className="lp-row-title">{title}</h3>
+          <div className="lp-meta">
             <span>
               <IconClock /> {sessionWhen(s)}
             </span>
-            {isLive ? (
-              <span className="p4-badge live">Live</span>
-            ) : (
-              hasNotes(s) && <span className="p4-badge">Notes ready</span>
-            )}
           </div>
         </div>
-        <div className="p4-actions">
+        <div className="lp-actions">
           {isLive ? (
-            <Link className="p4-btn solid" to={`/teach/${s.id}`}>
-              <IconPlay /> Resume
+            <Link className="lp-tap" to={`/teach/${s.id}`}>
+              <span className="lp-pill solid same-width">
+                <IconPlay /> Resume
+              </span>
             </Link>
           ) : (
-            <Link className="p4-btn outline-strong" to={`/notes/${s.id}`}>
-              Notes <IconArrowRight />
+            <Link className="lp-tap" to={`/notes/${s.id}`}>
+              <span className="lp-pill outline same-width">
+                Notes <IconArrowRight />
+              </span>
             </Link>
           )}
-          <Link className="p4-btn" to={`/sessions/${s.id}/raw`}>
-            <IconText /> Transcript
-          </Link>
-          <div className="p4-menu-wrap">
-            <button
-              className="p4-btn icon-only"
-              aria-label={`More actions for ${title}`}
-              aria-haspopup="menu"
-              aria-expanded={menu === s.id}
-              onClick={() => setMenu(menu === s.id ? null : s.id)}
-            >
-              <IconDots />
-            </button>
-            {menu === s.id && (
-              <>
-                <div className="p4-menu-backdrop" onClick={() => setMenu(null)} />
-                <div className="p4-menu" role="menu">
-                  <button
-                    role="menuitem"
-                    className="p4-btn p4-menu-item danger"
-                    onClick={() => {
-                      setMenu(null)
-                      setToDelete(s)
-                    }}
-                  >
-                    Delete session
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <RowMenu
+            label={title}
+            items={[
+              { label: 'Transcript', onClick: () => navigate(`/sessions/${s.id}/raw`) },
+              { label: 'Delete session', danger: true, onClick: () => setToDelete(s) },
+            ]}
+          />
         </div>
       </li>
     )
   }
 
   return (
-    <div className="p4">
-      <header className="p4-top">
-        <Link className="p4-btn" to="/">
-          <IconArrowLeft /> Dashboard
+    <div className="p4 lp">
+      <header className="lp-header">
+        <Link className="lp-back" to="/" aria-label="Back to the dashboard" title="Back to the dashboard">
+          <span className="lp-back-circle">
+            <IconArrowLeft />
+          </span>
         </Link>
-        <div className="p4-spacer" />
-        <Link className="p4-btn quiet" to="/lectures">
-          Lectures
-        </Link>
+        <h1 className="lp-title">Recorded sessions</h1>
+        <span aria-hidden="true" />
       </header>
-      <div className="p4-inner">
-        <h1 className="p4-title">Recorded sessions</h1>
-        <p className="p4-sub">
-          {plural(rows.length, 'session')}
-          {live > 0 ? ` · ${live} live` : ''} · newest first
-        </p>
 
+      <main className="lp-body">
         {error && (
           <div className="p4-notice warn" role="alert">
             <span>{error}</span>
@@ -179,11 +172,38 @@ export default function Sessions() {
           </div>
         )}
 
-        <section className="p4-section" aria-label="Recorded sessions">
-          {rows.length === 0 && <p className="p4-empty">No sessions yet. Start a lecture from the dashboard to record one.</p>}
-          <ul className="p4-list">{rows.map(renderRow)}</ul>
+        {classesOk && (
+          <ClassFilterBar
+            size="large"
+            className="lp-filter"
+            classes={classes}
+            filter={filter}
+            onAll={() => setFilter([])}
+            onToggle={toggle}
+            onManage={() => setManageOpen(true)}
+          />
+        )}
+
+        <section className="lp-card" aria-labelledby="list-heading">
+          <div className="lp-card-head">
+            <div className="lp-card-title">
+              <h2 id="list-heading" className="lp-label">
+                All sessions
+              </h2>
+              <span className="lp-count" aria-label={plural(shown.length, 'session')}>
+                {shown.length}
+              </span>
+              {live > 0 && <span className="lp-badge live">{live} live</span>}
+            </div>
+            <SortMenu order={order} onChange={setOrder} />
+          </div>
+          <div className="lp-scroll">
+            {loaded && rows.length === 0 && <p className="lp-empty">No sessions yet. Start a lecture from the dashboard to record one.</p>}
+            {loaded && rows.length > 0 && shown.length === 0 && <p className="lp-empty">No sessions in {filterName} yet.</p>}
+            <ul className="lp-list">{shown.map(renderRow)}</ul>
+          </div>
         </section>
-      </div>
+      </main>
 
       <ConfirmDialog
         open={toDelete !== null}
@@ -217,6 +237,7 @@ export default function Sessions() {
           })
         }
       />
+      <ManageClassesDialog open={manageOpen} classes={classes} onCancel={() => setManageOpen(false)} onSave={saveClassEdits} />
     </div>
   )
 }

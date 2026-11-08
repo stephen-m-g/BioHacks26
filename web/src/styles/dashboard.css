@@ -1487,3 +1487,67 @@
     background: var(--c-danger-bg);
   }
 }
+
+/* Archive card: a little taller (vertical padding only). The grid row above (Ready to present)
+   is 1fr, so it gives up exactly this space; nothing else changes. */
+.dash .cell-archive {
+  padding-top: var(--sp-3);
+  padding-bottom: var(--sp-3);
+}
+
+/* Recorded sessions: Resume and Notes share one width so their edges line up down the card
+   (min-width, so a larger system font can still grow the pill). Same as the /sessions page, scaled. */
+.btn-pill.same-width {
+  min-width: 102px;
+}
+
+/* Archive card is no longer a link: only its arrow (28px circle, 48px tap area) navigates.
+   Undo the whole-card hover and focus styles so the card doesn't look clickable. */
+.dash .cell-archive:hover {
+  background: var(--c-card);
+}
+
+.dash .cell-archive:hover .btn-pill.round {
+  background: transparent;
+}
+
+.dash .cell-archive .cell-go:hover .btn-pill.round {
+  background: var(--c-soft);
+}
+
+/* Card swell: hovering (or keyboard-focusing) a card's arrow makes that card grow ~1.5% with a soft
+   spring and lift onto a faint shadow. Back out with a plain ease (no bounce). Mouse/trackpad only. */
+.dash .bento-cell {
+  position: relative;
+  transform: scale(1);
+  transition:
+    transform 0.32s cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 0.32s cubic-bezier(0.2, 0, 0, 1),
+    background-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (hover: hover) {
+  .dash .bento-cell:has(.cell-go:hover) {
+    z-index: 1;
+    transform: scale(1.015);
+    box-shadow: 0 6px 24px rgba(17, 17, 17, 0.08);
+    transition:
+      transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.45s cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
+.dash .bento-cell:has(.cell-go:focus-visible) {
+  z-index: 1;
+  transform: scale(1.015);
+  box-shadow: 0 6px 24px rgba(17, 17, 17, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash .bento-cell,
+  .dash .bento-cell:has(.cell-go:hover),
+  .dash .bento-cell:has(.cell-go:focus-visible) {
+    transform: none;
+    transition: none;
+  }
+}

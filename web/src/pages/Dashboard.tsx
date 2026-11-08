@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
+import { ClassFilterBar } from '../components/ClassFilter'
 import { ClassDot, ClassDotButton, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowRight, IconClock, IconDots, IconEdit, IconFile, IconImage, IconPlay, IconPlus } from '../components/DashIcons'
@@ -90,10 +91,6 @@ function lastUpdated(l: LectureRow) {
   return (l.assets ?? []).reduce((latest, a) => (a.created_at > latest ? a.created_at : latest), l.created_at)
 }
 
-function hasNotes(s: SessionRow) {
-  const n = s.lecture_notes
-  return Array.isArray(n) ? n.length > 0 : !!n
-}
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -284,27 +281,15 @@ export default function Dashboard() {
         </header>
 
         {supabaseConfigured && !classesMissing && (
-          <nav className="bento-filter" aria-label="Filter by class">
-            <button className={`chip${filter.length === 0 ? ' on' : ''}`} aria-pressed={filter.length === 0} onClick={() => setFilter([])}>
-              <span className="chip-pill">All</span>
-            </button>
-            {classes.map((c) => {
-              const on = filter.includes(c.id)
-              return (
-                <button key={c.id} className={`chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleFilter(c.id)}>
-                  <span className="chip-pill">
-                    <span className="chip-dot" style={{ background: c.color }} aria-hidden="true" />
-                    {c.name}
-                  </span>
-                </button>
-              )
-            })}
-            <button className="chip add" aria-label={classes.length ? 'Add or edit classes' : 'Add a class'} title="Add or edit classes" onClick={() => setManageOpen(true)}>
-              <span className="chip-pill">
-                <IconPlus />
-              </span>
-            </button>
-          </nav>
+          <ClassFilterBar
+            size="compact"
+            className="bento-filter"
+            classes={classes}
+            filter={filter}
+            onAll={() => setFilter([])}
+            onToggle={toggleFilter}
+            onManage={() => setManageOpen(true)}
+          />
         )}
 
         {(!supabaseConfigured || error || classesMissing) && (
@@ -427,19 +412,23 @@ export default function Dashboard() {
           </section>
 
           {/* ---------- bottom left: Archive ---------- */}
-          <Link className="bento-cell cell-archive" to="/archive" aria-label={`Archive, ${archivedCount ?? 0} lectures`}>
-            <span className="cell-head">
-              <span className="cell-title">
-                <span className="dash-label">Archive</span>
-                <span className="cell-count">{archivedCount ?? '–'}</span>
-              </span>
-              <span className="cell-go" aria-hidden="true">
+          <section className="bento-cell cell-archive" aria-labelledby="archive-heading">
+            <div className="cell-head">
+              <div className="cell-title">
+                <h2 id="archive-heading" className="dash-label">
+                  Archive
+                </h2>
+                <span className="cell-count" aria-label={`${archivedCount ?? 0} archived lectures`}>
+                  {archivedCount ?? '–'}
+                </span>
+              </div>
+              <Link className="cell-go" to="/archive" aria-label="Archived lectures" title="Archived lectures">
                 <span className="btn-pill round">
                   <IconArrowRight />
                 </span>
-              </span>
-            </span>
-          </Link>
+              </Link>
+            </div>
+          </section>
 
           {/* ---------- right: Recorded sessions ---------- */}
           <section className="bento-cell cell-sessions" aria-labelledby="past-heading">
@@ -489,23 +478,18 @@ export default function Dashboard() {
                           <span>
                             <IconClock /> {sessionWhen(s)}
                           </span>
-                          {live ? (
-                            <span className="dash-badge live">Live</span>
-                          ) : (
-                            hasNotes(s) && <span className="dash-badge">Notes ready</span>
-                          )}
                         </div>
                       </div>
                       <div className="dash-actions">
                         {live ? (
                           <Link className="dash-btn row-btn" to={`/teach/${s.id}`}>
-                            <span className="btn-pill solid">
+                            <span className="btn-pill solid same-width">
                               <IconPlay /> Resume
                             </span>
                           </Link>
                         ) : (
                           <Link className="dash-btn row-btn" to={`/notes/${s.id}`}>
-                            <span className="btn-pill outline">
+                            <span className="btn-pill outline same-width">
                               Notes <IconArrowRight />
                             </span>
                           </Link>
