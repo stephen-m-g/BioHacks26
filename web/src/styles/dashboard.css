@@ -1286,22 +1286,22 @@
   background-color: var(--c-muted);
 }
 
-/* Subtle fade where list content meets the top and bottom of its scroll area:
-   75% opacity at the very edge, full opacity 16px in (about a 25% drop-off). */
+/* Fade where list content meets the top and bottom of its scroll area: content at the very
+   edge shows at 25% opacity, rising to full opacity 24px in. */
 .cell-scroll {
-  --fade: 16px;
+  --fade: 24px;
   -webkit-mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.75) 0,
+    rgba(0, 0, 0, 0.25) 0,
     #000 var(--fade),
     #000 calc(100% - var(--fade)),
-    rgba(0, 0, 0, 0.75) 100%
+    rgba(0, 0, 0, 0.25) 100%
   );
   mask-image: linear-gradient(
     to bottom,
-    rgba(0, 0, 0, 0.75) 0,
+    rgba(0, 0, 0, 0.25) 0,
     #000 var(--fade),
     #000 calc(100% - var(--fade)),
-    rgba(0, 0, 0, 0.75) 100%
+    rgba(0, 0, 0, 0.25) 100%
   );
 }
