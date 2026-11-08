@@ -5,10 +5,12 @@ import io
 import logging
 import mimetypes
 import os
+import re
 import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 
 from dotenv import load_dotenv
 
@@ -109,7 +111,7 @@ def refine_batch(db, session_id: str) -> RefineOut:
     # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
     out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, raw)], RefineGemini,
                                  timeout_ms=10_000, model=os.getenv("GEMINI_REFINE_MODEL") or None, thinking="LOW")
-    text = (out.text if out else "") or raw
+    text = choose_refined_text(raw, out.text if out else None)
 
     t_write = time.perf_counter()
     block = (
@@ -131,6 +133,30 @@ def refine_prompt(vocab: list[str], prev_text: str, raw: str) -> str:
         f"Previous paragraph: {prev_text[-600:] or '(none)'}\n\n"
         f"New raw speech: {raw}"
     )
+
+
+def choose_refined_text(raw: str, candidate: str | None) -> str:
+    """Use Gemini's cleanup only when it remains recognizably near-verbatim.
+
+    The raw segment text is the source of truth. Character-level comparison tolerates punctuation changes and
+    phonetic spelling corrections (for example "a tee pee" -> "ATP") while rejecting summaries, paraphrases,
+    and truncated output.
+    """
+    raw = raw.strip()
+    candidate = (candidate or "").strip()
+    if not candidate:
+        return raw
+    raw_cmp = "".join(re.findall(r"[a-z0-9]+", raw.lower()))
+    candidate_cmp = "".join(re.findall(r"[a-z0-9]+", candidate.lower()))
+    if not raw_cmp or not candidate_cmp:
+        return raw
+    length_ratio = len(candidate_cmp) / len(raw_cmp)
+    similarity = SequenceMatcher(None, raw_cmp, candidate_cmp, autojunk=False).ratio()
+    if length_ratio < 0.55 or length_ratio > 1.35 or similarity < 0.55:
+        log.warning("[refine] rejected unfaithful Gemini output (length=%.2f similarity=%.2f)",
+                    length_ratio, similarity)
+        return raw
+    return candidate
 
 
 VOCAB_TTL_S = 120
@@ -372,9 +398,8 @@ def compile_session(session_id: str) -> NotesContent:
     title = rows[0].get("title") or (lecture[0]["title"] if lecture else "") or "Lecture notes"
     # Speech that was never refined (e.g. the tab closed without End session) becomes paragraphs first.
     with refine_lock(session_id):
-        for _ in range(20):
-            if refine_batch(db, session_id).block is None:
-                break
+        while refine_batch(db, session_id).block is not None:
+            pass
     blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
     anns = (db.table("annotations").select("id, block_id, label, bubble_text")
             .eq("session_id", session_id).eq("status", "confirmed").execute().data)
@@ -404,7 +429,7 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
     lines = [f"LECTURE TITLE: {title}", "", "BOARD, in teaching order:"]
     for b in blocks:
         if b["kind"] == "text" and (b.get("text") or "").strip():
-            lines.append(f"[TEXT] {b['text'].strip()}")
+            lines.append(f"[TEXT text_block_id={b['id']}] {b['text'].strip()}")
         elif b["kind"] == "image":
             a = assets_by_id.get(b.get("asset_id"), {})
             lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
@@ -426,8 +451,12 @@ DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he 
 
 
 def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> NotesContent:
-    """Drop ids Gemini invented, renumber sections, cap review questions. His own title wins over Gemini's;
-    Gemini's is only used while the lecture still has the default name."""
+    """Validate Gemini metadata without allowing it to replace the cleaned transcript.
+
+    Drop invented ids, renumber sections, and cap review questions. If Gemini omitted, duplicated, reordered,
+    or rewrote any cleaned text block, use deterministic board sections while retaining its clearly separated
+    overview and review questions. His own title wins unless it is still the default.
+    """
     image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
     ann_ids = {a["id"] for a in anns}
     for i, s in enumerate(notes.sections, 1):
@@ -436,6 +465,15 @@ def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> No
         s.annotation_ids = [a for a in s.annotation_ids if a in ann_ids]
     notes.title = title if title and title != DEFAULT_TITLE else (notes.title.strip() or title)
     notes.review_questions = notes.review_questions[:5]
+    source_paragraphs = [b["text"].strip() for b in blocks
+                         if b["kind"] == "text" and (b.get("text") or "").strip()]
+    compiled_paragraphs = [paragraph for section in notes.sections for paragraph in section.paragraphs]
+    if compiled_paragraphs != source_paragraphs:
+        log.warning("[compile] rejected Gemini paragraphs that did not preserve the complete transcript")
+        fallback = fallback_notes(notes.title, blocks, anns)
+        fallback.overview = notes.overview.strip()
+        fallback.review_questions = notes.review_questions
+        return fallback
     return notes
 
 

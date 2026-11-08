@@ -7,7 +7,7 @@ import { bboxOf } from '../lib/ink'
 import { supabase } from '../lib/supabase'
 import { useSessionStore } from '../store/session'
 import type { Annotation, Block, Point, Stroke, TranscriptSegment } from '../types'
-import { RefineCoordinator, buildTranscriptSegment } from './teacherActionsModel'
+import { RefineCoordinator, buildTranscriptSegment, waitForPendingWrites } from './teacherActionsModel'
 import type { TranscriptionContext } from './transcriptionModel'
 import type { SessionData } from './useSessionData'
 
@@ -65,19 +65,23 @@ export function useTeacherActions(data: SessionData) {
   )
 
   const confirmAnnotation = useCallback(
-    (id: string) => {
+    async (id: string) => {
       const closedAt = nowIso()
       upsert('annotations', { id, status: 'confirmed', closed_at: closedAt })
       useSessionStore.getState().setPendingAnnotation(null)
-      supabase
-        .from('annotations')
-        .update({ status: 'confirmed', closed_at: closedAt })
-        .eq('id', id)
-        .then(logError('confirm annotation'))
-      api
-        .closeAnnotation(id)
-        .then((r) => upsert('annotations', { id, label: r.label, bubble_text: r.bubble_text }))
-        .catch((e) => console.error('close annotation', e))
+      try {
+        const result = await waitForPendingWrites(pendingSegmentWrites.current, async () => {
+          const { error } = await supabase
+            .from('annotations')
+            .update({ status: 'confirmed', closed_at: closedAt })
+            .eq('id', id)
+          if (error) console.error(`confirm annotation: ${error.message}`)
+          return api.closeAnnotation(id)
+        })
+        upsert('annotations', { id, label: result.label, bubble_text: result.bubble_text })
+      } catch (e) {
+        console.error('close annotation', e)
+      }
     },
     [upsert],
   )
@@ -188,7 +192,7 @@ export function useTeacherActions(data: SessionData) {
   /** Confirm anything open, flush speech, end the session and kick off note compilation. */
   const endSession = useCallback(async () => {
     const pendingId = useSessionStore.getState().pendingAnnotationId
-    if (pendingId) confirmAnnotation(pendingId)
+    if (pendingId) await confirmAnnotation(pendingId)
     await refineCoordinator.current.drain(performRefine)
     const endedAt = nowIso()
     data.patchSession({ status: 'ended', ended_at: endedAt })

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { RefineCoordinator, buildTranscriptSegment } from './teacherActionsModel.ts'
+import { RefineCoordinator, buildTranscriptSegment, waitForPendingWrites } from './teacherActionsModel.ts'
 
 const base = {
   id: 'segment-1',
@@ -83,4 +83,23 @@ test('runs exactly one final drain when no refine is active', async () => {
   })
 
   assert.equal(calls, 1)
+})
+
+test('waits for pending transcript inserts before closing an annotation', async () => {
+  let release
+  const pendingWrite = new Promise((resolve) => {
+    release = resolve
+  })
+  const events = []
+  const closing = waitForPendingWrites(new Set([pendingWrite]), async () => {
+    events.push('close')
+    return 'closed'
+  })
+
+  await Promise.resolve()
+  assert.deepEqual(events, [])
+  release()
+
+  assert.equal(await closing, 'closed')
+  assert.deepEqual(events, ['close'])
 })

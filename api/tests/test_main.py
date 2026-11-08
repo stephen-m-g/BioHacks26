@@ -192,17 +192,21 @@ def test_compile_input_lists_ids_annotations_and_materials(db):
     doc = main.compile_input("T", blocks, [b["a1"]], db.tables["assets"])
     assert f"[IMAGE image_block_id={b['i1']['id']}] Cell: A cell." in doc
     assert f"[ANNOTATION annotation_id={b['a1']['id']}] Mitochondrion" in doc
-    assert "[TEXT] Intro paragraph." in doc and "ATP is energy." in doc
+    assert f"[TEXT text_block_id={b['t1']['id']}] Intro paragraph." in doc
+    assert f"[TEXT text_block_id={b['t2']['id']}] Mitochondria make ATP." in doc
+    assert "ATP is energy." in doc
 
 
 def test_compile_drops_invented_ids_and_saves_notes(db, gemini):
     ses, b = board(db, session_title="Renamed session")
     gemini.result = NotesContent(title="", overview="o", review_questions=[f"q{i}" for i in range(7)], sections=[
-        Section(id="intro", heading="H1", paragraphs=["p"], key_terms=[KeyTerm(term="ATP", definition="energy")],
+        Section(id="intro", heading="H1", paragraphs=["Intro paragraph."],
+                key_terms=[KeyTerm(term="ATP", definition="energy")],
                 figures=[Figure(image_block_id=b["i1"]["id"], caption="c"),
                          Figure(image_block_id="made-up", caption="x")],
                 annotation_ids=[b["a1"]["id"], "made-up"]),
-        Section(id="intro", heading="H2", paragraphs=[], key_terms=[], figures=[], annotation_ids=[]),
+        Section(id="intro", heading="H2", paragraphs=["Mitochondria make ATP."], key_terms=[], figures=[],
+                annotation_ids=[]),
     ])
 
     notes = main.compile_session(ses["id"])
@@ -216,6 +220,41 @@ def test_compile_drops_invented_ids_and_saves_notes(db, gemini):
     assert len(saved) == 1 and saved[0]["content"]["sections"][0]["id"] == "s1"
     # only confirmed annotations reach Gemini
     assert "annotation_id=" + b["a1"]["id"] in gemini.calls[0][2][0]
+
+
+def test_compile_rejects_generated_prose_and_saves_the_complete_cleaned_transcript(db, gemini):
+    ses, _ = board(db)
+    gemini.result = NotesContent(title="AI title", overview="Optional summary.", review_questions=["What makes ATP?"], sections=[
+        Section(id="s1", heading="Cellular energy", paragraphs=[
+            "The lesson introduces cellular structures and explains energy production in polished study prose."
+        ], key_terms=[], figures=[], annotation_ids=[]),
+    ])
+
+    notes = main.compile_session(ses["id"])
+
+    paragraphs = [paragraph for section in notes.sections for paragraph in section.paragraphs]
+    assert paragraphs == ["Intro paragraph.", "Mitochondria make ATP."]
+    assert notes.overview == "Optional summary."
+    assert notes.review_questions == ["What makes ATP?"]
+    saved = db.tables["lecture_notes"][0]["content"]
+    assert [p for section in saved["sections"] for p in section["paragraphs"]] == paragraphs
+
+
+def test_compile_keeps_each_cleaned_transcript_block_once_in_chronological_order(db, gemini):
+    ses, b = board(db)
+    gemini.result = NotesContent(title="Lecture title", overview="", review_questions=[], sections=[
+        Section(id="s1", heading="Introduction", paragraphs=["Intro paragraph."], key_terms=[],
+                figures=[Figure(image_block_id=b["i1"]["id"], caption="Cell")], annotation_ids=[]),
+        Section(id="s2", heading="ATP", paragraphs=["Mitochondria make ATP."], key_terms=[],
+                figures=[], annotation_ids=[b["a1"]["id"]]),
+    ])
+
+    notes = main.compile_session(ses["id"])
+
+    assert [p for section in notes.sections for p in section.paragraphs] == [
+        "Intro paragraph.", "Mitochondria make ATP.",
+    ]
+    assert [section.heading for section in notes.sections] == ["Introduction", "ATP"]
 
 
 @pytest.mark.parametrize("session_title, lecture_title, expected", [
@@ -274,6 +313,31 @@ def test_refine_appends_a_block_and_marks_segments(db, gemini):
     assert db.get("transcript_segments", s1["id"])["text_block_id"] == out.block["id"]
     prompt = gemini.calls[0][2][0]
     assert "ATP" in prompt and "Earlier paragraph." in prompt and "makes a tee pee" in prompt
+
+
+def test_refine_accepts_near_verbatim_cleanup_that_only_removes_fillers_and_a_false_start():
+    raw = (
+        "Okay so um this here is the dirt path, and uh it goes all the way down the, "
+        "sorry, along the mountain."
+    )
+    cleaned = "This here is the dirt path, and it goes all the way along the mountain."
+
+    assert main.choose_refined_text(raw, cleaned) == cleaned
+    assert "dirt path" in cleaned and "along the mountain" in cleaned
+    assert " um " not in f" {cleaned.lower()} " and " uh " not in f" {cleaned.lower()} "
+
+
+@pytest.mark.parametrize("rewritten", [
+    "The mountain contains a continuous dirt trail that traverses its terrain.",
+    "The teacher discussed a mountain path.",
+])
+def test_refine_rejects_paraphrased_or_truncated_output_and_preserves_raw_speech(rewritten):
+    raw = (
+        "Okay so um this here is the dirt path, and uh it goes all the way down the, "
+        "sorry, along the mountain."
+    )
+
+    assert main.choose_refined_text(raw, rewritten) == raw
 
 
 def test_refine_uses_the_refine_model_with_low_thinking(db, gemini, monkeypatch):
@@ -338,6 +402,24 @@ def test_compile_folds_unrefined_speech_into_the_board_first(db, gemini):
     notes = main.compile_session(ses["id"])
     assert db.get("transcript_segments", seg["id"])["text_block_id"]
     assert "and that is the end of class" in notes.sections[-1].paragraphs
+
+
+def test_compile_refines_every_batch_in_a_long_lecture_without_truncating_the_end(db, gemini):
+    lec = db.add("lectures", title="Long lecture")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    segments = []
+    for i in range(21):
+        raw = " ".join([f"segment-{i}"] + ["word"] * 149)
+        segments.append(db.add(
+            "transcript_segments", session_id=ses["id"], raw_text=raw,
+            text_block_id=None, created_at=ts(i),
+        ))
+    gemini.result = None
+
+    notes = main.compile_session(ses["id"])
+
+    assert all(db.get("transcript_segments", s["id"])["text_block_id"] for s in segments)
+    assert any("segment-20" in paragraph for section in notes.sections for paragraph in section.paragraphs)
 
 
 def test_refine_fallback_uses_raw_text_and_nothing_to_do_returns_null(db, gemini):
