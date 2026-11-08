@@ -276,6 +276,31 @@ def test_refine_appends_a_block_and_marks_segments(db, gemini):
     assert "ATP" in prompt and "Earlier paragraph." in prompt and "makes a tee pee" in prompt
 
 
+def test_refine_accepts_near_verbatim_cleanup_that_only_removes_fillers_and_a_false_start():
+    raw = (
+        "Okay so um this here is the dirt path, and uh it goes all the way down the, "
+        "sorry, along the mountain."
+    )
+    cleaned = "This here is the dirt path, and it goes all the way along the mountain."
+
+    assert main.choose_refined_text(raw, cleaned) == cleaned
+    assert "dirt path" in cleaned and "along the mountain" in cleaned
+    assert " um " not in f" {cleaned.lower()} " and " uh " not in f" {cleaned.lower()} "
+
+
+@pytest.mark.parametrize("rewritten", [
+    "The mountain contains a continuous dirt trail that traverses its terrain.",
+    "The teacher discussed a mountain path.",
+])
+def test_refine_rejects_paraphrased_or_truncated_output_and_preserves_raw_speech(rewritten):
+    raw = (
+        "Okay so um this here is the dirt path, and uh it goes all the way down the, "
+        "sorry, along the mountain."
+    )
+
+    assert main.choose_refined_text(raw, rewritten) == raw
+
+
 def test_refine_uses_the_refine_model_with_low_thinking(db, gemini, monkeypatch):
     lec = db.add("lectures", title="L")
     ses = db.add("sessions", lecture_id=lec["id"])
@@ -338,6 +363,24 @@ def test_compile_folds_unrefined_speech_into_the_board_first(db, gemini):
     notes = main.compile_session(ses["id"])
     assert db.get("transcript_segments", seg["id"])["text_block_id"]
     assert "and that is the end of class" in notes.sections[-1].paragraphs
+
+
+def test_compile_refines_every_batch_in_a_long_lecture_without_truncating_the_end(db, gemini):
+    lec = db.add("lectures", title="Long lecture")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    segments = []
+    for i in range(21):
+        raw = " ".join([f"segment-{i}"] + ["word"] * 149)
+        segments.append(db.add(
+            "transcript_segments", session_id=ses["id"], raw_text=raw,
+            text_block_id=None, created_at=ts(i),
+        ))
+    gemini.result = None
+
+    notes = main.compile_session(ses["id"])
+
+    assert all(db.get("transcript_segments", s["id"])["text_block_id"] for s in segments)
+    assert any("segment-20" in paragraph for section in notes.sections for paragraph in section.paragraphs)
 
 
 def test_refine_fallback_uses_raw_text_and_nothing_to_do_returns_null(db, gemini):
