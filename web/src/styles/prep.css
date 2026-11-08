@@ -329,3 +329,594 @@
     transition: none;
   }
 }
+
+/* =====================================================================
+   One-screen editor: header, title and classes stay put; Materials is a
+   card that scrolls inside itself; the composer sits below it. The page
+   itself never scrolls (same pattern as the dashboard bento).
+   ===================================================================== */
+.pp.pp-fit {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 868px; /* 820px content + 24px gutters */
+  margin: 0 auto;
+  padding: 0 var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.pp-top {
+  flex-shrink: 0;
+}
+
+.p4 .pp-top .pp-title {
+  min-height: 56px;
+  padding: 0;
+}
+
+/* ---------- classes: same chips as the dashboard filter ---------- */
+.pp-classes-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-3);
+  margin-top: var(--sp-1);
+}
+
+.pp-row-label {
+  flex-shrink: 0;
+}
+
+.pp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--sp-1);
+}
+
+.p4 .pp-chip {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-fg);
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pp-chip-pill {
+  height: 36px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-card);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.pp-chip.on .pp-chip-pill,
+.pp-chip-pill.dark {
+  background: var(--c-fg);
+  border-color: var(--c-fg);
+  color: var(--c-card);
+}
+
+.pp-chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pp-chip.on .pp-chip-dot {
+  box-shadow: 0 0 0 2px var(--c-card);
+}
+
+.pp-chip.add .pp-chip-pill {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border: 1px dashed var(--c-line-strong);
+  color: var(--c-muted);
+}
+
+.pp-chip.add svg {
+  width: 18px;
+  height: 18px;
+}
+
+.p4 .pp-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (hover: hover) {
+  .pp-chip:not(.on):not(:disabled):hover .pp-chip-pill:not(.dark) {
+    background: var(--c-soft);
+  }
+}
+
+.p4 .pp-chip:focus-visible {
+  outline: none;
+}
+
+.p4 .pp-chip:focus-visible .pp-chip-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+.pp-class-new {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.p4 .pp-class-new input {
+  height: 36px;
+  min-height: 36px;
+  width: 220px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--c-line-strong);
+  border-radius: var(--r-pill);
+  background: var(--c-card);
+  font: inherit;
+  font-size: 15px;
+}
+
+/* ---------- Materials card ---------- */
+.pp-materials {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  padding-bottom: var(--sp-5); /* the list is cut off 24px above the card edge */
+}
+
+.pp-card-head {
+  flex-shrink: 0;
+  height: 56px;
+  padding: 0 var(--sp-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.pp-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.pp-count {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--c-soft);
+  color: var(--c-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pp-card-meta {
+  display: flex;
+  gap: var(--sp-4);
+  font-size: 13px;
+  color: var(--c-muted);
+}
+
+.pp-card-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pp-card-meta svg {
+  width: 14px;
+  height: 14px;
+}
+
+.pp-feed-scroll {
+  --fade: 24px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2) var(--sp-5) var(--sp-2);
+  /* minimal scrollbar + soft fade at the cut-off edges, same as the dashboard lists */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.25) 0, #000 var(--fade), #000 calc(100% - var(--fade)), rgba(0, 0, 0, 0.25) 100%);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.25) 0, #000 var(--fade), #000 calc(100% - var(--fade)), rgba(0, 0, 0, 0.25) 100%);
+}
+
+.pp-feed-scroll:hover,
+.pp-feed-scroll:focus-within {
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+.pp-feed-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.pp-feed-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--r-pill);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+.pp-feed-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: var(--c-line-strong);
+}
+
+.pp-fit .pp-feed {
+  margin-top: 0;
+}
+
+/* ---------- composer ---------- */
+.pp-fit .pp-composer-wrap {
+  padding: var(--sp-4) var(--sp-5) var(--sp-3);
+}
+
+.pp-fit .pp-composer-wrap > * {
+  max-width: 820px;
+}
+
+/* Attach and Send: quiet 40px circles in 64px tap areas. Send is grey until there's
+   something to send, then turns solid black. */
+.p4 .pp-icon-btn {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pp-icon-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.pp-icon-circle svg {
+  width: 20px;
+  height: 20px;
+}
+
+.pp-icon-btn.send .pp-icon-circle {
+  background: var(--c-soft);
+  color: var(--c-muted);
+}
+
+.pp-icon-btn.send.ready .pp-icon-circle {
+  background: var(--c-fg);
+  color: var(--c-card);
+}
+
+.p4 .pp-icon-btn.send:disabled {
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .pp-icon-btn:not(.send):hover .pp-icon-circle {
+    background: var(--c-soft);
+  }
+  .pp-icon-btn.send.ready:hover .pp-icon-circle {
+    background: #2a2a2a;
+  }
+}
+
+.p4 .pp-icon-btn:focus-visible {
+  outline: none;
+}
+
+.p4 .pp-icon-btn:focus-visible .pp-icon-circle {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+.pp-fit .pp-hint {
+  margin-top: var(--sp-2);
+}
+
+/* Phones / very short windows: let the page scroll rather than crush the card. */
+@media (max-width: 600px), (max-height: 560px) {
+  .pp.pp-fit {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .pp-materials {
+    min-height: 60vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-chip-pill,
+  .pp-icon-circle {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+   Header row: ← back (discards), the editable title, Save. Chips sit right
+   under it; the Materials card takes the rest; a slimmer composer at the
+   bottom (48px tap areas, like the dashboard's compact controls).
+   ===================================================================== */
+.pp-fit .pp-header {
+  max-width: 868px;
+  padding: var(--sp-3) var(--sp-5) 0;
+  gap: var(--sp-2);
+}
+
+/* The back arrow's visible circle lines up with the content's left edge. */
+.p4 .pp-header .pp-icon-btn.back {
+  min-width: 48px;
+  min-height: 48px;
+  margin-left: -4px;
+}
+
+.p4 .pp-header .pp-header-title {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 var(--sp-1);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+}
+
+.p4 .pp-header .pp-save {
+  min-height: 48px;
+  padding: 0 var(--sp-5);
+  font-size: 15px;
+}
+
+.pp-fit .pp-body {
+  gap: var(--sp-3);
+}
+
+.pp-fit .pp-classes-row {
+  margin-top: 0;
+}
+
+/* Slimmer composer, closer to the bottom edge. */
+.pp-fit .pp-composer-wrap {
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+}
+
+.pp-fit .pp-composer {
+  align-items: center;
+  padding: 0 var(--sp-1);
+  border-radius: 26px;
+}
+
+.p4.pp-fit .pp-textarea {
+  min-height: 48px;
+  padding: 13px var(--sp-2);
+  line-height: 1.4;
+}
+
+.p4.pp-fit .pp-composer .pp-icon-btn {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.pp-fit .pp-composer .pp-icon-circle {
+  width: 36px;
+  height: 36px;
+}
+
+.pp-fit .pp-composer .pp-icon-circle svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* =====================================================================
+   Title row, centered on the content column: the title text starts at the
+   content's left edge, the ← sticks out to the left and Save sticks out to
+   the right by the same amount (--overhang).
+   ===================================================================== */
+.pp-fit {
+  --overhang: 56px; /* 48px button + 8px gap */
+}
+
+.pp-fit .pp-header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-2);
+  /* body column (868px incl. 24px gutters) plus the overhang on each side */
+  max-width: calc(868px + 2 * var(--overhang));
+  padding: var(--sp-4) var(--sp-5) var(--sp-1);
+}
+
+/* The arrow's circle sits flush left in its tap area, so it overhangs exactly like Save. */
+.p4 .pp-header .pp-icon-btn.back {
+  margin-left: 0;
+  justify-content: flex-start;
+}
+
+.pp-header .pp-icon-btn.back .pp-icon-circle {
+  width: 44px;
+  height: 44px;
+}
+
+.p4 .pp-header .pp-header-title {
+  min-height: 56px;
+  padding: 0;
+  font-size: 28px;
+}
+
+.p4 .pp-header .pp-save {
+  min-height: 52px;
+  padding: 0 var(--sp-5);
+  font-size: 16px;
+}
+
+/* Screens too narrow for the overhang: everything shares the content column. */
+@media (max-width: 1000px) {
+  .pp-fit {
+    --overhang: 0px;
+  }
+}
+
+/* A little taller chat bar. */
+.p4.pp-fit .pp-textarea {
+  min-height: 56px;
+  padding: 16px var(--sp-2);
+}
+
+.p4.pp-fit .pp-composer .pp-icon-btn {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.pp-fit .pp-composer .pp-icon-circle {
+  width: 40px;
+  height: 40px;
+}
+
+.pp-fit .pp-composer {
+  border-radius: 30px;
+}
+
+/* Give the back circle a visible edge (like the dashboard's arrows) so its overhang reads the same as Save's. */
+.pp-header .pp-icon-btn.back .pp-icon-circle {
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
+
+/* ---------- header: back arrow + title (no Save). An empty right column keeps the
+   title's text aligned with the content on both sides. ---------- */
+.pp-fit .pp-header {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+}
+
+.pp-header .pp-icon-btn.back .pp-icon-circle {
+  box-shadow: none;
+}
+
+@media (hover: hover) {
+  .pp-header .pp-icon-btn.back:hover .pp-icon-circle {
+    background: var(--c-soft);
+  }
+}
+
+/* ---------- remove (×) on an uploaded item: 28px circle, subtle hover, 48px tap area ---------- */
+.p4 .pp-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48px;
+  height: 48px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.pp-remove-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.pp-remove-circle svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (hover: hover) {
+  .p4 .pp-remove:hover .pp-remove-circle {
+    background: var(--c-soft);
+    color: var(--c-fg);
+  }
+}
+
+.p4 .pp-remove:focus-visible {
+  outline: none;
+}
+
+.p4 .pp-remove:focus-visible .pp-remove-circle {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 1px;
+}
+
+/* ---------- notes field: taller again, grows with its text (JS sets the height) ---------- */
+.pp-fit .pp-composer {
+  align-items: flex-end;
+  padding: var(--sp-1);
+  border-radius: 28px;
+}
+
+.p4.pp-fit .pp-textarea {
+  min-height: 64px;
+  max-height: 176px;
+  padding: 20px var(--sp-2);
+  line-height: 1.5;
+  overflow-y: auto;
+}
+
+/* Attach / Send stay pinned to the bottom of the bar as the field grows. */
+.p4.pp-fit .pp-composer .pp-icon-btn {
+  min-width: 56px;
+  min-height: 64px;
+}
+
+/* ---------- leave dialog: Cancel on the left, Don't save / Save on the right ---------- */
+.pp-leave-actions {
+  flex-wrap: nowrap;
+}
+
+.pp-spacer {
+  flex: 1;
+}

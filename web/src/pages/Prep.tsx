@@ -59,6 +59,15 @@ export default function Prep() {
   const [newClassName, setNewClassName] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const feedEnd = useRef<HTMLDivElement>(null)
+  const noteField = useRef<HTMLTextAreaElement>(null)
+  /** Grow the notes field with its text (up to about six lines, then it scrolls). */
+  const fitNoteField = () => {
+    const el = noteField.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 176)}px`
+  }
+  useEffect(fitNoteField, [draft])
 
   useEffect(() => {
     let cancelled = false
@@ -212,8 +221,9 @@ export default function Prep() {
     setBusy(false)
   }
 
-  /** Apply the title and removals, then go back to the dashboard. */
+  /** Apply the title, classes and removals, then go back to the dashboard. */
   const save = async () => {
+    setConfirmDiscard(false)
     setBusy(true)
     try {
       if (titleChanged) {
@@ -244,70 +254,68 @@ export default function Prep() {
     }
   }
 
+  /** The back arrow: ask Save / Don't save / Cancel when something would be lost. A brand-new lecture
+   *  always asks (leaving without saving deletes it); an unchanged one just goes back. */
   const back = () => {
-    if (hasUnsavedWork) setConfirmDiscard(true)
-    else discard()
+    if (hasUnsavedWork || isNew) setConfirmDiscard(true)
+    else navigate('/')
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
   const noteCount = items.length - imageCount
 
   return (
-    <div className="p4 pp">
-      <header className="p4-top">
-        <button className="p4-btn" onClick={back} disabled={busy}>
-          <IconArrowLeft /> Lectures
+    <div className="p4 pp pp-fit">
+      <header className="p4-top pp-header">
+        <button
+          className="pp-icon-btn back"
+          onClick={back}
+          disabled={busy}
+          aria-label="Back to the dashboard"
+          title="Back to the dashboard"
+        >
+          <span className="pp-icon-circle">
+            <IconArrowLeft />
+          </span>
         </button>
-        <div className="p4-spacer" />
-        <button className="p4-btn solid" onClick={save} disabled={!lecture || busy}>
-          {busy ? 'Saving…' : 'Save'}
-        </button>
+        <input
+          className="pp-title pp-header-title"
+          aria-label="Lecture title"
+          value={title}
+          placeholder="Lecture title"
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        />
       </header>
 
-      <div className="pp-scroll">
-        <div className="pp-inner">
-          <input
-            className="pp-title"
-            aria-label="Lecture title"
-            value={title}
-            placeholder="Lecture title"
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-          />
-          <p className="p4-sub">
-            <span>
-              <IconImage /> {plural(imageCount, 'image')}
-            </span>
-            <span>
-              <IconFile /> {plural(noteCount, 'note')}
-            </span>
-          </p>
-
+      <main className="pp-body">
+        <div className="pp-top">
           {classesAvailable && (
-            <section className="p4-section pp-classes" aria-labelledby="classes-heading">
-              <h2 id="classes-heading" className="p4-label">
-                Classes
-              </h2>
-              <div className="pp-class-chips" role="group" aria-label="Classes this lecture belongs to">
+            <div className="pp-classes-row" role="group" aria-label="Classes this lecture belongs to">
+              <div className="pp-chips">
                 {classes.map((c) => {
                   const on = classIds.includes(c.id)
                   return (
-                    <button key={c.id} className={`pp-class-chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleClass(c.id)}>
-                      <span className="pp-class-dot" style={{ background: c.color }} aria-hidden="true" />
-                      {c.name}
+                    <button key={c.id} className={`pp-chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleClass(c.id)}>
+                      <span className="pp-chip-pill">
+                        <span className="pp-chip-dot" style={{ background: c.color }} aria-hidden="true" />
+                        {c.name}
+                      </span>
                     </button>
                   )
                 })}
                 {newClassName === null ? (
-                  <button className="pp-class-chip add" onClick={() => setNewClassName('')}>
-                    <IconPlus /> New class
+                  <button className="pp-chip add" aria-label="New class" title="New class" onClick={() => setNewClassName('')}>
+                    <span className="pp-chip-pill">
+                      <IconPlus />
+                    </span>
                   </button>
                 ) : (
                   <span className="pp-class-new">
                     <input
                       autoFocus
                       value={newClassName}
-                      placeholder="e.g. Period 2"
+                      placeholder="New class, e.g. Period 2"
                       aria-label="New class name"
                       onChange={(e) => setNewClassName(e.target.value)}
                       onKeyDown={(e) => {
@@ -315,22 +323,37 @@ export default function Prep() {
                         if (e.key === 'Escape') setNewClassName(null)
                       }}
                     />
-                    <button className="p4-btn solid" onClick={addClass} disabled={!newClassName.trim()}>
-                      Add
+                    <button className="pp-chip" onClick={addClass} disabled={!newClassName.trim()}>
+                      <span className="pp-chip-pill dark">Add</span>
                     </button>
-                    <button className="p4-btn" onClick={() => setNewClassName(null)}>
-                      Cancel
+                    <button className="pp-chip" onClick={() => setNewClassName(null)}>
+                      <span className="pp-chip-pill">Cancel</span>
                     </button>
                   </span>
                 )}
               </div>
-            </section>
+            </div>
           )}
+        </div>
 
-          <section className="p4-section" aria-labelledby="materials-heading">
-            <h2 id="materials-heading" className="p4-label">
-              Materials
-            </h2>
+          <section className="pp-materials" aria-labelledby="materials-heading">
+            <div className="pp-card-head">
+              <div className="pp-card-title">
+                <h2 id="materials-heading" className="p4-label">
+                  Materials
+                </h2>
+                <span className="pp-count">{items.length}</span>
+              </div>
+              <span className="pp-card-meta">
+                <span>
+                  <IconImage /> {plural(imageCount, 'image')}
+                </span>
+                <span>
+                  <IconFile /> {plural(noteCount, 'note')}
+                </span>
+              </span>
+            </div>
+            <div className="pp-feed-scroll">
             <div className="pp-feed">
               <div className="pp-ai">
                 <div className="pp-ai-avatar" aria-hidden="true">
@@ -368,11 +391,14 @@ export default function Prep() {
                       </>
                     )}
                     <button
-                      className="p4-btn icon-only pp-remove"
+                      className="pp-remove"
                       aria-label={`Remove ${a.file_name ?? a.label ?? 'this item'}`}
+                      title="Remove"
                       onClick={() => setToRemove(a)}
                     >
-                      <IconX />
+                      <span className="pp-remove-circle">
+                        <IconX />
+                      </span>
                     </button>
                   </div>
                   <div className="pp-ai">
@@ -406,9 +432,9 @@ export default function Prep() {
               ))}
               <div ref={feedEnd} />
             </div>
+            </div>
           </section>
-        </div>
-      </div>
+      </main>
 
       <footer className="pp-composer-wrap">
         {error && (
@@ -428,10 +454,13 @@ export default function Prep() {
             hidden
             onChange={(e) => onFiles(e.target.files)}
           />
-          <button className="p4-btn icon-only" onClick={() => fileInput.current?.click()} aria-label="Attach images, PDFs or text files">
-            <IconPaperclip />
+          <button className="pp-icon-btn" onClick={() => fileInput.current?.click()} aria-label="Attach images, PDFs or text files" title="Attach">
+            <span className="pp-icon-circle">
+              <IconPaperclip />
+            </span>
           </button>
           <textarea
+            ref={noteField}
             className="pp-textarea"
             aria-label="Lecture notes"
             value={draft}
@@ -445,11 +474,18 @@ export default function Prep() {
             }}
             rows={1}
           />
-          <button className="p4-btn solid" onClick={sendText} disabled={!draft.trim()}>
-            <IconArrowUp /> Send
+          <button
+            className={`pp-icon-btn send${draft.trim() ? ' ready' : ''}`}
+            onClick={sendText}
+            disabled={!draft.trim()}
+            aria-label="Send"
+            title="Send (Ctrl+Enter)"
+          >
+            <span className="pp-icon-circle">
+              <IconArrowUp />
+            </span>
           </button>
         </div>
-        <p className="pp-hint">Images go to the image bank. Everything else becomes context.</p>
       </footer>
 
       <ConfirmDialog
@@ -464,18 +500,34 @@ export default function Prep() {
         {toRemove?.kind === 'image' && ' Past sessions that placed this image on the board will then show a blank image.'}
       </ConfirmDialog>
 
-      <ConfirmDialog
-        open={confirmDiscard}
-        title="Discard changes?"
-        confirmLabel="Discard"
-        danger
-        onCancel={() => setConfirmDiscard(false)}
-        onConfirm={discard}
-      >
-        {isNew
-          ? "This lecture hasn't been saved. It and everything you added will be deleted."
-          : 'Changes since you last saved will be lost: new uploads are deleted, removed items come back, and the title and classes are restored.'}
-      </ConfirmDialog>
+      {confirmDiscard && (
+        <div className="dialog-backdrop" onClick={() => setConfirmDiscard(false)}>
+          <div
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="leave-title">{isNew && !hasUnsavedWork ? 'Keep this lecture?' : 'Save changes?'}</h2>
+            <div className="dialog-body">
+              {isNew
+                ? "This lecture hasn't been saved yet. If you don't save, it and everything you added are deleted."
+                : "If you don't save, new uploads are deleted, removed items come back, and the title and classes are restored."}
+            </div>
+            <div className="row dialog-actions pp-leave-actions">
+              <button onClick={() => setConfirmDiscard(false)}>Cancel</button>
+              <span className="pp-spacer" />
+              <button className="danger-outline" onClick={discard} disabled={busy}>
+                Don't save
+              </button>
+              <button className="primary" onClick={save} disabled={!lecture || busy} autoFocus>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
