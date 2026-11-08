@@ -82,7 +82,7 @@ export default function Notes() {
     card.focus({ preventScroll: true })
     if (!reduceMotion) {
       card.animate(
-        [{ boxShadow: '0 0 0 6px rgba(202, 138, 4, 0.45)' }, { boxShadow: '0 0 0 0 rgba(202, 138, 4, 0)' }],
+        [{ boxShadow: '0 0 0 6px rgba(17, 17, 17, 0.14)' }, { boxShadow: '0 0 0 0 rgba(17, 17, 17, 0)' }],
         { duration: 1200, easing: 'ease-out' },
       )
     }
@@ -140,9 +140,14 @@ export default function Notes() {
                 </span>
               </p>
               {content.overview && (
-                <p className="st-overview">
-                  <RichText text={content.overview} />
-                </p>
+                <section className="st-overview-block" aria-labelledby="overview-heading">
+                  <h2 id="overview-heading" className="st-heading">
+                    AI Overview
+                  </h2>
+                  <p className="st-overview">
+                    <RichText text={content.overview} />
+                  </p>
+                </section>
               )}
 
               {content.sections.length > 1 && (
@@ -214,7 +219,7 @@ export default function Notes() {
                               selectedAnnotationId={selectedAnnotationId}
                               onSelectAnnotation={selectAnnotation}
                             />
-                            <figcaption>{f.caption}</figcaption>
+                            <figcaption className="st-visually-hidden">{f.caption}</figcaption>
                             {cards.length > 0 && (
                               <div className="st-terms" aria-label="Image annotations">
                                 {cards.map((card) => (
