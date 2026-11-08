@@ -345,3 +345,21 @@
 .dialog .class-note {
   margin-top: var(--sp-2);
 }
+
+/* A labeled field inside a dialog's text (e.g. "Name this session" when ending an untitled one). */
+.dialog .dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: var(--sp-4);
+}
+
+.dialog .dialog-field-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-fg);
+}
+
+.dialog .dialog-field input {
+  width: 100%;
+}

@@ -62,6 +62,8 @@ export default function Prep() {
   /** Previously saved assets the teacher removed (deleted on save). */
   const [removed, setRemoved] = useState<Asset[]>([])
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  /** Decided when the prompt opens (not live), so the name field doesn't vanish while typing. */
+  const [askName, setAskName] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   /** Uploads and typed notes still being written; they don't count as materials yet. */
@@ -310,13 +312,20 @@ export default function Prep() {
   /** The back arrow: ask Save / Don't save / Cancel when something would be lost. A brand-new lecture
    *  always asks (leaving without saving deletes it); an unchanged one just goes back. */
   const back = () => {
-    if (backAction(hasUnsavedWork, isNew) === 'confirm') setConfirmDiscard(true)
+    if (backAction(hasUnsavedWork, isNew) === 'confirm') openLeavePrompt()
     else navigate(returnTo)
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
   const noteCount = items.length - imageCount
   const canSave = canSaveLecture({ isNew, loaded: !!lecture, busy, materialCount: items.length, pending })
+  /** Still the default name: Save asks for a name first (in the Save / Don't save prompt). */
+  const untitled = !title.trim() || title.trim() === 'Untitled lecture'
+  /** Opens Save / Don't save; asks for a name if the lecture is still untitled (decided now, not live). */
+  const openLeavePrompt = () => {
+    setAskName(untitled)
+    setConfirmDiscard(true)
+  }
 
   return (
     <div className="p4 pp pp-fit">
@@ -342,7 +351,7 @@ export default function Prep() {
         />
         <button
           className="p4-btn solid pp-save"
-          onClick={save}
+          onClick={() => (untitled ? openLeavePrompt() : save())}
           disabled={!canSave}
           aria-busy={saving}
           title={isNew && items.length === 0 ? 'Add a material or a note first' : undefined}
@@ -590,11 +599,29 @@ export default function Prep() {
             aria-labelledby="leave-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="leave-title">{isNew && !hasUnsavedWork ? 'Keep this lecture?' : 'Save changes?'}</h2>
+            <h2 id="leave-title">{askName ? 'Name this lecture' : isNew && !hasUnsavedWork ? 'Keep this lecture?' : 'Save changes?'}</h2>
             <div className="dialog-body">
               {isNew
                 ? "This lecture hasn't been saved yet. If you don't save, it and everything you added are deleted."
                 : "If you don't save, new uploads are deleted, removed items come back, and the title and classes are restored."}
+              {askName && (
+                <label className="dialog-field">
+                  <span className="dialog-field-label">Lecture name</span>
+                  <input
+                    value={title === 'Untitled lecture' ? '' : title}
+                    placeholder="Untitled lecture"
+                    autoFocus
+                    disabled={busy}
+                    onChange={(e) => setTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && lecture && !busy) {
+                        e.preventDefault()
+                        save()
+                      }
+                    }}
+                  />
+                </label>
+              )}
             </div>
             <div className="row dialog-actions pp-leave-actions">
               <button onClick={() => setConfirmDiscard(false)}>Cancel</button>
@@ -602,7 +629,7 @@ export default function Prep() {
               <button className="danger-outline" onClick={discard} disabled={busy}>
                 Don't save
               </button>
-              <button className="primary" onClick={save} disabled={!lecture || busy} autoFocus>
+              <button className="primary" onClick={save} disabled={!lecture || busy} autoFocus={!askName}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
             </div>

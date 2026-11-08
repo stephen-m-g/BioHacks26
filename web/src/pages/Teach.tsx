@@ -15,6 +15,7 @@ import { PAGE_SETTLE_MS, PageTimeline, READING_LINE, activePageAt, isUserScroll 
 import { pageInfo, pagesOf, pdfFirstBlockOnBoard, pdfPagesReady } from '../lib/pdfPages'
 import type { SidebarDocument } from '../components/Sidebar'
 import { useSessionStore } from '../store/session'
+import { supabase } from '../lib/supabase'
 import { useSettings } from '../store/settings'
 import '../styles/student.css'
 
@@ -36,6 +37,9 @@ function readActivePage(scroller: HTMLElement): string | null {
   return activePageAt(items, view.top + view.height * READING_LINE)
 }
 
+/** The default name a lecture gets on creation; a session or lecture still called this hasn't been named. */
+const isUntitled = (t: string | null | undefined) => !t || !t.trim() || t.trim() === 'Untitled lecture'
+
 export default function Teach() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
@@ -47,6 +51,8 @@ export default function Teach() {
   const [mic, setMic] = useState<MicState>(MIC_OFF)
   const micOn = isMicOn(mic, sessionId)
   const [confirmEnd, setConfirmEnd] = useState(false)
+  /** Name typed into the End session dialog when the session is still "Untitled lecture". */
+  const [endName, setEndName] = useState('')
   const [ending, setEnding] = useState(false)
   const aspects = useRef(new Map<string, number>())
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -245,8 +251,18 @@ export default function Teach() {
     [actions, store, data.assets, placePdf],
   )
 
+  const untitled = isUntitled(data.session?.title || data.lecture?.title)
+
   const endSession = async () => {
     setEnding(true)
+    // Still untitled: save the name typed in the dialog (and give an untitled lecture the same name).
+    const name = endName.trim()
+    if (untitled && name && data.session) {
+      actions.renameSession(name)
+      if (isUntitled(data.lecture?.title)) {
+        await supabase.from('lectures').update({ title: name }).eq('id', data.session.lecture_id)
+      }
+    }
     await speech.stop()
     setMic(MIC_OFF)
     await actions.endSession()
@@ -355,6 +371,24 @@ export default function Teach() {
         onConfirm={() => !ending && endSession()}
       >
         The mic turns off{store.pendingAnnotationId ? ', the open annotation is saved,' : ''} and the notes start compiling.
+        {untitled && (
+          <label className="dialog-field">
+            <span className="dialog-field-label">Name this session</span>
+            <input
+              value={endName}
+              placeholder="Untitled lecture"
+              autoFocus
+              disabled={ending}
+              onChange={(e) => setEndName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !ending) {
+                  e.preventDefault()
+                  endSession()
+                }
+              }}
+            />
+          </label>
+        )}
       </ConfirmDialog>
     </div>
   )

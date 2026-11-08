@@ -6,6 +6,7 @@ import { INK_COLORS, INK_WIDTHS, useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import type { Asset } from '../types'
 import { ChevronDownIcon, PenIcon, SwapIcon, UndoIcon, WandIcon } from './icons'
+import '../styles/session-status.css'
 
 export interface Recording {
   /** Recording wanted (not paused) and the session is live. */
@@ -91,7 +92,8 @@ function highlightSlot(el: HTMLElement | null) {
   el?.classList.add('slot-target')
 }
 
-/** Session clock with a recording dot: red pulse while listening, grey when paused. */
+/** Recording status under the session title: dot + label on the left, session time on the right.
+ *  Red pulse while recording, grey when paused or connecting, a red ring on a mic error. */
 function SessionClock({ recording }: { recording: Recording }) {
   // Counts recorded time only: it freezes while recording is paused and continues on resume.
   // On first load it starts from the session's start time (pauses before a reload aren't known).
@@ -109,21 +111,31 @@ function SessionClock({ recording }: { recording: Recording }) {
   }, [recording.on])
   const pad = (n: number) => String(n).padStart(2, '0')
   const time = `${pad(Math.floor(secs / 3600))}:${pad(Math.floor((secs % 3600) / 60))}:${pad(secs % 60)}`
-  const status = !recording.supported
-    ? 'No mic'
-    : recording.error && recording.on
-      ? 'Speech error'
-      : !recording.on
-        ? 'Mic off'
-        : null
+  const state = !recording.supported
+    ? 'unsupported'
+    : recording.on && recording.error
+      ? 'error'
+      : recording.on && recording.listening
+        ? 'recording'
+        : recording.on
+          ? 'starting'
+          : 'paused'
+  const label = { unsupported: 'No mic', error: 'Mic error', recording: 'Recording', starting: 'Starting…', paused: 'Paused' }[state]
   return (
-    <span className="session-clock" aria-live="polite" title={recording.error ? `Mic: ${recording.error}` : undefined}>
-      <span className={`rec-dot${recording.on && recording.listening ? ' live' : ''}`} aria-hidden="true" />
-      {status && <span className="clock-status">{status}</span>}
-      <span className="clock-time" aria-label="Session time">
+    <div
+      className={`session-status ${state}`}
+      role="status"
+      aria-live="polite"
+      title={recording.error ? `Mic: ${recording.error}` : undefined}
+    >
+      <span className="session-status-left">
+        <span className="session-status-dot" aria-hidden="true" />
+        <span className="session-status-label">{label}</span>
+      </span>
+      <span className="session-status-time" aria-label={`Session time ${time}`}>
         {time}
       </span>
-    </span>
+    </div>
   )
 }
 
@@ -303,14 +315,7 @@ export default function Sidebar({
         )}
       </div>
 
-      {recording.live && !recording.on && recording.supported && (
-        <p className="mic-off-notice" role="status">
-          <span className="mic-off-dot" aria-hidden="true" />
-          <span>
-            <strong>Mic off.</strong> Tap the session name, then Start recording.
-          </span>
-        </p>
-      )}
+      <SessionClock recording={recording} />
 
       <hr className="sidebar-divider" />
 
@@ -497,7 +502,6 @@ export default function Sidebar({
             <SwapIcon />
           </span>
         </button>
-        <SessionClock recording={recording} />
       </div>
 
       {ghost && <img className="drag-ghost" src={ghost.src} alt="" style={{ left: ghost.x, top: ghost.y }} draggable={false} />}
