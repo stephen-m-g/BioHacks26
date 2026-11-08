@@ -62,6 +62,8 @@ export interface UseScribeTranscriptionOptions {
   captureContext?: () => TranscriptionContext
   /** Current persisted/optimistic Smart-circle intervals, read when delayed word timings arrive. */
   captureAnnotationIntervals?: () => AnnotationCaptureInterval[]
+  /** The PDF page active at a wall-clock time (undefined = unknown: the page captured at speech start applies). */
+  capturePageAt?: (ms: number) => string | null | undefined
   /** Invalidates callbacks and metrics when the active session changes. */
   scopeKey?: string
 }
@@ -87,6 +89,7 @@ export function useScribeTranscription({
   onFinal,
   captureContext,
   captureAnnotationIntervals,
+  capturePageAt,
   scopeKey,
 }: UseScribeTranscriptionOptions) {
   const [interim, setInterim] = useState('')
@@ -98,6 +101,7 @@ export function useScribeTranscription({
   const onFinalRef = useRef(onFinal)
   const captureContextRef = useRef(captureContext)
   const captureAnnotationIntervalsRef = useRef(captureAnnotationIntervals)
+  const capturePageAtRef = useRef(capturePageAt)
   const sessionIdRef = useRef(sessionId)
   const enabledRef = useRef(enabled)
   const generationRef = useRef(0)
@@ -112,6 +116,7 @@ export function useScribeTranscription({
   onFinalRef.current = onFinal
   captureContextRef.current = captureContext
   captureAnnotationIntervalsRef.current = captureAnnotationIntervals
+  capturePageAtRef.current = capturePageAt
   sessionIdRef.current = sessionId
   enabledRef.current = enabled
 
@@ -134,9 +139,10 @@ export function useScribeTranscription({
     tStart: string,
     tEnd: string,
     annotationId: string | null,
+    pageBlockId: string | null,
   ) => {
     const completedAt = Date.now()
-    const context = captured.context ? { ...captured.context, annotationId } : null
+    const context = captured.context ? { ...captured.context, annotationId, pageBlockId } : null
     captured.onFinal(text, null, tStart, tEnd, context)
     samplesRef.current = [...samplesRef.current, { completedAt, wordCount: countWords(text), confidence: null }]
     refreshMetrics(completedAt)
@@ -145,6 +151,7 @@ export function useScribeTranscription({
   const saveParts = (captured: UtteranceCapture, text: string, words: WordTimestamp[] | undefined) => {
     const endedAt = new Date().toISOString()
     const intervals = captureAnnotationIntervalsRef.current?.() ?? []
+    const pageAt = capturePageAtRef.current
     const parts = partitionTimestampedTranscript(
       text,
       words,
@@ -152,8 +159,9 @@ export function useScribeTranscription({
       captured.startedAt,
       endedAt,
       intervals,
+      { at: (ms) => pageAt?.(ms), fallback: captured.context?.pageBlockId ?? null },
     )
-    for (const part of parts) save(captured, part.text, part.tStart, part.tEnd, part.annotationId)
+    for (const part of parts) save(captured, part.text, part.tStart, part.tEnd, part.annotationId, part.pageBlockId)
   }
 
   const saveFallback = ({ capture: captured, text }: { capture: UtteranceCapture; text: string }) =>

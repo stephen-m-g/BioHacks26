@@ -91,9 +91,11 @@ class Query:
             return Result([dict(row)])
         if self.op == "upsert":
             key = PRIMARY_KEYS.get(self.table, "id")
-            self.rows[:] = [r for r in self.rows if r.get(key) != self.payload[key]]
-            self.rows.append(dict(self.payload))
-            return Result([dict(self.payload)])
+            payloads = self.payload if isinstance(self.payload, list) else [self.payload]
+            for payload in payloads:
+                self.rows[:] = [r for r in self.rows if r.get(key) != payload[key]]
+                self.rows.append(dict(payload))
+            return Result([dict(p) for p in payloads])
         hits = [r for r in self.rows if all(f(r) for f in self.filters)]
         if self.op == "update":
             for r in hits:

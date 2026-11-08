@@ -268,7 +268,12 @@ export default function ImageBlock({
           onPointerLeave={() => leaveSoon(shown.id)}
         >
           <strong>{shown.label ?? 'Annotation'}</strong>
-          <p>{shown.bubble_text?.trim() || 'No explanation recorded.'}</p>
+          <p>
+            {/* Both null: confirmed, but /close hasn't written his words back yet. */}
+            {shown.label === null && shown.bubble_text === null
+              ? 'Linking his words…'
+              : shown.bubble_text?.trim() || 'No explanation recorded.'}
+          </p>
         </div>
       )}
     </div>

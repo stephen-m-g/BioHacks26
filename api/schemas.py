@@ -10,6 +10,12 @@ class DescribeOut(BaseModel):
     key_terms: list[str]
 
 
+# --- /assets/{id}/pages ---
+class PdfPagesOut(BaseModel):
+    page_count: int
+    pages: list[dict]  # pdf_page asset rows, in page order
+
+
 # --- /sessions/{id}/refine ---
 class RefinedSegment(BaseModel):
     id: str
@@ -24,6 +30,7 @@ class RefineGemini(BaseModel):
 class RefineOut(BaseModel):
     block: dict | None
     segment_ids: list[str]
+    moved_blocks: list[dict] = Field(default_factory=list)  # blocks shifted down to make room under a PDF page
 
 
 # --- /sessions/{id}/scribe-token ---

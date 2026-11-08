@@ -2,6 +2,8 @@
 export interface TranscriptionContext {
   sessionId: string
   annotationId: string | null
+  /** PDF page block active when the words were spoken; absent/null = ordinary speech. */
+  pageBlockId?: string | null
 }
 
 export type TranscriptionResultHandler = (

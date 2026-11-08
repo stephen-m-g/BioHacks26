@@ -12,15 +12,21 @@ create table lectures (
 create table assets (
   id uuid primary key default gen_random_uuid(),
   lecture_id uuid references lectures on delete cascade,
-  kind text check (kind in ('image','text','pdf')),
-  storage_path text,          -- path inside the "assets" bucket: {lectureId}/{assetId}.{ext}
+  kind text constraint assets_kind_check check (kind in ('image','text','pdf','pdf_page')),
+  storage_path text,          -- path inside the "assets" bucket: {lectureId}/{assetId}.{ext}; pdf_page: {lectureId}/{pdfId}/page-0001.png
   text_content text,
   file_name text,
   label text,
   description text,
   key_terms text[],
+  source_asset_id uuid references assets on delete cascade,  -- pdf_page: the PDF it was rendered from
+  page_number integer,        -- pdf_page: 1-based
+  page_count integer,         -- pdf: set once every page has been rendered (null = not rendered yet)
+  aspect real,                -- pdf_page: width / height
   created_at timestamptz default now()
 );
+-- One row per page of a PDF, so rendering again never duplicates pages.
+create unique index assets_pdf_page_unique on assets (source_asset_id, page_number) where source_asset_id is not null;
 
 create table sessions (
   id uuid primary key default gen_random_uuid(),
@@ -28,7 +34,8 @@ create table sessions (
   title text,                 -- session name; starts as the lecture title, renamable per session
   status text default 'live' check (status in ('live','ended')),
   started_at timestamptz default now(),
-  ended_at timestamptz
+  ended_at timestamptz,
+  join_code text unique       -- 6 characters students type at /join; set by the teacher's page when a live session opens
 );
 
 -- The board: blocks sorted by position. Inserting between two blocks uses the midpoint.
@@ -40,6 +47,7 @@ create table blocks (
   text text,                  -- text blocks: refined paragraph
   asset_id uuid references assets on delete set null,  -- image blocks
   aspect real,                -- image blocks: width / height
+  page_block_id uuid references blocks on delete set null,  -- text blocks: the PDF page block this speech is under
   created_at timestamptz default now()
 );
 
@@ -77,6 +85,7 @@ create table transcript_segments (
   confidence real,
   annotation_id uuid references annotations on delete set null,
   text_block_id uuid references blocks on delete set null,  -- null = not refined yet
+  page_block_id uuid references blocks on delete set null,  -- PDF page block that was active when this was said
   text_start integer,      -- half-open UTF-16 range inside the cleaned text block (browser String units)
   text_end integer,
   created_at timestamptz default now()

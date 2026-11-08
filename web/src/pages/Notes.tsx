@@ -1,7 +1,7 @@
 // P4 owns this page. The interactive study document compiled from a session.
 // Figures are the board's images with their annotations: hover for his words, click to jump to the section.
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { IconArrowLeft, IconClock, IconPrinter, IconRefresh, IconText } from '../components/DashIcons'
 import { annotationCardId } from '../components/annotationPopoverModel'
 import ImageBlock from '../components/ImageBlock'
@@ -10,6 +10,7 @@ import { useSessionData } from '../hooks/useSessionData'
 import { api } from '../lib/api'
 import { assetUrl } from '../lib/assets'
 import { formatDate } from '../lib/lectures'
+import { pageInfo, pageLabel } from '../lib/pdfPages'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
 import {
@@ -25,6 +26,9 @@ import '../styles/study.css'
 
 export default function Notes() {
   const { sessionId = '' } = useParams()
+  // ?student=1: opened from the student live view, so no teacher links.
+  const [searchParams] = useSearchParams()
+  const student = searchParams.get('student') === '1'
   const data = useSessionData(sessionId)
   const [notes, setNotes] = useState<LectureNotes | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -56,8 +60,9 @@ export default function Notes() {
   }, [sessionId])
 
   // If End session's compile never lands (server down, request lost), compile once from here.
+  // Teacher only: a class of students would each start a duplicate compile at the same moment.
   const endedAt = data.session?.ended_at
-  const awaitingNotes = loaded && !notes
+  const awaitingNotes = loaded && !notes && !student
   useEffect(() => {
     if (!awaitingNotes) return
     const delay = compileFallbackDelay(endedAt, Date.now())
@@ -105,9 +110,15 @@ export default function Notes() {
   return (
     <div className="p4">
       <header className="p4-top no-print">
-        <Link className="p4-btn" to="/">
-          <IconArrowLeft /> Lectures
-        </Link>
+        {student ? (
+          <Link className="p4-btn" to={`/live/${sessionId}`}>
+            <IconArrowLeft /> Board
+          </Link>
+        ) : (
+          <Link className="p4-btn" to="/">
+            <IconArrowLeft /> Lectures
+          </Link>
+        )}
         <div className="p4-spacer" />
         {hasContent && (
           <button className="p4-btn solid" onClick={() => window.print()}>
@@ -190,9 +201,61 @@ export default function Notes() {
                     figures.some(({ cards }) => cards.length > 0),
                     annotationTitles,
                   )
+                  // A PDF page leads its section (his words about it follow); other images come after the text.
+                  const pageFigures = figures.filter(({ block }) => pageInfo(block, data.assets))
+                  const otherFigures = figures.filter(({ block }) => !pageInfo(block, data.assets))
+                  const renderFigure = ({ figure: f, block, cards }: (typeof figures)[number]) => {
+                    const asset = block.asset_id ? data.assets[block.asset_id] : undefined
+                    const page = pageInfo(block, data.assets)
+                    const cardById = new Map(cards.map((card) => [card.id, card]))
+                    const popoverAnnotations = annotationsForImage(data.annotationList, block.id).map((annotation) => ({
+                      ...annotation,
+                      label: cardById.get(annotation.id)?.title ?? annotation.label,
+                      bubble_text: cardById.get(annotation.id)?.text ?? null,
+                    }))
+                    return (
+                      <figure key={f.image_block_id} className={page ? 'st-pdf-page' : undefined}>
+                        {page && (
+                          <div className="pdf-page-label">
+                            <span className="pdf-page-name">{page.fileName}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{pageLabel(page)}</span>
+                          </div>
+                        )}
+                        <ImageBlock
+                          block={block}
+                          src={assetUrl(asset)}
+                          alt={page ? `${page.fileName}, ${pageLabel(page).toLowerCase()}` : (asset?.label ?? f.caption)}
+                          strokes={data.strokeList.filter((st) => st.block_id === block.id)}
+                          annotations={popoverAnnotations}
+                          selectedAnnotationId={selectedAnnotationId}
+                          onSelectAnnotation={selectAnnotation}
+                        />
+                        <figcaption className="st-visually-hidden">{f.caption}</figcaption>
+                        {cards.length > 0 && (
+                          <div className="st-terms" aria-label="Image annotations">
+                            {cards.map((card) => (
+                              <button
+                                type="button"
+                                id={annotationCardId(card.id)}
+                                key={card.id}
+                                className={`st-term-card${selectedAnnotationId === card.id ? ' selected' : ''}`}
+                                aria-pressed={selectedAnnotationId === card.id}
+                                onClick={() => setSelectedAnnotationId(card.id)}
+                              >
+                                <strong>{card.title}</strong>
+                                <span>{card.text}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </figure>
+                    )
+                  }
                   return (
                     <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
                       <h2>{s.heading}</h2>
+                      {pageFigures.map(renderFigure)}
                       {s.paragraphs.map((p, i) => {
                         const parts = transcriptParagraphParts(p, s.paragraph_block_ids?.[i], data.segmentList)
                         return (
@@ -213,46 +276,7 @@ export default function Notes() {
                           </p>
                         )
                       })}
-                      {figures.map(({ figure: f, block, cards }) => {
-                        const asset = block.asset_id ? data.assets[block.asset_id] : undefined
-                        const cardById = new Map(cards.map((card) => [card.id, card]))
-                        const popoverAnnotations = annotationsForImage(data.annotationList, block.id).map((annotation) => ({
-                          ...annotation,
-                          label: cardById.get(annotation.id)?.title ?? annotation.label,
-                          bubble_text: cardById.get(annotation.id)?.text ?? null,
-                        }))
-                        return (
-                          <figure key={f.image_block_id}>
-                            <ImageBlock
-                              block={block}
-                              src={assetUrl(asset)}
-                              alt={asset?.label ?? f.caption}
-                              strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                              annotations={popoverAnnotations}
-                              selectedAnnotationId={selectedAnnotationId}
-                              onSelectAnnotation={selectAnnotation}
-                            />
-                            <figcaption className="st-visually-hidden">{f.caption}</figcaption>
-                            {cards.length > 0 && (
-                              <div className="st-terms" aria-label="Image annotations">
-                                {cards.map((card) => (
-                                  <button
-                                    type="button"
-                                    id={annotationCardId(card.id)}
-                                    key={card.id}
-                                    className={`st-term-card${selectedAnnotationId === card.id ? ' selected' : ''}`}
-                                    aria-pressed={selectedAnnotationId === card.id}
-                                    onClick={() => setSelectedAnnotationId(card.id)}
-                                  >
-                                    <strong>{card.title}</strong>
-                                    <span>{card.text}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </figure>
-                        )
-                      })}
+                      {otherFigures.map(renderFigure)}
                       {keyTerms.length > 0 && (
                         <dl className="st-terms">
                           {keyTerms.map((k) => (

@@ -67,6 +67,15 @@ export function useSessionData(sessionId: string | undefined) {
     setState((s) => (s.session ? { ...s, session: { ...s.session, ...patch } } : s))
   }, [])
 
+  /** Merge asset rows (e.g. PDF pages the API just rendered); assets have no realtime subscription. */
+  const mergeAssets = useCallback((rows: (Partial<Asset> & { id: string })[]) => {
+    setState((s) => {
+      const assets = { ...s.assets }
+      for (const row of rows) assets[row.id] = { ...assets[row.id], ...row } as Asset
+      return { ...s, assets }
+    })
+  }, [])
+
   useEffect(() => {
     if (!sessionId) return
     let cancelled = false
@@ -130,10 +139,11 @@ export function useSessionData(sessionId: string | undefined) {
     const annotations = Object.values(state.annotations)
     const segments = Object.values(state.transcript_segments).sort(compareTranscriptSegments)
     const imageAssets = Object.values(state.assets).filter((a) => a.kind === 'image')
-    return { blockList: blocks, strokeList: strokes, annotationList: annotations, segmentList: segments, imageAssets }
+    const pdfAssets = Object.values(state.assets).filter((a) => a.kind === 'pdf')
+    return { blockList: blocks, strokeList: strokes, annotationList: annotations, segmentList: segments, imageAssets, pdfAssets }
   }, [state])
 
-  return { ...state, ...derived, upsert, remove, patchSession }
+  return { ...state, ...derived, upsert, remove, patchSession, mergeAssets }
 }
 
 export type SessionData = ReturnType<typeof useSessionData>

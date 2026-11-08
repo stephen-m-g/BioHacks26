@@ -1,0 +1,277 @@
+/* Student side (Join, Live) and the join-code pill on the teacher's projected breadcrumb.
+   Phone-first. Colors, type and spacing come from styles/tokens.css; buttons reuse .p4-btn. */
+
+.join-pill-code,
+.stu .stu-code-input {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+/* ---------- teacher: join pill (projected, so it must read from the back of a classroom) ---------- */
+.join-pill {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-pill);
+  background: var(--c-fg);
+  color: #ffffff;
+}
+
+.join-pill-url {
+  font-size: clamp(15px, 1.4vw, 20px);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.join-pill-code {
+  font-size: clamp(32px, 3.4vw, 52px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* ---------- student pages ---------- */
+.p4.stu {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Join (also the loading and not-found screens of Live) */
+.stu-join {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5) var(--sp-4);
+}
+
+.stu-join-card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-5);
+  border-radius: var(--r-lg);
+  background: var(--c-card);
+  box-shadow: var(--shadow-pop);
+}
+
+.stu-join-card .p4-badge {
+  align-self: flex-start;
+}
+
+.stu-join-card h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(26px, 7vw, 34px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.stu .stu-code-input {
+  width: 100%;
+  height: 88px;
+  padding: 0 var(--sp-3);
+  border: 2px solid var(--c-line-strong);
+  border-radius: var(--r-md);
+  background: var(--c-card);
+  color: var(--c-fg);
+  font-size: clamp(34px, 11vw, 44px);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+}
+
+.stu .stu-code-input:focus {
+  outline: none;
+  border-color: var(--c-fg);
+  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.12);
+}
+
+.stu .stu-code-input[aria-invalid='true'] {
+  border-color: var(--c-danger);
+}
+
+.p4 .stu-join-btn {
+  width: 100%;
+  height: 64px;
+  font-size: 18px;
+}
+
+.stu-error {
+  margin: 0;
+  color: var(--c-danger);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.stu-loading {
+  color: var(--c-muted);
+  font-size: var(--fs-body);
+}
+
+/* Live: header, optional ended banner, and the scrolling board fill the screen */
+.p4.stu-live {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stu-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.stu-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(19px, 5vw, 26px);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stu-live-dot,
+.stu-ended {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-eyebrow);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stu-live-dot {
+  color: var(--c-danger);
+}
+
+.stu-live-dot::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--c-danger);
+  animation: stu-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes stu-pulse {
+  50% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stu-live-dot::before {
+    animation: none;
+  }
+}
+
+.stu-ended {
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: var(--c-soft);
+  color: var(--c-text);
+}
+
+.stu-banner {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0 var(--sp-4) var(--sp-3);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-card);
+}
+
+.stu-banner > span {
+  flex: 1 1 220px;
+  color: var(--c-text);
+  font-size: var(--fs-body);
+  line-height: 1.4;
+}
+
+.stu-board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--c-line);
+  background: var(--c-card);
+  /* Bottom room so the Jump to latest button never covers the newest text. */
+  padding: var(--sp-4) var(--sp-4) 112px;
+}
+
+/* The teacher board's 1.35rem is sized for a projector. */
+.stu .board-text,
+.stu .board-live {
+  font-size: 1.1rem;
+}
+
+.stu .board-empty {
+  padding: var(--sp-7) 0;
+}
+
+/* Tapping a circle already darkens it; skip the browser's grey/blue tap flash over its bounding box. */
+.stu .lasso-confirmed.hoverable {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stu-hint {
+  max-width: 900px;
+  margin: var(--sp-4) auto 0;
+  color: var(--c-muted);
+  font-size: var(--fs-meta);
+  text-align: center;
+}
+
+.p4 .stu-jump {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  width: max-content;
+  margin: 0 auto;
+  box-shadow: var(--shadow-pop);
+}
+
+@media (min-width: 700px) {
+  .stu-board {
+    margin: 0 var(--sp-4) var(--sp-4);
+    border: 1px solid var(--c-line);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6) var(--sp-6) 112px;
+  }
+}
+
+/* Phones: a popover for a circle near an edge would run off-screen. */
+@media (max-width: 640px) {
+  .stu .annotation-popover {
+    left: 5% !important;
+    width: 90%;
+    transform: none;
+  }
+}
