@@ -6,9 +6,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ClassFilterBar } from '../components/ClassFilter'
 import { ClassDot, ClassDotButton, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
+import RenameDialog from '../components/RenameDialog'
 import { IconArrowRight, IconClock, IconDots, IconEdit, IconFile, IconImage, IconPlay, IconPlus } from '../components/DashIcons'
 import { createClass, deleteClass, listClasses, setLectureClasses, setSessionClasses, updateClass } from '../lib/classes'
-import { createLecture, deleteLecture, deleteSession, formatDate, setArchived, startSession } from '../lib/lectures'
+import { createLecture, deleteLecture, deleteSession, formatDate, setArchived, startSession, renameSession } from '../lib/lectures'
 import { supabase, supabaseConfigured } from '../lib/supabase'
 import type { ClassGroup, Lecture, Session } from '../types'
 import '../styles/dashboard.css'
@@ -104,6 +105,7 @@ export default function Dashboard() {
   /** Page root: ⋯ menus render here so the scrolling (masked) lists can't clip them. */
   const rootRef = useRef<HTMLDivElement>(null)
   const [toDelete, setToDelete] = useState<SessionRow | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null)
   const [toDeleteLecture, setToDeleteLecture] = useState<LectureRow | null>(null)
   const [classes, setClasses] = useState<ClassGroup[]>([])
   /** The classes tables don't exist yet (migration not run): everything else keeps working. */
@@ -496,10 +498,10 @@ export default function Dashboard() {
                         )}
                         {moreMenu(`s:${s.id}`, title, [
                           {
-                            label: 'Transcript',
+                            label: 'Rename…',
                             onClick: () => {
                               setMenu(null)
-                              navigate(`/sessions/${s.id}/raw`)
+                              setRenaming({ id: s.id, title })
                             },
                           },
                           {
@@ -561,6 +563,19 @@ export default function Dashboard() {
         )}
         . This can't be undone. To just hide it, use Archive instead.
       </ConfirmDialog>
+
+      <RenameDialog
+        open={renaming !== null}
+        current={renaming?.title ?? ''}
+        onCancel={() => setRenaming(null)}
+        onSave={(name) =>
+          run(async () => {
+            if (renaming) await renameSession(renaming.id, name)
+            setRenaming(null)
+            await load()
+          })
+        }
+      />
 
       <ClassPickerDialog
         open={picker !== null}
