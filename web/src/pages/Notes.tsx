@@ -137,9 +137,14 @@ export default function Notes() {
                 <span>{content.sections.length} sections</span>
               </p>
               {content.overview && (
-                <p className="st-overview">
-                  <RichText text={content.overview} />
-                </p>
+                <section className="st-overview-block" aria-labelledby="overview-heading">
+                  <h2 id="overview-heading" className="st-heading">
+                    AI Overview
+                  </h2>
+                  <p className="st-overview">
+                    <RichText text={content.overview} />
+                  </p>
+                </section>
               )}
 
               {content.sections.length > 1 && (
