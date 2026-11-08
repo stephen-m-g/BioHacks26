@@ -330,6 +330,29 @@
   margin-top: 0;
 }
 
+.p4-notice > .st-spinner {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  border: 2px solid var(--c-line);
+  border-top-color: var(--c-fg);
+  border-radius: 50%;
+  animation: st-spin 0.9s linear infinite;
+}
+
+@keyframes st-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p4-notice > .st-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
 /* Section labels (Board, Transcript): same as the list pages' card header. */
 .sv-section + .sv-section {
   margin-top: var(--sp-7);
