@@ -59,6 +59,15 @@ export default function Prep() {
   const [newClassName, setNewClassName] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const feedEnd = useRef<HTMLDivElement>(null)
+  const noteField = useRef<HTMLTextAreaElement>(null)
+  /** Grow the notes field with its text (up to about six lines, then it scrolls). */
+  const fitNoteField = () => {
+    const el = noteField.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 176)}px`
+  }
+  useEffect(fitNoteField, [draft])
 
   useEffect(() => {
     let cancelled = false
@@ -212,8 +221,9 @@ export default function Prep() {
     setBusy(false)
   }
 
-  /** Apply the title and removals, then go back to the dashboard. */
+  /** Apply the title, classes and removals, then go back to the dashboard. */
   const save = async () => {
+    setConfirmDiscard(false)
     setBusy(true)
     try {
       if (titleChanged) {
@@ -244,9 +254,11 @@ export default function Prep() {
     }
   }
 
+  /** The back arrow: ask Save / Don't save / Cancel when something would be lost. A brand-new lecture
+   *  always asks (leaving without saving deletes it); an unchanged one just goes back. */
   const back = () => {
-    if (hasUnsavedWork) setConfirmDiscard(true)
-    else discard()
+    if (hasUnsavedWork || isNew) setConfirmDiscard(true)
+    else navigate('/')
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
@@ -259,8 +271,8 @@ export default function Prep() {
           className="pp-icon-btn back"
           onClick={back}
           disabled={busy}
-          aria-label="Back to the dashboard without saving"
-          title="Back to the dashboard (doesn't save)"
+          aria-label="Back to the dashboard"
+          title="Back to the dashboard"
         >
           <span className="pp-icon-circle">
             <IconArrowLeft />
@@ -274,9 +286,6 @@ export default function Prep() {
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
-        <button className="p4-btn solid pp-save" onClick={save} disabled={!lecture || busy}>
-          {busy ? 'Saving…' : 'Save'}
-        </button>
       </header>
 
       <main className="pp-body">
@@ -382,11 +391,14 @@ export default function Prep() {
                       </>
                     )}
                     <button
-                      className="p4-btn icon-only pp-remove"
+                      className="pp-remove"
                       aria-label={`Remove ${a.file_name ?? a.label ?? 'this item'}`}
+                      title="Remove"
                       onClick={() => setToRemove(a)}
                     >
-                      <IconX />
+                      <span className="pp-remove-circle">
+                        <IconX />
+                      </span>
                     </button>
                   </div>
                   <div className="pp-ai">
@@ -448,6 +460,7 @@ export default function Prep() {
             </span>
           </button>
           <textarea
+            ref={noteField}
             className="pp-textarea"
             aria-label="Lecture notes"
             value={draft}
@@ -487,18 +500,34 @@ export default function Prep() {
         {toRemove?.kind === 'image' && ' Past sessions that placed this image on the board will then show a blank image.'}
       </ConfirmDialog>
 
-      <ConfirmDialog
-        open={confirmDiscard}
-        title="Discard changes?"
-        confirmLabel="Discard"
-        danger
-        onCancel={() => setConfirmDiscard(false)}
-        onConfirm={discard}
-      >
-        {isNew
-          ? "This lecture hasn't been saved. It and everything you added will be deleted."
-          : 'Changes since you last saved will be lost: new uploads are deleted, removed items come back, and the title and classes are restored.'}
-      </ConfirmDialog>
+      {confirmDiscard && (
+        <div className="dialog-backdrop" onClick={() => setConfirmDiscard(false)}>
+          <div
+            className="dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="leave-title">{isNew && !hasUnsavedWork ? 'Keep this lecture?' : 'Save changes?'}</h2>
+            <div className="dialog-body">
+              {isNew
+                ? "This lecture hasn't been saved yet. If you don't save, it and everything you added are deleted."
+                : "If you don't save, new uploads are deleted, removed items come back, and the title and classes are restored."}
+            </div>
+            <div className="row dialog-actions pp-leave-actions">
+              <button onClick={() => setConfirmDiscard(false)}>Cancel</button>
+              <span className="pp-spacer" />
+              <button className="danger-outline" onClick={discard} disabled={busy}>
+                Don't save
+              </button>
+              <button className="primary" onClick={save} disabled={!lecture || busy} autoFocus>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

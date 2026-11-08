@@ -826,3 +826,97 @@
 .pp-header .pp-icon-btn.back .pp-icon-circle {
   box-shadow: inset 0 0 0 1px var(--c-line-strong);
 }
+
+/* ---------- header: back arrow + title (no Save). An empty right column keeps the
+   title's text aligned with the content on both sides. ---------- */
+.pp-fit .pp-header {
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+}
+
+.pp-header .pp-icon-btn.back .pp-icon-circle {
+  box-shadow: none;
+}
+
+@media (hover: hover) {
+  .pp-header .pp-icon-btn.back:hover .pp-icon-circle {
+    background: var(--c-soft);
+  }
+}
+
+/* ---------- remove (×) on an uploaded item: 28px circle, subtle hover, 48px tap area ---------- */
+.p4 .pp-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 48px;
+  height: 48px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.pp-remove-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.pp-remove-circle svg {
+  width: 16px;
+  height: 16px;
+}
+
+@media (hover: hover) {
+  .p4 .pp-remove:hover .pp-remove-circle {
+    background: var(--c-soft);
+    color: var(--c-fg);
+  }
+}
+
+.p4 .pp-remove:focus-visible {
+  outline: none;
+}
+
+.p4 .pp-remove:focus-visible .pp-remove-circle {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 1px;
+}
+
+/* ---------- notes field: taller again, grows with its text (JS sets the height) ---------- */
+.pp-fit .pp-composer {
+  align-items: flex-end;
+  padding: var(--sp-1);
+  border-radius: 28px;
+}
+
+.p4.pp-fit .pp-textarea {
+  min-height: 64px;
+  max-height: 176px;
+  padding: 20px var(--sp-2);
+  line-height: 1.5;
+  overflow-y: auto;
+}
+
+/* Attach / Send stay pinned to the bottom of the bar as the field grows. */
+.p4.pp-fit .pp-composer .pp-icon-btn {
+  min-width: 56px;
+  min-height: 64px;
+}
+
+/* ---------- leave dialog: Cancel on the left, Don't save / Save on the right ---------- */
+.pp-leave-actions {
+  flex-wrap: nowrap;
+}
+
+.pp-spacer {
+  flex: 1;
+}
