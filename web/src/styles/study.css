@@ -73,6 +73,12 @@
   color: var(--d-text);
 }
 
+.st-section p.st-raw-note {
+  margin-top: -8px;
+  font-size: 14px;
+  color: var(--d-muted);
+}
+
 .st-transcript-highlight {
   padding: 0.08em 0.12em;
   margin: 0 -0.02em;
@@ -83,23 +89,29 @@
   box-shadow: inset 0 0 0 1px var(--annotation-outline);
 }
 
-.st-section .lasso-confirmed {
+/* Read-only circles and popovers on both session views; the live board keeps its own colors. */
+.st-article .lasso-confirmed {
   fill: color-mix(in srgb, var(--annotation-highlight) 18%, transparent);
   stroke: var(--annotation-highlight);
 }
 
-.st-section .lasso-confirmed.hoverable:hover,
-.st-section .lasso-confirmed.is-shown {
+.st-article .lasso-confirmed.hoverable:hover,
+.st-article .lasso-confirmed.is-shown {
   fill: color-mix(in srgb, var(--annotation-highlight) 35%, transparent);
 }
 
-.st-section .lasso-confirmed.hoverable:focus-visible {
+.st-article .lasso-confirmed.hoverable:focus-visible {
   fill: color-mix(in srgb, var(--annotation-highlight) 35%, transparent);
   stroke: var(--d-fg);
 }
 
 .st-section figure {
   margin: 16px 0;
+}
+
+/* Transcript cards for PDF pages have no heading: the page label leads. */
+.st-section > figure:first-child {
+  margin-top: 0;
 }
 
 .st-visually-hidden {
@@ -164,7 +176,7 @@
   background: var(--annotation-highlight);
 }
 
-.st-section .annotation-popover {
+.st-article .annotation-popover {
   --annotation-popover-bg: rgba(255, 255, 255, 0.6);
   background: var(--annotation-popover-bg);
   -webkit-backdrop-filter: blur(6px);
@@ -185,12 +197,6 @@
 }
 
 /* Raw view */
-.st-board {
-  margin-top: 32px;
-  padding: 12px;
-  overflow: hidden;
-}
-
 .st-transcript {
   list-style: none;
   margin: 0;
@@ -343,7 +349,7 @@
   gap: 10px;
 }
 
-.sv-body .st-board {
+.sv-section > .st-sections {
   margin-top: 0;
 }
 

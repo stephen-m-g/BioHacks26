@@ -1,5 +1,5 @@
 // P1 owns this component. The live board: a vertical document of text paragraphs and images,
-// with unrefined speech in grey at the bottom. Used interactively on /teach and read-only on the raw and student views.
+// with unrefined speech in grey at the bottom. Used interactively on /teach and read-only on the student view.
 import { Fragment } from 'react'
 import { assetUrl } from '../lib/assets'
 import { pageInfo, pageLabel, pageOwners } from '../lib/pdfPages'

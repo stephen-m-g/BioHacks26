@@ -137,7 +137,10 @@ export function transcriptParagraphParts(
   return parts.length > 0 ? parts : [{ text: paragraph, segmentId: null, annotationId: null }]
 }
 
-function compareSpeechOrder(a: ExplanationSegment, b: ExplanationSegment): number {
+function compareSpeechOrder(
+  a: Pick<TranscriptSegment, 'id' | 't_start' | 't_end' | 'created_at'>,
+  b: Pick<TranscriptSegment, 'id' | 't_start' | 't_end' | 'created_at'>,
+): number {
   const aStart = a.t_start ?? a.created_at
   const bStart = b.t_start ?? b.created_at
   return (
@@ -194,6 +197,123 @@ export function annotationExplanation(
   }
   if (mapped) return cleaned.filter(Boolean).join(' ') || null
   return legacyExplanation(annotation, linked)
+}
+
+type RawSegment = Pick<TranscriptSegment, 'id' | 'annotation_id' | 'raw_text' | 't_start' | 't_end' | 'created_at'>
+
+/** Transcript view: segments as recognized, one part each, in speech order. Never cleaned. */
+export function rawSpeechParts(segments: RawSegment[]): TranscriptParagraphPart[] {
+  return [...segments]
+    .sort(compareSpeechOrder)
+    .map((segment) => ({ text: segment.raw_text.trim(), segmentId: segment.id, annotationId: segment.annotation_id }))
+    .filter((part) => part.text)
+}
+
+/**
+ * Transcript view: a text block's paragraph rebuilt from the segments refined into it (text_block_id), including
+ * filler-only ones whose cleaned offsets are null. Null when no segment maps to it (sessions from before the
+ * mapping), so the view can show the block's cleaned text and say so.
+ */
+export function rawParagraphParts(
+  blockId: string,
+  segments: (RawSegment & Pick<TranscriptSegment, 'text_block_id'>)[],
+): TranscriptParagraphPart[] | null {
+  const linked = segments.filter((segment) => segment.text_block_id === blockId)
+  return linked.length > 0 ? rawSpeechParts(linked) : null
+}
+
+/**
+ * Transcript view: the circle's linked speech exactly as recognized, in speech order, including filler-only
+ * segments. Never cleaned and never the saved bubble; null when no speech is linked.
+ */
+export function rawAnnotationExplanation(annotationId: string, segments: RawSegment[]): string | null {
+  const linked = segments.filter((segment) => segment.annotation_id === annotationId)
+  return (
+    rawSpeechParts(linked)
+      .map((part) => part.text)
+      .join(' ') || null
+  )
+}
+
+/** Transcript view: the same one-card-per-confirmed-circle projection as the notes, with raw speech. */
+export function rawAnnotationCardsForImage(
+  annotations: (ImageAnnotation & Pick<Annotation, 'label'>)[],
+  blockId: string,
+  segments: RawSegment[],
+): AnnotationCard[] {
+  return annotationsForImage(annotations, blockId).map((annotation, index) => ({
+    id: annotation.id,
+    title: annotation.label?.trim() || `Annotation ${index + 1}`,
+    text: rawAnnotationExplanation(annotation.id, segments) || NO_EXPLANATION,
+  }))
+}
+
+type SectionBlock = Pick<Block, 'id' | 'kind'>
+type SectionSegment = Pick<TranscriptSegment, 'id' | 'text_block_id' | 'page_block_id' | 't_start' | 't_end' | 'created_at'>
+
+export interface TranscriptSection<B extends SectionBlock, S extends SectionSegment> {
+  id: string
+  /** The PDF page or image the card shows; null for speech before any image or after a PDF page. */
+  media: B | null
+  /** Text blocks, in board order. */
+  paragraphs: B[]
+  /** Speech never refined into a paragraph, in speech order. */
+  unrefined: S[]
+}
+
+/**
+ * Transcript view cards from the board sequence (`blocks` in board order, `owners` from pageOwners). A PDF page
+ * card holds the paragraphs and unrefined speech given under it (page_block_id); an ordinary image card holds the
+ * paragraphs that follow it; other paragraphs and unplaced speech get cards of their own. Each block and segment
+ * appears exactly once.
+ */
+export function transcriptSections<B extends SectionBlock, S extends SectionSegment>(
+  blocks: B[],
+  owners: ReadonlyMap<string, string | null>,
+  segments: S[],
+): TranscriptSection<B, S>[] {
+  const sections: TranscriptSection<B, S>[] = []
+  const pages = new Map<string, TranscriptSection<B, S>>()
+  const isPage = (id: string) => owners.get(id) === id
+  for (const block of blocks) {
+    if (isPage(block.id)) pages.set(block.id, { id: block.id, media: block, paragraphs: [], unrefined: [] })
+  }
+
+  let open: TranscriptSection<B, S> | null = null
+  for (const block of blocks) {
+    const owner = owners.get(block.id) ?? null
+    if (owner === block.id) {
+      sections.push(pages.get(block.id)!)
+      open = null
+    } else if (block.kind !== 'text') {
+      open = { id: block.id, media: block, paragraphs: [], unrefined: [] }
+      sections.push(open)
+    } else if (owner) {
+      pages.get(owner)!.paragraphs.push(block)
+    } else {
+      if (!open) {
+        open = { id: `text-${block.id}`, media: null, paragraphs: [], unrefined: [] }
+        sections.push(open)
+      }
+      open.paragraphs.push(block)
+    }
+  }
+
+  const unrefined = segments.filter((segment) => !segment.text_block_id).sort(compareSpeechOrder)
+  for (const segment of unrefined) {
+    const page = segment.page_block_id ? pages.get(segment.page_block_id) : undefined
+    if (page) {
+      page.unrefined.push(segment)
+      continue
+    }
+    const last = sections.at(-1)
+    if (!last || (last.media && isPage(last.media.id))) {
+      sections.push({ id: `speech-${segment.id}`, media: null, paragraphs: [], unrefined: [segment] })
+    } else {
+      last.unrefined.push(segment)
+    }
+  }
+  return sections
 }
 
 /** Old lectures without source offsets: raw linked speech with the original light cleanup, else the bubble. */

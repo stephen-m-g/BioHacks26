@@ -10,8 +10,13 @@ import {
   compileFallbackDelay,
   isTranscriptPartHighlighted,
   NO_EXPLANATION,
+  rawAnnotationCardsForImage,
+  rawAnnotationExplanation,
+  rawParagraphParts,
+  rawSpeechParts,
   studyKeyTerms,
   transcriptParagraphParts,
+  transcriptSections,
 } from './notesModel.ts'
 
 const annotation = (id, bubbleText = null) => ({ id, bubble_text: bubbleText })
@@ -399,4 +404,186 @@ test('the notes page only compiles itself once the end-session compile has had i
   assert.equal(compileFallbackDelay(endedAt, ended + 60_000), COMPILE_GRACE_MS - 60_000)
   assert.equal(compileFallbackDelay(endedAt, ended + COMPILE_GRACE_MS + 1), 0)
   assert.equal(compileFallbackDelay(endedAt, ended + 24 * 60 * 60_000), 0)
+})
+
+// ---------- Transcript view: raw speech ----------
+
+const rawSegment = (id, annotationId, rawText, time, extra = {}) => ({
+  ...segment(id, annotationId, rawText, time),
+  ...extra,
+})
+
+test('raw explanation keeps fillers, repeats and recognition errors, in speech order', () => {
+  const segments = [
+    rawSegment('s2', 'ann-a', ' the the mighty condria makes ATP ', '2026-11-07T19:00:03Z'),
+    rawSegment('s1', 'ann-a', 'Um, so uh this oval,', '2026-11-07T19:00:02Z'),
+    rawSegment('s3', 'ann-b', 'Unrelated.', '2026-11-07T19:00:01Z'),
+  ]
+  assert.equal(rawAnnotationExplanation('ann-a', segments), 'Um, so uh this oval, the the mighty condria makes ATP')
+})
+
+test('raw explanation includes filler-only segments whose cleaned offsets are null', () => {
+  const segments = [
+    rawSegment('s1', 'ann-a', 'This is the nucleus.', '2026-11-07T19:00:02Z', { text_block_id: 'b1', text_start: 0, text_end: 20 }),
+    rawSegment('s2', 'ann-a', 'Uh, um.', '2026-11-07T19:00:03Z', { text_block_id: 'b1' }),
+  ]
+  assert.equal(rawAnnotationExplanation('ann-a', segments), 'This is the nucleus. Uh, um.')
+})
+
+test('raw explanation breaks timestamp ties by created_at then id', () => {
+  const t = '2026-11-07T19:00:02Z'
+  const segments = [
+    rawSegment('b', 'ann-a', 'second', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('a', 'ann-a', 'first', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('c', 'ann-a', 'zeroth', t, { created_at: '2026-11-07T19:00:04Z' }),
+  ]
+  assert.equal(rawAnnotationExplanation('ann-a', segments), 'zeroth first second')
+})
+
+test('raw explanation is null without linked speech, never the saved bubble', () => {
+  assert.equal(rawAnnotationExplanation('ann-a', [rawSegment('s1', 'ann-b', 'Other.', '2026-11-07T19:00:02Z')]), null)
+  assert.equal(rawAnnotationExplanation('ann-a', [rawSegment('s1', 'ann-a', '   ', '2026-11-07T19:00:02Z')]), null)
+})
+
+test('raw cards: one per confirmed circle on the image, in drawing order, with raw speech', () => {
+  const annotations = [
+    { id: 'ann-b', block_id: 'img', status: 'confirmed', drawn_at: '2026-11-07T19:00:09Z', label: 'Cristae', bubble_text: 'Cleaned.' },
+    { id: 'ann-a', block_id: 'img', status: 'confirmed', drawn_at: '2026-11-07T19:00:01Z', label: null, bubble_text: 'Saved.' },
+    { id: 'ann-c', block_id: 'img', status: 'rejected', drawn_at: '2026-11-07T19:00:02Z', label: 'X', bubble_text: null },
+    { id: 'ann-d', block_id: 'other', status: 'confirmed', drawn_at: '2026-11-07T19:00:02Z', label: 'Y', bubble_text: null },
+  ]
+  const segments = [rawSegment('s1', 'ann-b', 'uh these folds folds', '2026-11-07T19:00:10Z')]
+  assert.deepEqual(rawAnnotationCardsForImage(annotations, 'img', segments), [
+    { id: 'ann-a', title: 'Annotation 1', text: NO_EXPLANATION },
+    { id: 'ann-b', title: 'Cristae', text: 'uh these folds folds' },
+  ])
+})
+
+test('raw explanation does not mutate or reorder segment rows', () => {
+  const segments = [
+    rawSegment('s2', 'ann-a', ' b ', '2026-11-07T19:00:03Z'),
+    rawSegment('s1', 'ann-a', 'a', '2026-11-07T19:00:02Z'),
+  ]
+  const before = structuredClone(segments)
+  rawAnnotationExplanation('ann-a', segments)
+  assert.deepEqual(segments, before)
+})
+
+// ---------- Transcript view: section cards ----------
+
+const text = (id, pageBlockId = null) => ({ id, kind: 'text', page_block_id: pageBlockId })
+const image = (id) => ({ id, kind: 'image', page_block_id: null })
+const ownersOf = (blocks, pageIds) =>
+  new Map(blocks.map((b) => [b.id, pageIds.includes(b.id) ? b.id : pageIds.includes(b.page_block_id) ? b.page_block_id : null]))
+const speech = (id, time, extra = {}) => rawSegment(id, null, `words ${id}`, time, extra)
+const shape = (sections) =>
+  sections.map((s) => ({
+    id: s.id,
+    media: s.media?.id ?? null,
+    paragraphs: s.paragraphs.map((b) => b.id),
+    unrefined: s.unrefined.map((x) => x.id),
+  }))
+
+test('sections: each PDF page is one card with its own paragraphs and speech, in page order', () => {
+  const pages = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
+  const blocks = pages.flatMap((p) => [image(p), text(`t-${p}`, p)])
+  const sections = transcriptSections(blocks, ownersOf(blocks, pages), [])
+  assert.equal(sections.length, 7)
+  assert.deepEqual(
+    shape(sections).map((s) => [s.media, s.paragraphs]),
+    pages.map((p) => [p, [`t-${p}`]]),
+  )
+})
+
+test('sections: page paragraphs join their page by page_block_id, wherever they sit on the board', () => {
+  const blocks = [image('p1'), image('p2'), text('t1', 'p1'), text('t2', 'p2'), text('t3', 'p1')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1', 'p2']), [])), [
+    { id: 'p1', media: 'p1', paragraphs: ['t1', 't3'], unrefined: [] },
+    { id: 'p2', media: 'p2', paragraphs: ['t2'], unrefined: [] },
+  ])
+})
+
+test('sections: an ordinary image takes the paragraphs that follow it; leading text has its own card', () => {
+  const blocks = [text('a'), image('img1'), text('b'), text('c'), image('img2'), text('d')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, []), [])), [
+    { id: 'text-a', media: null, paragraphs: ['a'], unrefined: [] },
+    { id: 'img1', media: 'img1', paragraphs: ['b', 'c'], unrefined: [] },
+    { id: 'img2', media: 'img2', paragraphs: ['d'], unrefined: [] },
+  ])
+})
+
+test('sections: ordinary text after a PDF page is not attributed to that page', () => {
+  const blocks = [image('p1'), text('t1', 'p1'), text('loose')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1']), [])), [
+    { id: 'p1', media: 'p1', paragraphs: ['t1'], unrefined: [] },
+    { id: 'text-loose', media: null, paragraphs: ['loose'], unrefined: [] },
+  ])
+})
+
+test('sections: unrefined speech goes to its page, else after the last ordinary card, each exactly once', () => {
+  const blocks = [image('p1'), image('img')]
+  const segments = [
+    speech('s3', '2026-11-07T19:00:03Z'),
+    speech('s1', '2026-11-07T19:00:01Z', { page_block_id: 'p1' }),
+    speech('s2', '2026-11-07T19:00:02Z', { page_block_id: 'gone' }),
+    speech('refined', '2026-11-07T19:00:00Z', { text_block_id: 'x' }),
+  ]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1']), segments)), [
+    { id: 'p1', media: 'p1', paragraphs: [], unrefined: ['s1'] },
+    { id: 'img', media: 'img', paragraphs: [], unrefined: ['s2', 's3'] },
+  ])
+})
+
+test('sections: trailing unrefined speech after a PDF page gets its own card', () => {
+  const blocks = [image('p1')]
+  const segments = [speech('s1', '2026-11-07T19:00:01Z')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1']), segments)), [
+    { id: 'p1', media: 'p1', paragraphs: [], unrefined: [] },
+    { id: 'speech-s1', media: null, paragraphs: [], unrefined: ['s1'] },
+  ])
+})
+
+test('sections: an empty board has no cards', () => {
+  assert.deepEqual(transcriptSections([], new Map(), []), [])
+})
+
+// ---------- Transcript view: raw paragraphs ----------
+
+test('raw paragraph: rebuilt from its own segments in speech order, wording untouched', () => {
+  const segments = [
+    rawSegment('s3', null, 'Other block.', '2026-11-07T19:00:01Z', { text_block_id: 'b2' }),
+    rawSegment('s2', 'ann-a', ' the the mighty condria ', '2026-11-07T19:00:03Z', { text_block_id: 'b1', text_start: 0, text_end: 15 }),
+    rawSegment('s1', null, 'Um, so uh,', '2026-11-07T19:00:02Z', { text_block_id: 'b1' }),
+  ]
+  assert.deepEqual(rawParagraphParts('b1', segments), [
+    { text: 'Um, so uh,', segmentId: 's1', annotationId: null },
+    { text: 'the the mighty condria', segmentId: 's2', annotationId: 'ann-a' },
+  ])
+})
+
+test('raw paragraph: filler-only segments with null offsets are kept', () => {
+  const segments = [
+    rawSegment('s1', null, 'Uh, um.', '2026-11-07T19:00:02Z', { text_block_id: 'b1', text_start: null, text_end: null }),
+  ]
+  assert.deepEqual(rawParagraphParts('b1', segments), [{ text: 'Uh, um.', segmentId: 's1', annotationId: null }])
+})
+
+test('raw paragraph: null when no segment maps to the block (legacy), so the view can say so', () => {
+  assert.equal(rawParagraphParts('b1', [rawSegment('s1', null, 'x', '2026-11-07T19:00:02Z', { text_block_id: 'b2' })]), null)
+})
+
+test('raw speech parts: sorted by speech time with stable tie-breakers, blank rows dropped, input untouched', () => {
+  const t = '2026-11-07T19:00:02Z'
+  const segments = [
+    rawSegment('b', null, 'second', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('blank', null, '  ', t),
+    rawSegment('a', null, 'first', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('z', null, 'zeroth', '2026-11-07T19:00:01Z'),
+  ]
+  const before = structuredClone(segments)
+  assert.deepEqual(
+    rawSpeechParts(segments).map((p) => p.text),
+    ['zeroth', 'first', 'second'],
+  )
+  assert.deepEqual(segments, before)
 })
