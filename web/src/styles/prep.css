@@ -752,3 +752,77 @@
   width: 18px;
   height: 18px;
 }
+
+/* =====================================================================
+   Title row, centered on the content column: the title text starts at the
+   content's left edge, the ← sticks out to the left and Save sticks out to
+   the right by the same amount (--overhang).
+   ===================================================================== */
+.pp-fit {
+  --overhang: 56px; /* 48px button + 8px gap */
+}
+
+.pp-fit .pp-header {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--sp-2);
+  /* body column (868px incl. 24px gutters) plus the overhang on each side */
+  max-width: calc(868px + 2 * var(--overhang));
+  padding: var(--sp-4) var(--sp-5) var(--sp-1);
+}
+
+/* The arrow's circle sits flush left in its tap area, so it overhangs exactly like Save. */
+.p4 .pp-header .pp-icon-btn.back {
+  margin-left: 0;
+  justify-content: flex-start;
+}
+
+.pp-header .pp-icon-btn.back .pp-icon-circle {
+  width: 44px;
+  height: 44px;
+}
+
+.p4 .pp-header .pp-header-title {
+  min-height: 56px;
+  padding: 0;
+  font-size: 28px;
+}
+
+.p4 .pp-header .pp-save {
+  min-height: 52px;
+  padding: 0 var(--sp-5);
+  font-size: 16px;
+}
+
+/* Screens too narrow for the overhang: everything shares the content column. */
+@media (max-width: 1000px) {
+  .pp-fit {
+    --overhang: 0px;
+  }
+}
+
+/* A little taller chat bar. */
+.p4.pp-fit .pp-textarea {
+  min-height: 56px;
+  padding: 16px var(--sp-2);
+}
+
+.p4.pp-fit .pp-composer .pp-icon-btn {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.pp-fit .pp-composer .pp-icon-circle {
+  width: 40px;
+  height: 40px;
+}
+
+.pp-fit .pp-composer {
+  border-radius: 30px;
+}
+
+/* Give the back circle a visible edge (like the dashboard's arrows) so its overhang reads the same as Save's. */
+.pp-header .pp-icon-btn.back .pp-icon-circle {
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
