@@ -5,11 +5,63 @@ type ExplanationSegment = Pick<TranscriptSegment, 'annotation_id' | 'raw_text' |
 
 type ImageAnnotation = Pick<Annotation, 'id' | 'block_id' | 'status' | 'drawn_at'>
 
+type SpanSegment = Pick<
+  TranscriptSegment,
+  'id' | 'text_block_id' | 'text_start' | 'text_end' | 'annotation_id'
+>
+
+export interface TranscriptParagraphPart {
+  text: string
+  segmentId: string | null
+  annotationId: string | null
+}
+
+export function isTranscriptPartHighlighted(
+  part: TranscriptParagraphPart,
+  selectedAnnotationId: string | null,
+): boolean {
+  return selectedAnnotationId !== null && part.annotationId === selectedAnnotationId
+}
+
 /** Cards are a one-to-one projection of persisted confirmed circles, never Gemini's selection. */
 export function annotationsForImage<T extends ImageAnnotation>(annotations: T[], blockId: string): T[] {
   return annotations
     .filter((annotation) => annotation.block_id === blockId && annotation.status === 'confirmed')
     .sort((a, b) => a.drawn_at.localeCompare(b.drawn_at) || a.id.localeCompare(b.id))
+}
+
+/** Build display spans only from persisted source offsets; invalid/legacy mappings remain unhighlighted. */
+export function transcriptParagraphParts(
+  paragraph: string,
+  blockId: string | undefined,
+  segments: SpanSegment[],
+): TranscriptParagraphPart[] {
+  if (!blockId) return [{ text: paragraph, segmentId: null, annotationId: null }]
+  const linked = segments
+    .filter(
+      (segment) =>
+        segment.text_block_id === blockId &&
+        Number.isInteger(segment.text_start) &&
+        Number.isInteger(segment.text_end) &&
+        segment.text_start! >= 0 &&
+        segment.text_end! > segment.text_start! &&
+        segment.text_end! <= paragraph.length,
+    )
+    .sort((a, b) => a.text_start! - b.text_start! || a.text_end! - b.text_end! || a.id.localeCompare(b.id))
+  const parts: TranscriptParagraphPart[] = []
+  let cursor = 0
+  for (const segment of linked) {
+    const start = segment.text_start!
+    const end = segment.text_end!
+    if (start < cursor) continue
+    if (start > cursor) parts.push({ text: paragraph.slice(cursor, start), segmentId: null, annotationId: null })
+    parts.push({ text: paragraph.slice(start, end), segmentId: segment.id, annotationId: segment.annotation_id })
+    cursor = end
+  }
+  if (cursor < paragraph.length) {
+    parts.push({ text: paragraph.slice(cursor), segmentId: null, annotationId: null })
+  }
+  return parts.length > 0 ? parts : [{ text: paragraph, segmentId: null, annotationId: null }]
 }
 
 /** Persisted linked segments are complete source-of-truth speech; the saved bubble is a legacy fallback. */

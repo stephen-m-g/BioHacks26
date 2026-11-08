@@ -15,12 +15,15 @@ REFINE = (
     "the sounds are similar. Only use a vocabulary term where the heard words sound like it; never fill in a "
     "term he did not say. Remove obvious filler words such as um and uh, accidental repetition, abandoned false "
     "starts, irrelevant interruptions, and speech-recognition artifacts. Fix punctuation and capitalization and "
-    "join the result into one readable paragraph. This is transcript cleaning, not content generation: preserve "
+    "clean each supplied source segment independently, then join them into one readable paragraph. This is "
+    "transcript cleaning, not content generation: preserve "
     "the vast majority of meaningful speech, including his technical terminology, factual claims, explanations, "
     "examples, wording, and sentence order. Never summarize, paraphrase, reorganize, polish his style, invent an "
     "explanation, or silently correct a scientifically questionable claim. Do not repeat the previous paragraph. "
     "If a stretch is unintelligible, keep those words as heard inside [? ...], for example [? fla dee rum]. "
-    "Return JSON {text}."
+    "Return JSON {text, segments}, where text is the cleaned segments joined by one space and segments is the "
+    "complete input list in the exact same order as [{id: the unchanged source segment id, text: that segment's "
+    "cleaned text}]. Never merge, split, omit, duplicate, or reorder segment ids."
 )
 
 CLOSE = (

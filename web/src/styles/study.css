@@ -49,11 +49,6 @@
 
 .st-section {
   scroll-margin-top: 16px;
-  transition: box-shadow 0.4s;
-}
-
-.st-section.flash {
-  box-shadow: 0 0 0 3px var(--d-fg);
 }
 
 .st-section h2 {
@@ -70,6 +65,16 @@
   font-size: 17px;
   line-height: 1.65;
   color: var(--d-text);
+}
+
+.st-transcript-highlight {
+  padding: 0.08em 0.12em;
+  margin: 0 -0.02em;
+  border-radius: 0.28em;
+  background: #fef08a;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  box-shadow: inset 0 -1px 0 rgba(161, 98, 7, 0.28);
 }
 
 .st-section figure {

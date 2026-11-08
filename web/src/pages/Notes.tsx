@@ -11,7 +11,12 @@ import { assetUrl } from '../lib/assets'
 import { formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
-import { annotationExplanation, annotationsForImage } from './notesModel'
+import {
+  annotationExplanation,
+  annotationsForImage,
+  isTranscriptPartHighlighted,
+  transcriptParagraphParts,
+} from './notesModel'
 import '../styles/p4.css'
 import '../styles/study.css'
 
@@ -62,14 +67,6 @@ export default function Notes() {
 
   const content: NotesContent | null = notes?.content ?? null
   const hasContent = !!content && (content.sections.length > 0 || !!content.overview)
-
-  const jumpTo = (annotationId: string) => {
-    const section = content?.sections.find((s) => s.annotation_ids?.includes(annotationId))
-    const el = section && document.getElementById(`section-${section.id}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    el?.classList.add('flash')
-    setTimeout(() => el?.classList.remove('flash'), 1200)
-  }
 
   const selectAnnotation = (annotationId: string) => {
     setSelectedAnnotationId(annotationId)
@@ -149,11 +146,26 @@ export default function Notes() {
                 {content.sections.map((s) => (
                   <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
                     <h2>{s.heading}</h2>
-                    {s.paragraphs.map((p, i) => (
-                      <p key={i}>
-                        <RichText text={p} />
-                      </p>
-                    ))}
+                    {s.paragraphs.map((p, i) => {
+                      const parts = transcriptParagraphParts(p, s.paragraph_block_ids?.[i], data.segmentList)
+                      return (
+                        <p key={i}>
+                          {parts.map((part, partIndex) => (
+                            <span
+                              key={`${part.segmentId ?? 'gap'}-${partIndex}`}
+                              data-segment-id={part.segmentId ?? undefined}
+                              className={
+                                isTranscriptPartHighlighted(part, selectedAnnotationId)
+                                  ? 'st-transcript-highlight'
+                                  : undefined
+                              }
+                            >
+                              <RichText text={part.text} />
+                            </span>
+                          ))}
+                        </p>
+                      )
+                    })}
                     {s.figures.map((f) => {
                       const block = data.blocks[f.image_block_id]
                       if (!block) return null
@@ -171,7 +183,7 @@ export default function Notes() {
                             alt={asset?.label ?? f.caption}
                             strokes={data.strokeList.filter((st) => st.block_id === block.id)}
                             annotations={annotationsWithSpeech}
-                            onJump={jumpTo}
+                            onJump={selectAnnotation}
                             selectedAnnotationId={selectedAnnotationId}
                             onSelectAnnotation={selectAnnotation}
                           />

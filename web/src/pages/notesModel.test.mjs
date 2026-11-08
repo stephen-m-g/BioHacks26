@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { annotationExplanation, annotationsForImage } from './notesModel.ts'
+import {
+  annotationExplanation,
+  annotationsForImage,
+  isTranscriptPartHighlighted,
+  transcriptParagraphParts,
+} from './notesModel.ts'
 
 const annotation = (id, bubbleText = null) => ({ id, bubble_text: bubbleText })
 const segment = (id, annotationId, rawText, time) => ({
@@ -53,4 +58,55 @@ test('returns every confirmed annotation on its own image exactly once, includin
     'ann-1', 'ann-2', 'ann-3', 'ann-4',
   ])
   assert.deepEqual(annotationsForImage(annotations, 'image-b').map((item) => item.id), ['other-image'])
+})
+
+test('maps separate annotations to exact spans inside the same compiled paragraph', () => {
+  const paragraph = 'First circle. Between them. Second circle.'
+  const segments = [
+    { id: 's-a', text_block_id: 'block-1', text_start: 0, text_end: 13, annotation_id: 'ann-a' },
+    { id: 's-gap', text_block_id: 'block-1', text_start: 14, text_end: 27, annotation_id: null },
+    { id: 's-b', text_block_id: 'block-1', text_start: 28, text_end: 42, annotation_id: 'ann-b' },
+  ]
+
+  assert.deepEqual(transcriptParagraphParts(paragraph, 'block-1', segments), [
+    { text: 'First circle.', segmentId: 's-a', annotationId: 'ann-a' },
+    { text: ' ', segmentId: null, annotationId: null },
+    { text: 'Between them.', segmentId: 's-gap', annotationId: null },
+    { text: ' ', segmentId: null, annotationId: null },
+    { text: 'Second circle.', segmentId: 's-b', annotationId: 'ann-b' },
+  ])
+})
+
+test('uses browser UTF-16 offsets correctly after an emoji', () => {
+  const paragraph = '🧬 DNA marker next part'
+  const parts = transcriptParagraphParts(paragraph, 'block-1', [
+    { id: 's-emoji', text_block_id: 'block-1', text_start: 0, text_end: 13, annotation_id: 'ann-a' },
+    { id: 's-next', text_block_id: 'block-1', text_start: 14, text_end: 23, annotation_id: 'ann-b' },
+  ])
+
+  assert.deepEqual(parts, [
+    { text: '🧬 DNA marker', segmentId: 's-emoji', annotationId: 'ann-a' },
+    { text: ' ', segmentId: null, annotationId: null },
+    { text: 'next part', segmentId: 's-next', annotationId: 'ann-b' },
+  ])
+})
+
+test('empty annotations create no unrelated transcript span', () => {
+  const parts = transcriptParagraphParts('Unrelated lecture text.', 'block-1', [
+    { id: 'other', text_block_id: 'block-1', text_start: 0, text_end: 23, annotation_id: 'ann-other' },
+  ])
+
+  assert.equal(parts.some((part) => part.annotationId === 'ann-empty'), false)
+})
+
+test('selecting one circle highlights only its own span', () => {
+  const parts = transcriptParagraphParts('First circle. Second circle.', 'block-1', [
+    { id: 's-a', text_block_id: 'block-1', text_start: 0, text_end: 13, annotation_id: 'ann-a' },
+    { id: 's-b', text_block_id: 'block-1', text_start: 14, text_end: 28, annotation_id: 'ann-b' },
+  ])
+  const highlighted = (annotationId) => parts.filter((part) => isTranscriptPartHighlighted(part, annotationId)).map((part) => part.text)
+
+  assert.deepEqual(highlighted('ann-a'), ['First circle.'])
+  assert.deepEqual(highlighted('ann-b'), ['Second circle.'])
+  assert.deepEqual(highlighted('ann-empty'), [])
 })

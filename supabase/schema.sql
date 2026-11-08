@@ -77,6 +77,8 @@ create table transcript_segments (
   confidence real,
   annotation_id uuid references annotations on delete set null,
   text_block_id uuid references blocks on delete set null,  -- null = not refined yet
+  text_start integer,      -- half-open UTF-16 range inside the cleaned text block (browser String units)
+  text_end integer,
   created_at timestamptz default now()
 );
 

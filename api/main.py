@@ -9,6 +9,7 @@ import re
 import threading
 import time
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
@@ -109,9 +110,10 @@ def refine_batch(db, session_id: str) -> RefineOut:
 
     raw = " ".join(s["raw_text"].strip() for s in segs if s["raw_text"].strip())
     # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
-    out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, raw)], RefineGemini,
+    out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, segs)], RefineGemini,
                                  timeout_ms=10_000, model=os.getenv("GEMINI_REFINE_MODEL") or None, thinking="LOW")
-    text = choose_refined_text(raw, out.text if out else None)
+    cleaned_segments = choose_refined_segments(segs, out)
+    text, offsets = join_refined_segments(cleaned_segments)
 
     t_write = time.perf_counter()
     block = (
@@ -121,18 +123,72 @@ def refine_batch(db, session_id: str) -> RefineOut:
         .data[0]
     )
     ids = [s["id"] for s in segs]
-    db.table("transcript_segments").update({"text_block_id": block["id"]}).in_("id", ids).execute()
+    for segment, (text_start, text_end) in zip(segs, offsets):
+        db.table("transcript_segments").update({
+            "text_block_id": block["id"], "text_start": text_start, "text_end": text_end,
+        }).eq("id", segment["id"]).execute()
     log.info("[refine] segs=%d words=%d left=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids), words,
              len(unrefined) - len(ids), db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
     return RefineOut(block=block, segment_ids=ids)
 
 
-def refine_prompt(vocab: list[str], prev_text: str, raw: str) -> str:
+def refine_prompt(vocab: list[str], prev_text: str, segments: list[dict]) -> str:
+    source = "\n".join(f"[SEGMENT id={segment['id']}] {segment['raw_text'].strip()}" for segment in segments)
     return (
         f"Lecture vocabulary: {', '.join(vocab) if vocab else '(none)'}\n\n"
         f"Previous paragraph: {prev_text[-600:] or '(none)'}\n\n"
-        f"New raw speech: {raw}"
+        f"New raw speech segments in chronological order:\n{source}"
     )
+
+
+def choose_refined_segments(segments: list[dict], out: RefineGemini | None) -> list[str]:
+    """Accept cleanup only when Gemini preserves every stable segment id in exact source order."""
+    raw_parts = [segment["raw_text"].strip() for segment in segments]
+    if out and out.segments:
+        expected_ids = [segment["id"] for segment in segments]
+        if [segment.id for segment in out.segments] == expected_ids:
+            candidates = [segment.text.strip() for segment in out.segments]
+            if all(candidates) and not cross_segment_token_leak(raw_parts, candidates) and all(
+                choose_refined_text(raw_part, candidate) == candidate
+                for raw_part, candidate in zip(raw_parts, candidates)
+            ):
+                return candidates
+        log.warning("[refine] rejected Gemini segment map that changed source ids/order/boundaries")
+    elif out and len(segments) == 1:
+        return [choose_refined_text(raw_parts[0], out.text)]
+    return raw_parts
+
+
+def cross_segment_token_leak(raw_parts: list[str], candidates: list[str]) -> bool:
+    """Reject exact words removed from one stable source id and added to another."""
+    token_counts = lambda value: Counter(re.findall(r"[a-z0-9]+", value.lower()))
+    raw_counts = [token_counts(part) for part in raw_parts]
+    candidate_counts = [token_counts(part) for part in candidates]
+    tokens = set().union(*(counts.keys() for counts in raw_counts + candidate_counts))
+    for token in tokens:
+        deficits = [i for i, counts in enumerate(raw_counts) if counts[token] > candidate_counts[i][token]]
+        excesses = [i for i, counts in enumerate(candidate_counts) if counts[token] > raw_counts[i][token]]
+        if any(source != destination for source in deficits for destination in excesses):
+            return True
+    return False
+
+
+def utf16_length(value: str) -> int:
+    """Return browser-compatible String.length units for persisted source spans."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def join_refined_segments(parts: list[str]) -> tuple[str, list[tuple[int, int]]]:
+    """Join with one space and return exact half-open UTF-16 offsets for every source segment."""
+    text = ""
+    offsets = []
+    for part in parts:
+        if text:
+            text += " "
+        start = utf16_length(text)
+        text += part
+        offsets.append((start, utf16_length(text)))
+    return text, offsets
 
 
 def segment_order_key(segment: dict) -> tuple[str, str, str, str]:
@@ -508,6 +564,12 @@ def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> No
         fallback.overview = notes.overview.strip()
         fallback.review_questions = notes.review_questions
         return fallback
+    text_blocks = [b for b in blocks if b["kind"] == "text" and (b.get("text") or "").strip()]
+    block_index = 0
+    for section in notes.sections:
+        count = len(section.paragraphs)
+        section.paragraph_block_ids = [block["id"] for block in text_blocks[block_index:block_index + count]]
+        block_index += count
     ensure_annotation_figures(notes, blocks, anns)
     return notes
 
@@ -555,6 +617,7 @@ def fallback_notes(title: str, blocks: list, anns: list) -> NotesContent:
             s.annotation_ids += [a["id"] for a in anns if a["block_id"] == b["id"]]
         elif (b.get("text") or "").strip():
             s.paragraphs.append(b["text"].strip())
+            s.paragraph_block_ids.append(b["id"])
     sections = [s for s in sections if s.paragraphs or s.figures]
     return NotesContent(title=title, overview="", sections=sections, review_questions=[])
 

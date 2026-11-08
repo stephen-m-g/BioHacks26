@@ -191,11 +191,10 @@ function containingInterval(
   endMs: number,
   intervals: readonly AnnotationCaptureInterval[],
 ): string | null {
-  const occurrenceMs = startMs + (endMs - startMs) / 2
   const interval = intervals.find((item) => {
     const drawnAt = Date.parse(item.drawnAt)
     const closedAt = item.closedAt ? Date.parse(item.closedAt) : Number.POSITIVE_INFINITY
-    return drawnAt <= occurrenceMs && occurrenceMs < closedAt
+    return drawnAt <= startMs && endMs <= closedAt
   })
   return interval?.annotationId ?? null
 }
@@ -209,11 +208,18 @@ export function partitionTimestampedTranscript(
   fallbackEnd: string,
   intervals: readonly AnnotationCaptureInterval[],
 ): AnnotationTranscriptPart[] {
+  const wordsWithText = (words ?? []).filter((word): word is ScribeWordTimestamp & { text: string } =>
+    typeof word.text === 'string',
+  )
   const timedWords = (words ?? []).filter(
     (word): word is ScribeWordTimestamp & { text: string; start: number; end: number } =>
       typeof word.text === 'string' && Number.isFinite(word.start) && Number.isFinite(word.end),
   )
-  if (audioStartedAt === null || timedWords.length === 0) {
+  const completeTiming =
+    timedWords.length > 0 &&
+    timedWords.length === wordsWithText.length &&
+    wordsWithText.map((word) => word.text).join('') === text
+  if (audioStartedAt === null || !completeTiming) {
     const startMs = Date.parse(fallbackStart)
     const endMs = Date.parse(fallbackEnd)
     const interval = intervals.find((item) => {

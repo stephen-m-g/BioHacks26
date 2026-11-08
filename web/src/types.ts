@@ -98,6 +98,9 @@ export interface TranscriptSegment {
   annotation_id: UUID | null
   /** null = not refined into a text block yet */
   text_block_id: UUID | null
+  /** Half-open UTF-16 range inside the cleaned text block (browser String units). Null on legacy rows. */
+  text_start: number | null
+  text_end: number | null
   created_at: Timestamp
 }
 
@@ -106,6 +109,8 @@ export interface NotesSection {
   heading: string
   /** plain text; **bold** is allowed */
   paragraphs: string[]
+  /** Stable source block for each paragraph; absent on notes compiled before source-span support. */
+  paragraph_block_ids?: UUID[]
   key_terms: { term: string; definition: string }[]
   figures: { image_block_id: UUID; caption: string }[]
   annotation_ids: UUID[]

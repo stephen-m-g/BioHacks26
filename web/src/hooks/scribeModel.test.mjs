@@ -185,3 +185,45 @@ test('does not attach an unsplittable fallback utterance that crosses an interva
 
   assert.deepEqual(parts.map(({ annotationId }) => annotationId), [null])
 })
+
+test('preserves the whole utterance when any word timing is missing instead of dropping words', () => {
+  const parts = partitionTimestampedTranscript(
+    'Every spoken word stays.',
+    [
+      { text: 'Every ', start: 2.1, end: 2.5, type: 'word' },
+      { text: 'spoken ', type: 'word' },
+      { text: 'word stays.', start: 3, end: 3.8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:02.100Z',
+    '2026-11-07T19:00:03.800Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:04.000Z' }],
+  )
+
+  assert.deepEqual(parts, [{
+    text: 'Every spoken word stays.',
+    tStart: '2026-11-07T19:00:02.100Z',
+    tEnd: '2026-11-07T19:00:03.800Z',
+    annotationId: 'ann-a',
+  }])
+})
+
+test('does not attach a boundary-crossing word to either side', () => {
+  const parts = partitionTimestampedTranscript(
+    'before crossing inside',
+    [
+      { text: 'before ', start: 1, end: 1.7, type: 'word' },
+      { text: 'crossing ', start: 1.8, end: 2.2, type: 'word' },
+      { text: 'inside', start: 2.3, end: 2.8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:01.000Z',
+    '2026-11-07T19:00:02.800Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:03.000Z' }],
+  )
+
+  assert.deepEqual(parts.map(({ text, annotationId }) => ({ text, annotationId })), [
+    { text: 'before crossing', annotationId: null },
+    { text: 'inside', annotationId: 'ann-a' },
+  ])
+})

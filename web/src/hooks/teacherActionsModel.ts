@@ -65,6 +65,8 @@ export function buildTranscriptSegment(input: BuildTranscriptSegmentInput): Tran
     confidence: input.confidence,
     annotation_id: input.context ? input.context.annotationId : (input.defaultAnnotationId ?? null),
     text_block_id: null,
+    text_start: null,
+    text_end: null,
     created_at: input.createdAt,
   }
 }

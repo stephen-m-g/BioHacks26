@@ -28,7 +28,7 @@ interface Props {
   strokes: Stroke[]
   annotations: Annotation[]
   interactive?: ImageBlockInteraction
-  /** Read-only: clicking an annotation (or "Go to section" on touch) jumps somewhere. */
+  /** Read-only: an optional secondary action for the shown annotation. */
   onJump?: (annotationId: string) => void
   selectedAnnotationId?: string | null
   onSelectAnnotation?: (annotationId: string) => void
@@ -215,7 +215,7 @@ export default function ImageBlock({
           <p>{shown.bubble_text?.trim() || 'No explanation recorded'}</p>
           {onJump && activeId === shown.id && (
             <button className="primary" onClick={() => onJump(shown.id)}>
-              Go to section
+              Show explanation
             </button>
           )}
         </div>

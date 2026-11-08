@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from PIL import Image
 
 import main
-from schemas import CloseGemini, DescribeOut, Figure, KeyTerm, NotesContent, RefineGemini, Section
+from schemas import CloseGemini, DescribeOut, Figure, KeyTerm, NotesContent, RefinedSegment, RefineGemini, Section
 
 T0 = datetime(2026, 11, 7, 19, 0, 0, tzinfo=timezone.utc)
 
@@ -335,6 +335,13 @@ def test_compile_keeps_each_cleaned_transcript_block_once_in_chronological_order
         "Intro paragraph.", "Mitochondria make ATP.",
     ]
     assert [section.heading for section in notes.sections] == ["Introduction", "ATP"]
+    assert [block_id for section in notes.sections for block_id in section.paragraph_block_ids] == [
+        b["t1"]["id"], b["t2"]["id"],
+    ]
+    saved = db.tables["lecture_notes"][0]["content"]
+    assert [block_id for section in saved["sections"] for block_id in section["paragraph_block_ids"]] == [
+        b["t1"]["id"], b["t2"]["id"],
+    ]
 
 
 def test_compile_recovers_spoken_order_when_earlier_speech_was_refined_later(db, gemini):
@@ -413,7 +420,7 @@ def test_refine_appends_a_block_and_marks_segments(db, gemini):
     s1 = db.add("transcript_segments", session_id=ses["id"], raw_text="makes a tee pee", text_block_id=None,
                 created_at=ts(1))
     db.add("transcript_segments", session_id=ses["id"], raw_text="done", text_block_id="old", created_at=ts(0))
-    gemini.result = RefineGemini(text="Makes ATP.")
+    gemini.result = RefineGemini(text="Makes ATP.", segments=[])
 
     out = main.refine_session(ses["id"])
 
@@ -462,6 +469,112 @@ def test_refine_uses_stable_ids_when_speech_times_are_identical(db, gemini):
     assert out.block["text"] == "first second"
 
 
+def test_refine_persists_exact_cleaned_offsets_for_each_source_segment(db, gemini):
+    lec = db.add("lectures", title="Cells")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    first = db.add(
+        "transcript_segments", id="segment-a", session_id=ses["id"], raw_text="first cleaned",
+        t_start=ts(1), t_end=ts(2), created_at=ts(4), text_block_id=None,
+    )
+    second = db.add(
+        "transcript_segments", id="segment-b", session_id=ses["id"], raw_text="second cleaned",
+        t_start=ts(2), t_end=ts(3), created_at=ts(5), text_block_id=None,
+    )
+    gemini.result = RefineGemini(text="First cleaned. Second cleaned.", segments=[
+        RefinedSegment(id=first["id"], text="First cleaned."),
+        RefinedSegment(id=second["id"], text="Second cleaned."),
+    ])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["text"] == "First cleaned. Second cleaned."
+    assert (db.get("transcript_segments", first["id"])["text_start"],
+            db.get("transcript_segments", first["id"])["text_end"]) == (0, 14)
+    assert (db.get("transcript_segments", second["id"])["text_start"],
+            db.get("transcript_segments", second["id"])["text_end"]) == (15, 30)
+
+
+def test_refine_persists_browser_compatible_offsets_after_non_bmp_text(db, gemini):
+    lec = db.add("lectures", title="Cells")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    first = db.add(
+        "transcript_segments", id="segment-emoji", session_id=ses["id"], raw_text="DNA marker",
+        t_start=ts(1), t_end=ts(2), created_at=ts(4), text_block_id=None,
+    )
+    second = db.add(
+        "transcript_segments", id="segment-next", session_id=ses["id"], raw_text="next part",
+        t_start=ts(2), t_end=ts(3), created_at=ts(5), text_block_id=None,
+    )
+    gemini.result = RefineGemini(text="🧬 DNA marker next part", segments=[
+        RefinedSegment(id=first["id"], text="🧬 DNA marker"),
+        RefinedSegment(id=second["id"], text="next part"),
+    ])
+
+    main.refine_session(ses["id"])
+
+    # Persist UTF-16 code-unit offsets because browser String.length/slice use UTF-16.
+    assert (db.get("transcript_segments", first["id"])["text_start"],
+            db.get("transcript_segments", first["id"])["text_end"]) == (0, 13)
+    assert (db.get("transcript_segments", second["id"])["text_start"],
+            db.get("transcript_segments", second["id"])["text_end"]) == (14, 23)
+
+
+def test_refine_rejects_reordered_or_missing_segment_source_map(db, gemini):
+    lec = db.add("lectures", title="Cells")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    for segment_id, text, start in [("segment-a", "first", 1), ("segment-b", "second", 2)]:
+        db.add(
+            "transcript_segments", id=segment_id, session_id=ses["id"], raw_text=text,
+            t_start=ts(start), t_end=ts(start + 0.5), created_at=ts(4), text_block_id=None,
+        )
+    gemini.result = RefineGemini(text="Second first", segments=[
+        RefinedSegment(id="segment-b", text="Second"),
+        RefinedSegment(id="segment-a", text="first"),
+    ])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["text"] == "first second"
+    assert db.get("transcript_segments", "segment-a")["text_start"] == 0
+    assert db.get("transcript_segments", "segment-b")["text_start"] == 6
+
+
+def test_refine_rejects_words_moved_across_stable_segment_ids(db, gemini):
+    lec = db.add("lectures", title="Cells")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    for segment_id, text, start in [
+        ("segment-a", "the mitochondrion makes ATP", 1),
+        ("segment-b", "for energy in the cell", 2),
+    ]:
+        db.add(
+            "transcript_segments", id=segment_id, session_id=ses["id"], raw_text=text,
+            t_start=ts(start), t_end=ts(start + 0.5), created_at=ts(4), text_block_id=None,
+        )
+    gemini.result = RefineGemini(text="The mitochondrion makes ATP for energy in the cell.", segments=[
+        RefinedSegment(id="segment-a", text="The mitochondrion"),
+        RefinedSegment(id="segment-b", text="makes ATP for energy in the cell."),
+    ])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["text"] == "the mitochondrion makes ATP for energy in the cell"
+
+
+def test_refine_rejects_a_single_word_leaking_across_segment_boundaries():
+    segments = [
+        {"id": "segment-a", "raw_text": "today we study cellular respiration"},
+        {"id": "segment-b", "raw_text": "and then review deoxyribonucleic acid"},
+    ]
+    output = RefineGemini(text="We study cellular respiration. Today, and then review deoxyribonucleic acid.", segments=[
+        RefinedSegment(id="segment-a", text="We study cellular respiration."),
+        RefinedSegment(id="segment-b", text="Today, and then review deoxyribonucleic acid."),
+    ])
+
+    assert main.choose_refined_segments(segments, output) == [
+        "today we study cellular respiration", "and then review deoxyribonucleic acid",
+    ]
+
+
 def test_refine_accepts_near_verbatim_cleanup_that_only_removes_fillers_and_a_false_start():
     raw = (
         "Okay so um this here is the dirt path, and uh it goes all the way down the, "
@@ -490,7 +603,7 @@ def test_refine_rejects_paraphrased_or_truncated_output_and_preserves_raw_speech
 def test_refine_uses_the_refine_model_with_low_thinking(db, gemini, monkeypatch):
     lec = db.add("lectures", title="L")
     ses = db.add("sessions", lecture_id=lec["id"])
-    gemini.result = RefineGemini(text="x")
+    gemini.result = RefineGemini(text="x", segments=[])
     for env, expected in [("fast-model", ("fast-model", "LOW")), (None, (None, "LOW"))]:
         if env:
             monkeypatch.setenv("GEMINI_REFINE_MODEL", env)
@@ -521,7 +634,7 @@ def test_overlapping_refines_do_not_duplicate_a_paragraph(db, gemini):
     for i in range(3):
         db.add("transcript_segments", session_id=ses["id"], raw_text=f"line {i}", text_block_id=None,
                created_at=ts(i))
-    gemini.result, gemini.delay = RefineGemini(text="Lines."), 0.2
+    gemini.result, gemini.delay = RefineGemini(text="Lines.", segments=[]), 0.2
     with ThreadPoolExecutor(2) as pool:
         results = list(pool.map(lambda _: main.refine_session(ses["id"]), range(2)))
     assert sorted(len(r.segment_ids) for r in results) == [0, 3]
