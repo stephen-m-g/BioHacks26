@@ -135,16 +135,6 @@ export default function Sessions() {
                 <div className="p4-menu" role="menu">
                   <button
                     role="menuitem"
-                    className="p4-btn p4-menu-item"
-                    onClick={() => {
-                      setMenu(null)
-                      setPicker({ id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })
-                    }}
-                  >
-                    Classes…
-                  </button>
-                  <button
-                    role="menuitem"
                     className="p4-btn p4-menu-item danger"
                     onClick={() => {
                       setMenu(null)

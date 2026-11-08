@@ -211,7 +211,7 @@ export default function Dashboard() {
 
   /** "···" button with a small menu. Tap to open, tap outside to close (no long-press). The menu floats
    *  above the page (position: fixed) so a scrolling card can't clip it, and opens upward near the bottom. */
-  const MENU_WIDTH = 240
+  const MENU_WIDTH = 168
   const moreMenu = (key: string, label: string, items: { label: string; danger?: boolean; onClick: () => void }[]) => (
     <div className="dash-menu-wrap">
       <button
@@ -222,7 +222,7 @@ export default function Dashboard() {
         onClick={(e) => {
           if (menu?.key === key) return setMenu(null)
           const r = e.currentTarget.getBoundingClientRect()
-          const height = items.length * 64 + 18
+          const height = items.length * 48 + 10
           const left = Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8))
           const below = r.bottom + 8 + height <= window.innerHeight
           setMenu(below ? { key, left, top: r.bottom + 8 } : { key, left, bottom: window.innerHeight - r.top + 8 })
@@ -504,17 +504,6 @@ export default function Dashboard() {
                               navigate(`/sessions/${s.id}/raw`)
                             },
                           },
-                          ...(classesMissing
-                            ? []
-                            : [
-                                {
-                                  label: 'Classes…',
-                                  onClick: () => {
-                                    setMenu(null)
-                                    setPicker({ kind: 'session', id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })
-                                  },
-                                },
-                              ]),
                           {
                             label: 'Delete session',
                             danger: true,
