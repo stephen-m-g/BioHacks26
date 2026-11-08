@@ -1174,3 +1174,69 @@
   display: inline-flex;
   align-items: center;
 }
+
+/* =====================================================================
+   Refinement: 64px rows (spacing) with 48px tap areas; hover only on the
+   visible pill; every card header the same height so titles line up;
+   Archive is a header-only card.
+   ===================================================================== */
+
+/* Rows back to 64px for breathing room; buttons keep their 48px tap areas. */
+.bento .dash-row {
+  min-height: var(--tap);
+}
+
+/* A little more room between a row's buttons. */
+.bento .dash-actions {
+  gap: var(--sp-1);
+}
+
+/* Hover: never shade the invisible tap area, only the small visible pill. */
+@media (hover: hover) {
+  .bento .dash-actions .dash-btn:not(:disabled):hover,
+  .cell-go:hover {
+    background: transparent;
+  }
+}
+
+/* Same header height in every card (Ready has an arrow, Sessions doesn't), so titles align. */
+.cell-head {
+  box-sizing: border-box;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 var(--sp-3) 0 var(--sp-5);
+}
+
+/* Header arrow: smaller circle, still a 48px tap area. */
+.cell-go .btn-pill.round {
+  width: 28px;
+  height: 28px;
+}
+
+.cell-go .btn-pill.round svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Archive: just the header (ARCHIVE · count · arrow), so it's short and Ready gets the height. */
+.dash .cell-archive {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+.dash .cell-archive .cell-head {
+  width: 100%;
+  display: flex;
+}
+
+@media (hover: hover) {
+  .dash .cell-archive:hover .btn-pill.round {
+    background: var(--c-soft);
+  }
+}
+
+.dash .cell-archive:focus-visible {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}

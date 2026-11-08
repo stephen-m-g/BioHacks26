@@ -413,15 +413,17 @@ export default function Dashboard() {
           </section>
 
           {/* ---------- bottom left: Archive ---------- */}
-          <Link className="bento-cell cell-archive" to="/archive">
-            <span className="archive-text">
-              <span className="dash-label">Archive</span>
-              <span className="archive-sub">
-                {archivedCount === null ? 'Archived lectures' : plural(archivedCount, 'archived lecture')}
+          <Link className="bento-cell cell-archive" to="/archive" aria-label={`Archive, ${archivedCount ?? 0} lectures`}>
+            <span className="cell-head">
+              <span className="cell-title">
+                <span className="dash-label">Archive</span>
+                <span className="cell-count">{archivedCount ?? '–'}</span>
               </span>
-            </span>
-            <span className="archive-go" aria-hidden="true">
-              <IconArrowRight />
+              <span className="cell-go" aria-hidden="true">
+                <span className="btn-pill round">
+                  <IconArrowRight />
+                </span>
+              </span>
             </span>
           </Link>
 
