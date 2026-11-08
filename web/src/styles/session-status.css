@@ -1,0 +1,101 @@
+/* Live session: recording status under the session title (replaces the red "Mic off" banner and the
+   clock that sat in the sidebar footer). Dot + label on the left, session time on the right; every state
+   uses the same flex row, so nothing shifts between states. */
+.session-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-sm);
+  background: var(--c-card);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.session-status-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.session-status-dot {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--c-line-strong);
+}
+
+.session-status-label {
+  font-weight: 600;
+  color: var(--c-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-status-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-muted);
+}
+
+/* recording: red pulse, red label, faint red edge */
+.session-status.recording {
+  border-color: #f3c4c0;
+}
+
+.session-status.recording .session-status-dot {
+  background: #dc2626;
+  animation: session-status-pulse 1.6s ease-in-out infinite;
+}
+
+.session-status.recording .session-status-label {
+  color: #b42318;
+}
+
+/* mic error: a red ring (not a pulse) and red label; hover shows the error text */
+.session-status.error {
+  border-color: #f3c4c0;
+  background: var(--c-danger-bg);
+}
+
+.session-status.error .session-status-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--c-danger);
+}
+
+.session-status.error .session-status-label {
+  color: var(--c-danger);
+}
+
+/* no mic support: grey ring */
+.session-status.unsupported .session-status-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--c-line-strong);
+}
+
+.session-status.unsupported .session-status-label,
+.session-status.paused .session-status-label {
+  color: var(--c-muted);
+}
+
+@keyframes session-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-status.recording .session-status-dot {
+    animation: none;
+  }
+}
