@@ -30,16 +30,28 @@ interface Props {
   interactive?: ImageBlockInteraction
   /** Read-only: clicking an annotation (or "Go to section" on touch) jumps somewhere. */
   onJump?: (annotationId: string) => void
+  selectedAnnotationId?: string | null
+  onSelectAnnotation?: (annotationId: string) => void
 }
 
 /** Lassos smaller than this (fraction of image width/height) are treated as accidental. */
 const MIN_LASSO = 0.03
 
-export default function ImageBlock({ block, src, alt, strokes, annotations, interactive, onJump }: Props) {
+export default function ImageBlock({
+  block,
+  src,
+  alt,
+  strokes,
+  annotations,
+  interactive,
+  onJump,
+  selectedAnnotationId,
+  onSelectAnnotation,
+}: Props) {
   const aspect = block.aspect || 4 / 3
   const vbH = VB_W / aspect
   const svgRef = useRef<SVGSVGElement>(null)
-  const drawing = useRef<{ pointerId: number; points: Point[]; startedAt: string } | null>(null)
+  const drawing = useRef<{ pointerId: number; points: Point[] } | null>(null)
   const [draft, setDraft] = useState<Point[] | null>(null)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -87,7 +99,7 @@ export default function ImageBlock({ block, src, alt, strokes, annotations, inte
     } catch {
       // synthetic or already-released pointer; drawing still works without capture
     }
-    drawing.current = { pointerId: e.pointerId, points: [toPoint(e)], startedAt: new Date().toISOString() }
+    drawing.current = { pointerId: e.pointerId, points: [toPoint(e)] }
     setDraft(drawing.current.points.slice())
   }
 
@@ -110,12 +122,14 @@ export default function ImageBlock({ block, src, alt, strokes, annotations, inte
       interactive.onStroke(block.id, pts)
     } else {
       const bb = bboxOf(d.points)
-      if (d.points.length >= 6 && bb.w >= MIN_LASSO && bb.h >= MIN_LASSO) interactive.onLasso(block.id, d.points, d.startedAt)
+      if (d.points.length >= 6 && bb.w >= MIN_LASSO && bb.h >= MIN_LASSO) {
+        interactive.onLasso(block.id, d.points, new Date().toISOString())
+      }
     }
   }
 
   const readOnly = !interactive
-  const shownId = hoverId ?? activeId
+  const shownId = hoverId ?? selectedAnnotationId ?? activeId
   const shown = annotations.find((a) => a.id === shownId)
   const pending = interactive ? annotations.find((a) => a.id === interactive.pendingId) : undefined
 
@@ -156,7 +170,8 @@ export default function ImageBlock({ block, src, alt, strokes, annotations, inte
               onPointerDown={(e) => (lastPointerType.current = e.pointerType)}
               onClick={() => {
                 if (!readOnly) return
-                if (lastPointerType.current === 'mouse' && onJump) onJump(a.id)
+                onSelectAnnotation?.(a.id)
+                if (!onSelectAnnotation && lastPointerType.current === 'mouse' && onJump) onJump(a.id)
                 else setActiveId((cur) => (cur === a.id ? null : a.id))
               }}
             />

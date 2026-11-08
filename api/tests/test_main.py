@@ -101,26 +101,27 @@ def no_download(monkeypatch):
     monkeypatch.setattr(main, "download", lambda path: png())
 
 
-def test_close_sends_window_with_open_marks_and_links_only_used_lines(db, gemini, no_download):
+def test_close_sends_only_captured_lines_and_gemini_cannot_drop_any(db, gemini, no_download):
     ses, ann, segs = lasso_session(db)
     gemini.result = CloseGemini(label="Mitochondrion", bubble_text="The mitochondria make ATP.",
                                 used_segments=[1, 2])
 
     out = main.close_annotation(ann["id"], None)
 
-    assert (out.label, out.bubble_text) == ("Mitochondrion", "The mitochondria make ATP.")
+    assert out.label == "Mitochondrion"
+    assert out.bubble_text == "the my toe con dree a makes a tee pee can someone close the door"
     contents = gemini.calls[0][2]
-    transcript = next(c for c in contents if isinstance(c, str) and c.startswith("Transcript"))
-    assert "1. now this little oval one" in transcript
-    assert "2. [OPEN] the my toe con dree a" in transcript
-    assert "[OPEN] can someone close the door" in transcript
+    transcript = next(c for c in contents if isinstance(c, str) and c.startswith("Captured transcript"))
+    assert "1. the my toe con dree a" in transcript
+    assert "2. can someone close the door" in transcript
+    assert "little oval" not in transcript and "another circle" not in transcript
     assert "nucleus" not in transcript and "chloroplast" not in transcript
     assert any("mitochondria" in c for c in contents if isinstance(c, str))  # lecture vocabulary
     rows = {k: db.get("transcript_segments", s["id"]) for k, s in segs.items()}
-    assert rows["before"]["annotation_id"] == ann["id"]          # used -> linked
+    assert rows["before"]["annotation_id"] is None
     assert rows["open1"]["annotation_id"] == ann["id"]
-    assert rows["open_noise"]["annotation_id"] is None           # tagged but unused -> untagged
-    assert rows["other_ann"]["annotation_id"] != ann["id"]       # never steal another annotation's line
+    assert rows["open_noise"]["annotation_id"] == ann["id"]
+    assert rows["other_ann"]["annotation_id"] != ann["id"]
     assert db.get("annotations", ann["id"])["label"] == "Mitochondrion"
 
 
@@ -158,16 +159,61 @@ def test_close_confirms_if_the_frontends_update_has_not_landed(db, gemini, no_do
     assert row["status"] == "confirmed" and row["closed_at"]
 
 
-def test_close_caps_bubble_at_70_words(db, gemini, no_download):
-    _, ann, _ = lasso_session(db)
-    gemini.result = CloseGemini(label="x", bubble_text=" ".join(["word"] * 90), used_segments=[2])
-    assert len(main.close_annotation(ann["id"], None).bubble_text.split()) == 70
+def test_close_does_not_truncate_captured_explanation(db, gemini, no_download):
+    ses, ann, _ = lasso_session(db)
+    db.add(
+        "transcript_segments", session_id=ses["id"], raw_text=" ".join(["word"] * 90),
+        t_start=ts(11.5), t_end=ts(11.9), created_at=ts(20), annotation_id=ann["id"],
+    )
+    gemini.result = None
+    assert len(main.close_annotation(ann["id"], None).bubble_text.split()) == 105
 
 
 def test_close_unknown_annotation_is_404(db, gemini):
     with pytest.raises(HTTPException) as e:
         main.close_annotation("nope", None)
     assert e.value.status_code == 404
+
+
+def test_close_uses_only_speech_fully_inside_the_capture_interval_and_keeps_all_of_it(db, gemini, no_download):
+    ses, ann, segs = lasso_session(db)
+    before = db.get("transcript_segments", segs["before"]["id"])
+    before["t_end"] = ts(8)
+    before["created_at"] = ts(30)
+    crossing = db.add(
+        "transcript_segments", session_id=ses["id"], raw_text="crosses the checkmark",
+        t_start=ts(11.8), t_end=ts(12.2), created_at=ts(40), annotation_id=ann["id"],
+    )
+    for key in ("open1", "open_noise", "other_ann", "after"):
+        row = db.get("transcript_segments", segs[key]["id"])
+        row.setdefault("t_end", row["t_start"])
+        row.setdefault("created_at", row["t_start"])
+    gemini.result = CloseGemini(
+        label="Mitochondrion",
+        bubble_text="The mitochondria make ATP.",
+        used_segments=[1],
+    )
+
+    out = main.close_annotation(ann["id"], None)
+
+    assert "my toe con dree a" in out.bubble_text
+    assert "close the door" in out.bubble_text
+    assert db.get("transcript_segments", segs["before"]["id"])["annotation_id"] is None
+    assert db.get("transcript_segments", crossing["id"])["annotation_id"] is None
+    assert db.get("transcript_segments", segs["after"]["id"])["annotation_id"] is None
+
+
+def test_close_links_delayed_untagged_speech_by_occurrence_time_not_save_time(db, gemini, no_download):
+    ses, ann, _ = lasso_session(db)
+    delayed = db.add(
+        "transcript_segments", session_id=ses["id"], raw_text="spoken before the checkmark",
+        t_start=ts(11.2), t_end=ts(11.8), created_at=ts(30), annotation_id=None,
+    )
+    gemini.result = None
+
+    main.close_annotation(ann["id"], None)
+
+    assert db.get("transcript_segments", delayed["id"])["annotation_id"] == ann["id"]
 
 
 # ---------- /sessions/{id}/compile ----------
@@ -220,6 +266,40 @@ def test_compile_drops_invented_ids_and_saves_notes(db, gemini):
     assert len(saved) == 1 and saved[0]["content"]["sections"][0]["id"] == "s1"
     # only confirmed annotations reach Gemini
     assert "annotation_id=" + b["a1"]["id"] in gemini.calls[0][2][0]
+
+
+def test_compile_includes_every_confirmed_annotation_and_its_image_once(db, gemini):
+    lec = db.add("lectures", title="Cells")
+    image_a = db.add("assets", lecture_id=lec["id"], kind="image", label="Cell A")
+    image_b = db.add("assets", lecture_id=lec["id"], kind="image", label="Cell B")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    text = db.add("blocks", session_id=ses["id"], kind="text", position=1, text="Cell structures.")
+    block_a = db.add("blocks", session_id=ses["id"], kind="image", position=2, asset_id=image_a["id"])
+    block_b = db.add("blocks", session_id=ses["id"], kind="image", position=3, asset_id=image_b["id"])
+    confirmed = [
+        db.add("annotations", session_id=ses["id"], block_id=block_a["id"], status="confirmed", label=f"A{i}")
+        for i in range(4)
+    ]
+    confirmed.append(db.add(
+        "annotations", session_id=ses["id"], block_id=block_b["id"], status="confirmed", label="B",
+    ))
+    db.add("annotations", session_id=ses["id"], block_id=block_a["id"], status="pending", label="pending")
+    db.add("annotations", session_id=ses["id"], block_id=block_a["id"], status="rejected", label="rejected")
+    gemini.result = NotesContent(title="Cells", overview="", review_questions=[], sections=[
+        Section(
+            id="s1", heading="Structures", paragraphs=[text["text"]], key_terms=[],
+            figures=[Figure(image_block_id=block_a["id"], caption="A")],
+            annotation_ids=[confirmed[0]["id"]],
+        ),
+    ])
+
+    notes = main.compile_session(ses["id"])
+
+    figures = [figure.image_block_id for section in notes.sections for figure in section.figures]
+    annotation_ids = [annotation_id for section in notes.sections for annotation_id in section.annotation_ids]
+    assert figures == [block_a["id"], block_b["id"]]
+    assert len(annotation_ids) == len(set(annotation_ids)) == 5
+    assert set(annotation_ids) == {annotation["id"] for annotation in confirmed}
 
 
 def test_compile_rejects_generated_prose_and_saves_the_complete_cleaned_transcript(db, gemini):

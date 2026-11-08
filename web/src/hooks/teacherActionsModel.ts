@@ -45,6 +45,16 @@ export async function waitForPendingWrites<T>(pending: Set<Promise<void>>, task:
   return task()
 }
 
+/** Close the audio boundary first so delayed timestamp callbacks can register their DB writes before /close. */
+export async function flushSpeechAndWaitForPendingWrites<T>(
+  pending: Set<Promise<void>>,
+  flushSpeech: (() => Promise<void>) | undefined,
+  task: () => Promise<T>,
+): Promise<T> {
+  await flushSpeech?.()
+  return waitForPendingWrites(pending, task)
+}
+
 export function buildTranscriptSegment(input: BuildTranscriptSegmentInput): TranscriptSegment {
   return {
     id: input.id,

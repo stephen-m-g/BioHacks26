@@ -11,6 +11,7 @@ import {
   describeScribeError,
   normalizeKeyterms,
   parseKeyterms,
+  partitionTimestampedTranscript,
   timestampedTranscript,
 } from './scribeModel.ts'
 import { splitSentences } from './transcriptionModel.ts'
@@ -140,4 +141,47 @@ test('keeps duplicate rapid commits stable when timestamp callbacks have identic
 
   assert.deepEqual(queue.take('Okay.'), { occurrence: 1 })
   assert.deepEqual(queue.take('Okay.'), { occurrence: 2 })
+})
+
+test('partitions words by the exact circle-to-checkmark intervals despite delayed finalization', () => {
+  const parts = partitionTimestampedTranscript(
+    'Before. First circle. Between. Second circle. After.',
+    [
+      { text: 'Before. ', start: 1, end: 1.8, type: 'word' },
+      { text: 'First circle. ', start: 2.2, end: 3.5, type: 'word' },
+      { text: 'Between. ', start: 4.2, end: 4.8, type: 'word' },
+      { text: 'Second circle. ', start: 5.2, end: 6.5, type: 'word' },
+      { text: 'After.', start: 7.2, end: 8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:09.000Z',
+    '2026-11-07T19:00:10.000Z',
+    [
+      { annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:04.000Z' },
+      { annotationId: 'ann-b', drawnAt: '2026-11-07T19:00:05.000Z', closedAt: '2026-11-07T19:00:07.000Z' },
+    ],
+  )
+
+  assert.deepEqual(parts.map(({ text, annotationId }) => ({ text, annotationId })), [
+    { text: 'Before.', annotationId: null },
+    { text: 'First circle.', annotationId: 'ann-a' },
+    { text: 'Between.', annotationId: null },
+    { text: 'Second circle.', annotationId: 'ann-b' },
+    { text: 'After.', annotationId: null },
+  ])
+  assert.equal(parts[1].tStart, '2026-11-07T19:00:02.200Z')
+  assert.equal(parts[1].tEnd, '2026-11-07T19:00:03.500Z')
+})
+
+test('does not attach an unsplittable fallback utterance that crosses an interval boundary', () => {
+  const parts = partitionTimestampedTranscript(
+    'Speech crossing the checkmark.',
+    undefined,
+    null,
+    '2026-11-07T19:00:03.500Z',
+    '2026-11-07T19:00:04.500Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:04.000Z' }],
+  )
+
+  assert.deepEqual(parts.map(({ annotationId }) => annotationId), [null])
 })

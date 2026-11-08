@@ -156,6 +156,16 @@ export interface TimestampedTranscript {
   tEnd: string
 }
 
+export interface AnnotationCaptureInterval {
+  annotationId: string
+  drawnAt: string
+  closedAt: string | null
+}
+
+export interface AnnotationTranscriptPart extends TimestampedTranscript {
+  annotationId: string | null
+}
+
 /** Convert Scribe's cumulative input-audio clock to persisted wall-clock occurrence times. */
 export function timestampedTranscript(
   text: string,
@@ -174,6 +184,72 @@ export function timestampedTranscript(
     tStart: new Date(audioStartedAt + Math.min(...starts) * 1_000).toISOString(),
     tEnd: new Date(audioStartedAt + Math.max(...ends) * 1_000).toISOString(),
   }
+}
+
+function containingInterval(
+  startMs: number,
+  endMs: number,
+  intervals: readonly AnnotationCaptureInterval[],
+): string | null {
+  const occurrenceMs = startMs + (endMs - startMs) / 2
+  const interval = intervals.find((item) => {
+    const drawnAt = Date.parse(item.drawnAt)
+    const closedAt = item.closedAt ? Date.parse(item.closedAt) : Number.POSITIVE_INFINITY
+    return drawnAt <= occurrenceMs && occurrenceMs < closedAt
+  })
+  return interval?.annotationId ?? null
+}
+
+/** Split a delayed commit at word boundaries and assign each word by when it was spoken. */
+export function partitionTimestampedTranscript(
+  text: string,
+  words: readonly ScribeWordTimestamp[] | undefined,
+  audioStartedAt: number | null,
+  fallbackStart: string,
+  fallbackEnd: string,
+  intervals: readonly AnnotationCaptureInterval[],
+): AnnotationTranscriptPart[] {
+  const timedWords = (words ?? []).filter(
+    (word): word is ScribeWordTimestamp & { text: string; start: number; end: number } =>
+      typeof word.text === 'string' && Number.isFinite(word.start) && Number.isFinite(word.end),
+  )
+  if (audioStartedAt === null || timedWords.length === 0) {
+    const startMs = Date.parse(fallbackStart)
+    const endMs = Date.parse(fallbackEnd)
+    const interval = intervals.find((item) => {
+      const drawnAt = Date.parse(item.drawnAt)
+      const closedAt = item.closedAt ? Date.parse(item.closedAt) : Number.POSITIVE_INFINITY
+      return drawnAt <= startMs && endMs <= closedAt
+    })
+    return [{ text, tStart: fallbackStart, tEnd: fallbackEnd, annotationId: interval?.annotationId ?? null }]
+  }
+
+  const parts: Array<{
+    text: string
+    startMs: number
+    endMs: number
+    annotationId: string | null
+  }> = []
+  for (const word of timedWords) {
+    const startMs = audioStartedAt + word.start * 1_000
+    const endMs = audioStartedAt + word.end * 1_000
+    const annotationId = containingInterval(startMs, endMs, intervals)
+    const current = parts.at(-1)
+    if (current?.annotationId === annotationId) {
+      current.text += word.text
+      current.endMs = Math.max(current.endMs, endMs)
+    } else {
+      parts.push({ text: word.text, startMs, endMs, annotationId })
+    }
+  }
+  return parts
+    .map((part) => ({
+      text: part.text.trim(),
+      tStart: new Date(part.startMs).toISOString(),
+      tEnd: new Date(part.endMs).toISOString(),
+      annotationId: part.annotationId,
+    }))
+    .filter((part) => part.text.length > 0)
 }
 
 /** Correlates delayed timestamp messages with stable commits, including repeated identical text. */

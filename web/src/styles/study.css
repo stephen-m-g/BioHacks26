@@ -82,6 +82,48 @@
   color: var(--d-muted);
 }
 
+.st-annotation-cards {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.p4 .st-annotation-card {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  padding: 14px 16px;
+  text-align: left;
+  color: var(--d-text);
+  background: var(--d-bg);
+  border: 1px solid transparent;
+  border-radius: 16px;
+}
+
+.p4 .st-annotation-card.selected {
+  border-color: #ca8a04;
+  background: #fefce8;
+  box-shadow: 0 0 0 2px rgba(202, 138, 4, 0.18);
+}
+
+.st-annotation-card > span:last-child {
+  display: grid;
+  gap: 4px;
+}
+
+.st-annotation-number {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: #713f12;
+  background: #fef08a;
+  font-weight: 700;
+}
+
 .st-terms {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));

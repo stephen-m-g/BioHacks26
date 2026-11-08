@@ -24,13 +24,13 @@ REFINE = (
 )
 
 CLOSE = (
-    "A biology teacher drew a loop around part of an image on his board while talking. You get an image of "
-    "what he selected, a description of the whole image, and a transcript of what he said from just before "
-    "selecting it until he confirmed. Segments he spoke while the selection was open are marked [OPEN]; they "
-    "are likely, but not certainly, about it. Return JSON {label: 2-5 word name of the selected thing, "
-    "bubble_text: the sentences from the transcript that are about the selected thing}. bubble_text must be "
-    "HIS words copied from the transcript, max 70 words; you may drop unrelated sentences and filler words "
-    "(um, uh, okay so) and join the kept sentences; you may not add or paraphrase content. "
+    "A biology teacher drew a loop around part of an image and then spoke until pressing the confirmation "
+    "checkmark. You get the selected image region, a description of the whole image, and exactly the speech "
+    "captured between those two actions. Every captured transcript line belongs to this annotation. Return JSON "
+    "{label: 2-5 word name of the selected thing, bubble_text: a faithful cleanup of every transcript line, "
+    "used_segments: every supplied line number in order}. bubble_text must preserve ALL of HIS meaningful words "
+    "in their original order; you may remove filler words (um, uh, okay so), but may not select, omit, add, "
+    "paraphrase, summarize, or reorder content. "
     "The transcript is raw speech recognition of a teacher with mild dysarthria: in bubble_text, fix words "
     "that were clearly misheard (prefer terms from the lecture vocabulary when the sounds are similar) and fix "
     "punctuation and capitalization; otherwise keep his exact wording."

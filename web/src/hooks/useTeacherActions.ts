@@ -7,7 +7,8 @@ import { bboxOf } from '../lib/ink'
 import { supabase } from '../lib/supabase'
 import { useSessionStore } from '../store/session'
 import type { Annotation, Block, Point, Stroke, TranscriptSegment } from '../types'
-import { RefineCoordinator, buildTranscriptSegment, waitForPendingWrites } from './teacherActionsModel'
+import { RefineCoordinator, buildTranscriptSegment, flushSpeechAndWaitForPendingWrites } from './teacherActionsModel'
+import type { AnnotationCaptureInterval } from './scribeModel'
 import type { TranscriptionContext } from './transcriptionModel'
 import type { SessionData } from './useSessionData'
 
@@ -22,8 +23,24 @@ export function useTeacherActions(data: SessionData) {
   ref.current = data
   const refineCoordinator = useRef(new RefineCoordinator())
   const pendingSegmentWrites = useRef(new Set<Promise<void>>())
+  const annotationIntervals = useRef(new Map<string, AnnotationCaptureInterval>())
   const { upsert, remove } = data
   const sessionId = data.session?.id ?? ''
+
+  for (const annotation of data.annotationList) {
+    if (annotation.status === 'rejected') {
+      annotationIntervals.current.delete(annotation.id)
+      continue
+    }
+    const current = annotationIntervals.current.get(annotation.id)
+    annotationIntervals.current.set(annotation.id, {
+      annotationId: annotation.id,
+      drawnAt: annotation.drawn_at,
+      closedAt: current?.closedAt ?? annotation.closed_at,
+    })
+  }
+
+  const getAnnotationIntervals = useCallback(() => [...annotationIntervals.current.values()], [])
 
   const addStroke = useCallback(
     (blockId: string, points: Point[], color: string, width: number) => {
@@ -58,6 +75,7 @@ export function useTeacherActions(data: SessionData) {
         bubble_text: null,
       }
       upsert('annotations', row)
+      annotationIntervals.current.set(row.id, { annotationId: row.id, drawnAt, closedAt: null })
       store.setPendingAnnotation(row.id)
       supabase.from('annotations').insert(row).then(logError('insert annotation'))
     },
@@ -65,16 +83,19 @@ export function useTeacherActions(data: SessionData) {
   )
 
   const confirmAnnotation = useCallback(
-    async (id: string) => {
+    async (id: string, flushSpeech?: () => Promise<void>) => {
       const closedAt = nowIso()
       upsert('annotations', { id, status: 'confirmed', closed_at: closedAt })
+      const interval = annotationIntervals.current.get(id)
+      if (interval) annotationIntervals.current.set(id, { ...interval, closedAt })
       useSessionStore.getState().setPendingAnnotation(null)
       try {
-        const result = await waitForPendingWrites(pendingSegmentWrites.current, async () => {
-          const { error } = await supabase
-            .from('annotations')
-            .update({ status: 'confirmed', closed_at: closedAt })
-            .eq('id', id)
+        const annotationWrite = supabase
+          .from('annotations')
+          .update({ status: 'confirmed', closed_at: closedAt })
+          .eq('id', id)
+        const result = await flushSpeechAndWaitForPendingWrites(pendingSegmentWrites.current, flushSpeech, async () => {
+          const { error } = await annotationWrite
           if (error) console.error(`confirm annotation: ${error.message}`)
           return api.closeAnnotation(id)
         })
@@ -89,6 +110,7 @@ export function useTeacherActions(data: SessionData) {
   const rejectAnnotation = useCallback(
     (id: string) => {
       upsert('annotations', { id, status: 'rejected' })
+      annotationIntervals.current.delete(id)
       useSessionStore.getState().setPendingAnnotation(null)
       for (const s of ref.current.segmentList) {
         if (s.annotation_id === id) upsert('transcript_segments', { id: s.id, annotation_id: null })
@@ -202,7 +224,7 @@ export function useTeacherActions(data: SessionData) {
   }, [sessionId, confirmAnnotation, performRefine, data.patchSession])
 
   return useMemo(
-    () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession }),
-    [addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession],
+    () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession, getAnnotationIntervals }),
+    [addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession, getAnnotationIntervals],
   )
 }

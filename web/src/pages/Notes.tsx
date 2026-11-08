@@ -11,7 +11,7 @@ import { assetUrl } from '../lib/assets'
 import { formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
-import { annotationExplanation } from './notesModel'
+import { annotationExplanation, annotationsForImage } from './notesModel'
 import '../styles/p4.css'
 import '../styles/study.css'
 
@@ -22,6 +22,7 @@ export default function Notes() {
   const [loaded, setLoaded] = useState(false)
   const [compiling, setCompiling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
 
   useEffect(() => {
     supabase
@@ -68,6 +69,11 @@ export default function Notes() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     el?.classList.add('flash')
     setTimeout(() => el?.classList.remove('flash'), 1200)
+  }
+
+  const selectAnnotation = (annotationId: string) => {
+    setSelectedAnnotationId(annotationId)
+    document.getElementById(`annotation-card-${annotationId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }
 
   return (
@@ -152,6 +158,11 @@ export default function Notes() {
                       const block = data.blocks[f.image_block_id]
                       if (!block) return null
                       const asset = block.asset_id ? data.assets[block.asset_id] : undefined
+                      const figureAnnotations = annotationsForImage(data.annotationList, block.id)
+                      const annotationsWithSpeech = figureAnnotations.map((annotation) => ({
+                        ...annotation,
+                        bubble_text: annotationExplanation(annotation, data.segmentList),
+                      }))
                       return (
                         <figure key={f.image_block_id}>
                           <ImageBlock
@@ -159,12 +170,31 @@ export default function Notes() {
                             src={assetUrl(asset)}
                             alt={asset?.label ?? f.caption}
                             strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                            annotations={data.annotationList
-                              .filter((a) => a.block_id === block.id && a.status === 'confirmed')
-                              .map((a) => ({ ...a, bubble_text: annotationExplanation(a, data.segmentList) }))}
+                            annotations={annotationsWithSpeech}
                             onJump={jumpTo}
+                            selectedAnnotationId={selectedAnnotationId}
+                            onSelectAnnotation={selectAnnotation}
                           />
                           <figcaption>{f.caption}</figcaption>
+                          {annotationsWithSpeech.length > 0 && (
+                            <div className="st-annotation-cards" aria-label="Image annotations">
+                              {annotationsWithSpeech.map((annotation, index) => (
+                                <button
+                                  type="button"
+                                  id={`annotation-card-${annotation.id}`}
+                                  key={annotation.id}
+                                  className={`st-annotation-card${selectedAnnotationId === annotation.id ? ' selected' : ''}`}
+                                  onClick={() => setSelectedAnnotationId(annotation.id)}
+                                >
+                                  <span className="st-annotation-number">{index + 1}</span>
+                                  <span>
+                                    <strong>{annotation.label?.trim() || `Annotation ${index + 1}`}</strong>
+                                    <span>{annotation.bubble_text?.trim() || 'No explanation recorded.'}</span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </figure>
                       )
                     })}

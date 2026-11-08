@@ -11,7 +11,8 @@ import {
   describeMicrophoneError,
   describeScribeError,
   parseKeyterms,
-  timestampedTranscript,
+  partitionTimestampedTranscript,
+  type AnnotationCaptureInterval,
   type ScribeErrorKind,
   type ScribeFailure,
 } from './scribeModel'
@@ -59,6 +60,8 @@ export interface UseScribeTranscriptionOptions {
   onFinal: TranscriptionResultHandler
   /** Snapshot v2 session/annotation ownership when an utterance first appears. */
   captureContext?: () => TranscriptionContext
+  /** Current persisted/optimistic Smart-circle intervals, read when delayed word timings arrive. */
+  captureAnnotationIntervals?: () => AnnotationCaptureInterval[]
   /** Invalidates callbacks and metrics when the active session changes. */
   scopeKey?: string
 }
@@ -83,6 +86,7 @@ export function useScribeTranscription({
   sessionId,
   onFinal,
   captureContext,
+  captureAnnotationIntervals,
   scopeKey,
 }: UseScribeTranscriptionOptions) {
   const [interim, setInterim] = useState('')
@@ -93,6 +97,7 @@ export function useScribeTranscription({
 
   const onFinalRef = useRef(onFinal)
   const captureContextRef = useRef(captureContext)
+  const captureAnnotationIntervalsRef = useRef(captureAnnotationIntervals)
   const sessionIdRef = useRef(sessionId)
   const enabledRef = useRef(enabled)
   const generationRef = useRef(0)
@@ -106,6 +111,7 @@ export function useScribeTranscription({
 
   onFinalRef.current = onFinal
   captureContextRef.current = captureContext
+  captureAnnotationIntervalsRef.current = captureAnnotationIntervals
   sessionIdRef.current = sessionId
   enabledRef.current = enabled
 
@@ -122,15 +128,36 @@ export function useScribeTranscription({
     startedAt: new Date().toISOString(),
   })
 
-  const save = (captured: UtteranceCapture, text: string, tStart: string, tEnd: string) => {
+  const save = (
+    captured: UtteranceCapture,
+    text: string,
+    tStart: string,
+    tEnd: string,
+    annotationId: string | null,
+  ) => {
     const completedAt = Date.now()
-    captured.onFinal(text, null, tStart, tEnd, captured.context)
+    const context = captured.context ? { ...captured.context, annotationId } : null
+    captured.onFinal(text, null, tStart, tEnd, context)
     samplesRef.current = [...samplesRef.current, { completedAt, wordCount: countWords(text), confidence: null }]
     refreshMetrics(completedAt)
   }
 
+  const saveParts = (captured: UtteranceCapture, text: string, words: WordTimestamp[] | undefined) => {
+    const endedAt = new Date().toISOString()
+    const intervals = captureAnnotationIntervalsRef.current?.() ?? []
+    const parts = partitionTimestampedTranscript(
+      text,
+      words,
+      attemptRef.current?.audioStartedAt ?? null,
+      captured.startedAt,
+      endedAt,
+      intervals,
+    )
+    for (const part of parts) save(captured, part.text, part.tStart, part.tEnd, part.annotationId)
+  }
+
   const saveFallback = ({ capture: captured, text }: { capture: UtteranceCapture; text: string }) =>
-    save(captured, text, captured.startedAt, new Date().toISOString())
+    saveParts(captured, text, undefined)
 
   const clearRetry = () => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
@@ -228,7 +255,7 @@ export function useScribeTranscription({
 
   const flushAndEnd = async (attempt: Attempt) => {
     const scribe = scribeRef.current
-    if (scribe && attempt.connected && attempt.buffer.pendingText && isLive(attempt)) {
+    if (scribe && attempt.connected && isLive(attempt)) {
       try {
         scribe.mute()
       } catch {
@@ -248,6 +275,26 @@ export function useScribeTranscription({
       }
     }
     endAttempt(attempt, true)
+  }
+
+  /** Commit the current audio boundary without stopping the microphone (used by Smart ✓). */
+  const flushCurrent = async () => {
+    const attempt = attemptRef.current
+    const scribe = scribeRef.current
+    if (!attempt || !scribe || !attempt.connected || !isLive(attempt)) return
+    try {
+      scribe.commit()
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, STOP_FLUSH_TIMEOUT_MS)
+        attempt.onCommit = () => {
+          attempt.onCommit = null
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+    } catch {
+      // The interval is already closed locally; the next VAD callback is still assigned by word time.
+    }
   }
 
   const requestStop = (): Promise<void> => {
@@ -302,14 +349,7 @@ export function useScribeTranscription({
       if (!attempt || !isLive(attempt)) return
       const pending = attempt.pendingCommits.take(text)
       if (!pending) return
-      const timed = timestampedTranscript(
-        text,
-        words,
-        attempt.audioStartedAt,
-        pending.capture.startedAt,
-        new Date().toISOString(),
-      )
-      save(pending.capture, timed.text, timed.tStart, timed.tEnd)
+      saveParts(pending.capture, text, words)
       // The SDK keeps every committed segment in state; the board already has them.
       scribeRef.current?.clearTranscripts()
       attempt.onCommit?.()
@@ -341,6 +381,8 @@ export function useScribeTranscription({
   eventsRef.current = events
   const stopRef = useRef(requestStop)
   stopRef.current = requestStop
+  const flushRef = useRef(flushCurrent)
+  flushRef.current = flushCurrent
 
   const callbacks = useMemo(() => {
     const fail = (kind: ScribeErrorKind) => (data: { error: string }) => eventsRef.current.fail(kind, data.error)
@@ -376,6 +418,7 @@ export function useScribeTranscription({
   scribeRef.current = scribe
 
   const stop = useCallback(() => stopRef.current(), [])
+  const flush = useCallback(() => flushRef.current(), [])
 
   useEffect(() => {
     if (!listening) return
@@ -426,5 +469,5 @@ export function useScribeTranscription({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, scopeKey, supported])
 
-  return { interim, listening, supported, error, metrics, confidenceSupported: false, stop }
+  return { interim, listening, supported, error, metrics, confidenceSupported: false, stop, flush }
 }
