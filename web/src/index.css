@@ -709,9 +709,9 @@ textarea {
   margin: 2px 0;
 }
 
-/* Always two lines tall, so the thumbnails don't jump when the message changes */
-.images-hint {
-  min-height: calc(2 * 1.35em);
+/* Images | Documents divider sits in the 8px-gap image column; match the 10px + 2px spacing above */
+.sidebar-images .sidebar-divider {
+  margin: 4px 0;
 }
 
 /* "PEN" / "SMART ANNOTATE" under the mode circles, aligned with the circle edge */
@@ -762,10 +762,6 @@ textarea {
 }
 
 /* PDFs: one row per document (a small first-page thumbnail, the file name and page count) */
-.docs-label {
-  margin-top: 8px;
-}
-
 .doc-list {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,5 @@
 // P4 owns this page. Every recorded session, newest first: open notes (or resume a live one),
-// open the transcript, set classes, delete. Opened from the arrow on the dashboard's
+// set classes, delete (rename it from its notes screen). Opened from the arrow on the dashboard's
 // Recorded sessions card. Same layout as the Lectures and Archive pages.
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -141,7 +141,6 @@ export default function Sessions() {
           <RowMenu
             label={title}
             items={[
-              { label: 'Transcript', onClick: () => navigate(`/sessions/${s.id}/raw`, { state: { from: '/sessions' } }) },
               { label: 'Delete session', danger: true, onClick: () => setToDelete(s) },
             ]}
           />

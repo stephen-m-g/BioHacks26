@@ -39,6 +39,12 @@ export async function deleteLecture(lectureId: string) {
   if (error) throw error
 }
 
+/** Rename a recorded session (its own name; the lecture keeps its title). */
+export async function renameSession(sessionId: string, title: string) {
+  const { error } = await supabase.from('sessions').update({ title }).eq('id', sessionId)
+  if (error) throw error
+}
+
 export async function deleteSession(sessionId: string) {
   const { error } = await supabase.from('sessions').delete().eq('id', sessionId)
   if (error) throw error

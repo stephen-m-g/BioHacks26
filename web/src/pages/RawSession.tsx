@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom'
 import SessionHeader from '../components/SessionHeader'
 import TranscriptBoard from '../components/TranscriptBoard'
 import { useSessionData } from '../hooks/useSessionData'
-import { formatDate } from '../lib/lectures'
+import { formatDate, renameSession } from '../lib/lectures'
 import '../styles/p4.css'
 import '../styles/study.css'
 
@@ -17,6 +17,7 @@ export default function RawSession() {
     <SessionHeader
       sessionId={sessionId}
       title={title}
+      onRename={(name) => renameSession(sessionId, name).then(() => data.patchSession({ title: name }))}
       view="transcript"
       when={data.session ? formatDate(data.session.started_at) : undefined}
     />

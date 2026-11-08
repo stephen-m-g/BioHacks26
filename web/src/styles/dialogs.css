@@ -363,3 +363,63 @@
 .dialog .dialog-field input {
   width: 100%;
 }
+
+/* ---------- Rounder shapes, to match the chips and pills elsewhere ---------- */
+.dialog input:not([type]),
+.dialog input[type='text'] {
+  border-radius: var(--r-pill);
+  padding: 0 var(--sp-5);
+}
+
+/* Edit classes: round color button, pill Delete and "Add class" */
+.dialog .class-color-btn {
+  border-radius: 50%;
+}
+
+.dialog .class-delete-btn {
+  border-radius: var(--r-pill);
+}
+
+.dialog .class-add-btn {
+  border-radius: var(--r-pill);
+  padding: 0 var(--sp-5);
+}
+
+/* Classes picker: rounded rows and soft-cornered checkboxes (drawn here, not the browser's square box) */
+.dialog .class-option {
+  border-radius: var(--r-pill);
+}
+
+.dialog .class-option input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 1.5px solid var(--c-line-strong);
+  border-radius: 6px;
+  background: var(--c-card) center / 14px 14px no-repeat;
+  cursor: pointer;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.dialog .class-option input[type='checkbox']:checked {
+  border-color: var(--c-fg);
+  background-color: var(--c-fg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-7'/%3E%3C/svg%3E");
+}
+
+.dialog .class-option input[type='checkbox']:focus-visible {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog .class-option input[type='checkbox'] {
+    transition: none;
+  }
+}

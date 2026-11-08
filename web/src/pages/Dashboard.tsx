@@ -496,13 +496,6 @@ export default function Dashboard() {
                         )}
                         {moreMenu(`s:${s.id}`, title, [
                           {
-                            label: 'Transcript',
-                            onClick: () => {
-                              setMenu(null)
-                              navigate(`/sessions/${s.id}/raw`)
-                            },
-                          },
-                          {
                             label: 'Delete session',
                             danger: true,
                             onClick: () => {
