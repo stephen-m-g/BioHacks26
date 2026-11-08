@@ -570,7 +570,7 @@ def test_refine_rejects_a_single_word_leaking_across_segment_boundaries():
         RefinedSegment(id="segment-b", text="Today, and then review deoxyribonucleic acid."),
     ])
 
-    assert main.choose_refined_segments(segments, output) == [
+    assert main.choose_refined_segments(segments, output)[0] == [
         "today we study cellular respiration", "and then review deoxyribonucleic acid",
     ]
 
@@ -598,6 +598,158 @@ def test_refine_rejects_paraphrased_or_truncated_output_and_preserves_raw_speech
     )
 
     assert main.choose_refined_text(raw, rewritten) == raw
+
+
+def utf16_slice(text, start, end):
+    return text.encode("utf-16-le")[2 * start:2 * end].decode("utf-16-le")
+
+
+def refine_segments(db, raws, annotation_ids=None):
+    lec = db.add("lectures", title="Dynamics")
+    ses = db.add("sessions", lecture_id=lec["id"])
+    rows = [
+        db.add("transcript_segments", id=f"seg-{i}", session_id=ses["id"], raw_text=raw, t_start=ts(i),
+               t_end=ts(i + 0.9), created_at=ts(20 - i), text_block_id=None,
+               annotation_id=(annotation_ids or {}).get(i))
+        for i, raw in enumerate(raws)
+    ]
+    return ses, rows
+
+
+def gemini_segments(rows, texts):
+    return RefineGemini(text=" ".join(t for t in texts if t), segments=[
+        RefinedSegment(id=row["id"], text=text) for row, text in zip(rows, texts)
+    ])
+
+
+def test_refine_keeps_safe_cleanup_in_every_segment_when_one_fails_validation(db, gemini):
+    ses, rows = refine_segments(db, [
+        "Okay, um, so today we're, we're learning about dynamics.",
+        "The force is not 10 newtons,",
+        "Here is the, uh, free-body diagram.",
+    ])
+    gemini.result = gemini_segments(rows, [
+        "Okay, so today we're learning about dynamics.",
+        "The force is 10 newtons,",  # dropped negation: only this segment is rejected
+        "Here is the free-body diagram.",
+    ])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["text"] == (
+        "Okay, so today we're learning about dynamics. The force is not 10 newtons, Here is the free-body diagram."
+    )
+    assert out.segment_ids == ["seg-0", "seg-1", "seg-2"]
+
+
+def test_refine_keeps_cleanup_when_a_segment_is_only_filler_and_gives_it_no_span(db, gemini):
+    ses, rows = refine_segments(db, ["Um.", "So the, the mitochondria is, uh, where respiration happens.", "Uh,"])
+    gemini.result = gemini_segments(rows, ["", "So the mitochondria is where respiration happens.", ""])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["text"] == "So the mitochondria is where respiration happens."
+    spans = [(db.get("transcript_segments", r["id"])["text_start"], db.get("transcript_segments", r["id"])["text_end"])
+             for r in rows]
+    assert spans == [(None, None), (0, 49), (None, None)]
+    assert all(db.get("transcript_segments", r["id"])["text_block_id"] == out.block["id"] for r in rows)
+
+
+def test_refine_batch_of_only_filler_joins_the_previous_paragraph_instead_of_adding_an_empty_one(db, gemini):
+    ses, rows = refine_segments(db, ["Um.", "Uh,"])
+    previous = db.add("blocks", session_id=ses["id"], kind="text", position=3, text="Earlier paragraph.")
+    gemini.result = gemini_segments(rows, ["", ""])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["id"] == previous["id"] and previous["text"] == "Earlier paragraph."
+    assert len([b for b in db.tables["blocks"] if b["kind"] == "text"]) == 1
+    assert all(db.get("transcript_segments", r["id"])["text_start"] is None for r in rows)
+    assert main.refine_session(ses["id"]).block is None  # nothing left, so compile's flush loop ends
+
+
+def test_refine_preserves_segment_order_and_never_trusts_a_reordered_map(db, gemini):
+    ses, rows = refine_segments(db, ["um first part", "uh second part", "third part"])
+    gemini.result = RefineGemini(text="", segments=[
+        RefinedSegment(id="seg-1", text="Second part."),
+        RefinedSegment(id="seg-0", text="First part."),
+        RefinedSegment(id="seg-2", text="Third part."),
+    ])
+
+    out = main.refine_session(ses["id"])
+
+    assert out.segment_ids == ["seg-0", "seg-1", "seg-2"]
+    assert out.block["text"] == "first part second part third part"  # deterministic filler removal only
+
+
+@pytest.mark.parametrize("result", [
+    None,  # timeout, quota, or unparseable JSON: ai.generate returns None
+    RefineGemini(text="whatever", segments=[RefinedSegment(id="seg-0", text="x"), RefinedSegment(id="seg-0", text="y"),
+                                            RefinedSegment(id="made-up", text="Invented.")]),
+    RefineGemini(text="Everything merged into one.", segments=[]),
+])
+def test_refine_handles_gemini_failure_or_malformed_output_per_segment(db, gemini, result):
+    ses, rows = refine_segments(db, ["Okay, um, so we're, we're starting.", "The force is not 10 newtons."])
+    gemini.result = result
+
+    out = main.refine_session(ses["id"])
+
+    assert out.block["text"] == "Okay, so we're starting. The force is not 10 newtons."
+    assert db.get("transcript_segments", "seg-0")["raw_text"] == "Okay, um, so we're, we're starting."
+
+
+def test_refine_offsets_cover_exactly_the_accepted_cleaned_text_in_utf16(db, gemini):
+    ses, rows = refine_segments(db, ["um the 🧬 DNA, DNA marker", "Uh.", "it's not 10 newtons"])
+    cleaned = ["The 🧬 DNA marker", "", "It's not 10 newtons."]
+    gemini.result = gemini_segments(rows, cleaned)
+
+    out = main.refine_session(ses["id"])
+
+    text = out.block["text"]
+    assert text == "The 🧬 DNA marker It's not 10 newtons."
+    for row, expected in zip(rows, cleaned):
+        saved = db.get("transcript_segments", row["id"])
+        if expected:
+            assert utf16_slice(text, saved["text_start"], saved["text_end"]) == expected
+            assert 0 <= saved["text_start"] < saved["text_end"] <= main.utf16_length(text)
+        else:
+            assert saved["text_start"] is None and saved["text_end"] is None
+
+
+def test_refine_keeps_annotation_links_so_a_circle_highlights_its_cleaned_passage(db, gemini):
+    ses, rows = refine_segments(
+        db, ["So this, um, is the normal force.", "and uh this is, this is friction.", "Okay."],
+        annotation_ids={1: "ann-friction"},
+    )
+    gemini.result = gemini_segments(rows, ["So this is the normal force.", "And this is friction.", ""])
+
+    out = main.refine_session(ses["id"])
+
+    linked = db.get("transcript_segments", "seg-1")
+    assert linked["annotation_id"] == "ann-friction" and linked["raw_text"] == "and uh this is, this is friction."
+    assert utf16_slice(out.block["text"], linked["text_start"], linked["text_end"]) == "And this is friction."
+    assert db.get("transcript_segments", "seg-0")["annotation_id"] is None
+
+
+def test_compile_saves_the_cleaned_transcript_not_raw_or_summarized_speech(db, monkeypatch):
+    ses, rows = refine_segments(db, ["Okay, um, so today we're, we're learning about dynamics.",
+                                     "Here is the, uh, free-body diagram."])
+    cleaned = ["Okay, so today we're learning about dynamics.", "Here is the free-body diagram."]
+
+    def fake_generate(task, system, contents, schema, **_):
+        if task == "refine":
+            return gemini_segments(rows, cleaned), 1.0
+        return NotesContent(title="Dynamics", overview="", review_questions=[], sections=[
+            Section(id="s1", heading="Dynamics", key_terms=[], figures=[], annotation_ids=[],
+                    paragraphs=["This lesson introduces dynamics using a free-body diagram."]),
+        ]), 1.0
+    monkeypatch.setattr(main.ai, "generate", fake_generate)
+
+    notes = main.compile_session(ses["id"])
+
+    paragraphs = [p for section in notes.sections for p in section.paragraphs]
+    assert paragraphs == [" ".join(cleaned)]
+    assert db.tables["lecture_notes"][0]["content"]["sections"][0]["paragraphs"] == paragraphs
 
 
 def test_refine_uses_the_refine_model_with_low_thinking(db, gemini, monkeypatch):
