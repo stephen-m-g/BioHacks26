@@ -1,11 +1,14 @@
 // Dashboard / prep data operations (P4).
 import { newId, nowIso } from './assets'
+import { copyLectureClassesToSession, setLectureClasses } from './classes'
 import { supabase } from './supabase'
 
-export async function createLecture(title = 'Untitled lecture'): Promise<string> {
+/** Creates a lecture, optionally already in some classes (e.g. the dashboard's current class filter). */
+export async function createLecture(title = 'Untitled lecture', classIds: string[] = []): Promise<string> {
   const id = newId()
   const { error } = await supabase.from('lectures').insert({ id, title })
   if (error) throw error
+  if (classIds.length) await setLectureClasses(id, classIds)
   return id
 }
 
@@ -14,6 +17,8 @@ export async function startSession(lectureId: string, title: string | null = nul
   const id = newId()
   const { error } = await supabase.from('sessions').insert({ id, lecture_id: lectureId, title })
   if (error) throw error
+  // The session starts in the lecture's classes. Never block starting class over this.
+  await copyLectureClassesToSession(lectureId, id).catch((e) => console.warn('copy classes to session', e))
   return id
 }
 

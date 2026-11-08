@@ -315,3 +315,179 @@
     margin-left: 76px;
   }
 }
+
+/* ---------- classes ---------- */
+
+/* The class dot sits where the initials avatar was (same 56px box keeps rows aligned). */
+.dash-avatar.class-holder {
+  background: transparent;
+  color: var(--d-muted);
+}
+
+.class-dot {
+  display: block;
+}
+
+/* Filter chips: All, one per class, Edit classes */
+.class-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.dash .class-chip {
+  min-height: var(--tap, 64px);
+  padding: 0 22px;
+  border: 1px solid var(--d-soft);
+  border-radius: 999px;
+  background: var(--d-card);
+  color: var(--d-fg);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.dash .class-chip.on {
+  background: var(--d-fg);
+  border-color: var(--d-fg);
+  color: var(--d-card);
+}
+
+.dash .class-chip.quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--d-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.class-chip-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--d-card);
+}
+
+.class-chip.on .class-chip-dot {
+  box-shadow: 0 0 0 2px var(--d-fg), 0 0 0 3px var(--d-card);
+}
+
+/* Picker + manage dialogs (rendered inside ConfirmDialog) */
+.class-options,
+.class-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 4px 0 12px;
+}
+
+.class-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 0 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 1.05rem;
+}
+
+.class-option:hover {
+  background: #f1f1ee;
+}
+
+.class-option input[type='checkbox'] {
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  margin: 0;
+  accent-color: #111;
+}
+
+.class-new-tag {
+  font-size: 0.8rem;
+  color: #5c5c58;
+}
+
+.class-empty,
+.class-note {
+  color: #5c5c58;
+  font-size: 0.9rem;
+  margin: 4px 0;
+}
+
+.class-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.class-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.class-manage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.class-manage-row.deleted input {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.class-manage-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.class-manage-main input {
+  flex: 1;
+  min-width: 0;
+}
+
+.class-color-btn,
+.class-palette-btn {
+  min-width: 56px;
+  width: 56px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.class-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: block;
+}
+
+.class-palette {
+  display: flex;
+  flex-wrap: wrap;
+  padding-left: 0;
+}
+
+.class-palette-btn.on .class-swatch {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 5px #111;
+}
+
+.class-delete-btn {
+  color: #b42318;
+  border-color: transparent;
+}
+
+.class-add-btn {
+  align-self: flex-start;
+  border-style: dashed;
+}
