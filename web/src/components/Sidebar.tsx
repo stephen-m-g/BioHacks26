@@ -400,15 +400,6 @@ export default function Sidebar({
 
       <div className="sidebar-images">
         <div className="sidebar-label">Images</div>
-        <p className="hint images-hint" aria-live="polite">
-          {locked
-            ? 'Finish the open annotation (✓ or ✗) first.'
-            : s.selectedAssetId
-              ? 'Now tap a spot on the board.'
-              : images.length === 0 && documents.length === 0
-                ? 'No images uploaded for this lecture.'
-                : 'Drag onto the board or tap and place.'}
-        </p>
         <div className="thumb-grid">
           {images.map((a) => (
             <button
@@ -437,7 +428,8 @@ export default function Sidebar({
         </div>
         {documents.length > 0 && (
           <>
-            <div className="sidebar-label docs-label">Documents</div>
+            <hr className="sidebar-divider" />
+            <div className="sidebar-label">Documents</div>
             <div className="doc-list">
               {documents.map((d) => {
                 const name = d.asset.file_name || d.asset.label || 'PDF'

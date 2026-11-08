@@ -393,10 +393,15 @@
 .dialog .class-option input[type='checkbox'] {
   -webkit-appearance: none;
   appearance: none;
+  box-sizing: border-box;
+  flex: 0 0 22px;
   width: 22px;
+  min-width: 22px;
   height: 22px;
+  min-height: 22px;
+  padding: 0;
   border: 1.5px solid var(--c-line-strong);
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--c-card) center / 14px 14px no-repeat;
   cursor: pointer;
   transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
