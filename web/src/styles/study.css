@@ -84,27 +84,19 @@
   box-shadow: inset 0 0 0 1px var(--annotation-outline);
 }
 
-/* The beige alone vanishes on white diagrams; a neutral halo keeps the outline visible.
-   No fill: the halo would show through it and grey out the diagram. */
 .st-section .lasso-confirmed {
-  fill: transparent;
+  fill: color-mix(in srgb, var(--annotation-highlight) 18%, transparent);
   stroke: var(--annotation-highlight);
-  stroke-width: 5;
-  filter: drop-shadow(0 0 1px rgba(17, 17, 17, 0.6));
 }
 
 .st-section .lasso-confirmed.hoverable:hover,
 .st-section .lasso-confirmed.is-shown {
-  fill: transparent;
-  stroke-width: 7;
-  filter: drop-shadow(0 0 1.5px rgba(17, 17, 17, 0.75));
+  fill: color-mix(in srgb, var(--annotation-highlight) 35%, transparent);
 }
 
 .st-section .lasso-confirmed.hoverable:focus-visible {
-  fill: transparent;
-  stroke: var(--annotation-highlight);
-  stroke-width: 8;
-  filter: drop-shadow(0 0 2px rgba(17, 17, 17, 0.95));
+  fill: color-mix(in srgb, var(--annotation-highlight) 35%, transparent);
+  stroke: var(--d-fg);
 }
 
 .st-section figure {
@@ -174,7 +166,7 @@
 }
 
 .st-section .annotation-popover {
-  --annotation-popover-bg: rgba(255, 255, 255, 0.92);
+  --annotation-popover-bg: rgba(255, 255, 255, 0.8);
   background: var(--annotation-popover-bg);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
