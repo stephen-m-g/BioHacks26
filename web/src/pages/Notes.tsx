@@ -12,9 +12,10 @@ import { formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
 import {
-  annotationExplanation,
+  annotationCardsForImage,
   annotationsForImage,
   isTranscriptPartHighlighted,
+  studyKeyTerms,
   transcriptParagraphParts,
 } from './notesModel'
 import '../styles/p4.css'
@@ -67,6 +68,9 @@ export default function Notes() {
 
   const content: NotesContent | null = notes?.content ?? null
   const hasContent = !!content && (content.sections.length > 0 || !!content.overview)
+  const annotationTitles = data.annotationList
+    .filter((annotation) => annotation.status === 'confirmed' && annotation.label)
+    .map((annotation) => annotation.label!)
 
   const selectAnnotation = (annotationId: string) => {
     setSelectedAnnotationId(annotationId)
@@ -143,85 +147,94 @@ export default function Notes() {
               )}
 
               <div className="st-sections">
-                {content.sections.map((s) => (
-                  <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
-                    <h2>{s.heading}</h2>
-                    {s.paragraphs.map((p, i) => {
-                      const parts = transcriptParagraphParts(p, s.paragraph_block_ids?.[i], data.segmentList)
-                      return (
-                        <p key={i}>
-                          {parts.map((part, partIndex) => (
-                            <span
-                              key={`${part.segmentId ?? 'gap'}-${partIndex}`}
-                              data-segment-id={part.segmentId ?? undefined}
-                              className={
-                                isTranscriptPartHighlighted(part, selectedAnnotationId)
-                                  ? 'st-transcript-highlight'
-                                  : undefined
-                              }
-                            >
-                              <RichText text={part.text} />
-                            </span>
-                          ))}
-                        </p>
-                      )
-                    })}
-                    {s.figures.map((f) => {
-                      const block = data.blocks[f.image_block_id]
-                      if (!block) return null
-                      const asset = block.asset_id ? data.assets[block.asset_id] : undefined
-                      const figureAnnotations = annotationsForImage(data.annotationList, block.id)
-                      const annotationsWithSpeech = figureAnnotations.map((annotation) => ({
-                        ...annotation,
-                        bubble_text: annotationExplanation(annotation, data.segmentList),
-                      }))
-                      return (
-                        <figure key={f.image_block_id}>
-                          <ImageBlock
-                            block={block}
-                            src={assetUrl(asset)}
-                            alt={asset?.label ?? f.caption}
-                            strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                            annotations={annotationsWithSpeech}
-                            onJump={selectAnnotation}
-                            selectedAnnotationId={selectedAnnotationId}
-                            onSelectAnnotation={selectAnnotation}
-                          />
-                          <figcaption>{f.caption}</figcaption>
-                          {annotationsWithSpeech.length > 0 && (
-                            <div className="st-annotation-cards" aria-label="Image annotations">
-                              {annotationsWithSpeech.map((annotation, index) => (
-                                <button
-                                  type="button"
-                                  id={`annotation-card-${annotation.id}`}
-                                  key={annotation.id}
-                                  className={`st-annotation-card${selectedAnnotationId === annotation.id ? ' selected' : ''}`}
-                                  onClick={() => setSelectedAnnotationId(annotation.id)}
-                                >
-                                  <span className="st-annotation-number">{index + 1}</span>
-                                  <span>
-                                    <strong>{annotation.label?.trim() || `Annotation ${index + 1}`}</strong>
-                                    <span>{annotation.bubble_text?.trim() || 'No explanation recorded.'}</span>
-                                  </span>
-                                </button>
-                              ))}
+                {content.sections.map((s) => {
+                  const figures = s.figures.flatMap((f) => {
+                    const block = data.blocks[f.image_block_id]
+                    if (!block) return []
+                    return [{ figure: f, block, cards: annotationCardsForImage(data.annotationList, block.id, data.segmentList) }]
+                  })
+                  const keyTerms = studyKeyTerms(
+                    s.key_terms,
+                    figures.some(({ cards }) => cards.length > 0),
+                    annotationTitles,
+                  )
+                  return (
+                    <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
+                      <h2>{s.heading}</h2>
+                      {s.paragraphs.map((p, i) => {
+                        const parts = transcriptParagraphParts(p, s.paragraph_block_ids?.[i], data.segmentList)
+                        return (
+                          <p key={i}>
+                            {parts.map((part, partIndex) => (
+                              <span
+                                key={`${part.segmentId ?? 'gap'}-${partIndex}`}
+                                data-segment-id={part.segmentId ?? undefined}
+                                className={
+                                  isTranscriptPartHighlighted(part, selectedAnnotationId)
+                                    ? 'st-transcript-highlight'
+                                    : undefined
+                                }
+                              >
+                                <RichText text={part.text} />
+                              </span>
+                            ))}
+                          </p>
+                        )
+                      })}
+                      {figures.map(({ figure: f, block, cards }) => {
+                        const asset = block.asset_id ? data.assets[block.asset_id] : undefined
+                        const cardById = new Map(cards.map((card) => [card.id, card]))
+                        const popoverAnnotations = annotationsForImage(data.annotationList, block.id).map((annotation) => ({
+                          ...annotation,
+                          label: cardById.get(annotation.id)?.title ?? annotation.label,
+                          bubble_text: cardById.get(annotation.id)?.text ?? null,
+                        }))
+                        return (
+                          <figure key={f.image_block_id}>
+                            <ImageBlock
+                              block={block}
+                              src={assetUrl(asset)}
+                              alt={asset?.label ?? f.caption}
+                              strokes={data.strokeList.filter((st) => st.block_id === block.id)}
+                              annotations={popoverAnnotations}
+                              onJump={selectAnnotation}
+                              selectedAnnotationId={selectedAnnotationId}
+                              onSelectAnnotation={selectAnnotation}
+                            />
+                            <figcaption>{f.caption}</figcaption>
+                            {cards.length > 0 && (
+                              <div className="st-terms" aria-label="Image annotations">
+                                {cards.map((card) => (
+                                  <button
+                                    type="button"
+                                    id={`annotation-card-${card.id}`}
+                                    key={card.id}
+                                    className={`st-term-card${selectedAnnotationId === card.id ? ' selected' : ''}`}
+                                    aria-pressed={selectedAnnotationId === card.id}
+                                    onClick={() => setSelectedAnnotationId(card.id)}
+                                  >
+                                    <strong>{card.title}</strong>
+                                    <span>{card.text}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </figure>
+                        )
+                      })}
+                      {keyTerms.length > 0 && (
+                        <dl className="st-terms">
+                          {keyTerms.map((k) => (
+                            <div key={k.term}>
+                              <dt>{k.term}</dt>
+                              <dd>{k.definition}</dd>
                             </div>
-                          )}
-                        </figure>
-                      )
-                    })}
-                    {s.key_terms.length > 0 && (
-                      <dl className="st-terms">
-                        {s.key_terms.map((k) => (
-                          <div key={k.term}>
-                            <dt>{k.term}</dt>
-                            <dd>{k.definition}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    )}
-                  </section>
-                ))}
+                          ))}
+                        </dl>
+                      )}
+                    </section>
+                  )
+                })}
 
                 {content.review_questions.length > 0 && (
                   <section className="p4-card st-section">

@@ -30,6 +30,44 @@ export function annotationsForImage<T extends ImageAnnotation>(annotations: T[],
     .sort((a, b) => a.drawn_at.localeCompare(b.drawn_at) || a.id.localeCompare(b.id))
 }
 
+export const NO_EXPLANATION = 'No explanation recorded.'
+
+export interface AnnotationCard {
+  id: string
+  title: string
+  text: string
+}
+
+type CardAnnotation = ImageAnnotation & ExplanationAnnotation & Pick<Annotation, 'label'>
+
+/** One compact card per confirmed circle on the image, keyed by the persisted annotation ID. */
+export function annotationCardsForImage(
+  annotations: CardAnnotation[],
+  blockId: string,
+  segments: ExplanationSegment[],
+): AnnotationCard[] {
+  return annotationsForImage(annotations, blockId).map((annotation, index) => ({
+    id: annotation.id,
+    title: annotation.label?.trim() || `Annotation ${index + 1}`,
+    text: annotationExplanation(annotation, segments) || NO_EXPLANATION,
+  }))
+}
+
+/**
+ * Gemini key terms restate what the teacher said about circled regions, so a section that shows
+ * annotation cards drops its key terms, and no key term may repeat an annotation's title elsewhere.
+ */
+export function studyKeyTerms<T extends { term: string }>(
+  keyTerms: T[],
+  sectionHasAnnotationCards: boolean,
+  annotationTitles: string[],
+): T[] {
+  if (sectionHasAnnotationCards) return []
+  const normalize = (value: string) => value.trim().toLowerCase()
+  const titles = new Set(annotationTitles.map(normalize))
+  return keyTerms.filter((keyTerm) => !titles.has(normalize(keyTerm.term)))
+}
+
 /** Build display spans only from persisted source offsets; invalid/legacy mappings remain unhighlighted. */
 export function transcriptParagraphParts(
   paragraph: string,

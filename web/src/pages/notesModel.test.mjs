@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  annotationCardsForImage,
   annotationExplanation,
   annotationsForImage,
   isTranscriptPartHighlighted,
+  NO_EXPLANATION,
+  studyKeyTerms,
   transcriptParagraphParts,
 } from './notesModel.ts'
 
@@ -109,4 +112,66 @@ test('selecting one circle highlights only its own span', () => {
   assert.deepEqual(highlighted('ann-a'), ['First circle.'])
   assert.deepEqual(highlighted('ann-b'), ['Second circle.'])
   assert.deepEqual(highlighted('ann-empty'), [])
+})
+
+const circle = (id, blockId, drawnAt, label, status = 'confirmed') => ({
+  id,
+  block_id: blockId,
+  status,
+  drawn_at: drawnAt,
+  label,
+  bubble_text: null,
+})
+
+const mountainCircles = [
+  circle('ann-coast', 'image-a', '2026-11-07T19:00:02Z', 'Coastline'),
+  circle('ann-peak', 'image-a', '2026-11-07T19:00:01Z', 'Peak'),
+  circle('ann-river', 'image-a', '2026-11-07T19:00:03Z', 'River'),
+  circle('ann-forest', 'image-a', '2026-11-07T19:00:04Z', 'Forest'),
+  circle('ann-pending', 'image-a', '2026-11-07T19:00:05Z', null, 'pending'),
+  circle('ann-cell', 'image-b', '2026-11-07T19:00:06Z', 'Nucleus'),
+]
+const mountainSpeech = [
+  segment('s-peak', 'ann-peak', 'Um, the highest point on the mountain.', '2026-11-07T19:00:01Z'),
+  segment('s-coast', 'ann-coast', 'Where the mountain meets the ocean.', '2026-11-07T19:00:02Z'),
+]
+
+test('four confirmed circles produce exactly four compact cards, spoken and silent', () => {
+  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech), [
+    { id: 'ann-peak', title: 'Peak', text: 'The highest point on the mountain.' },
+    { id: 'ann-coast', title: 'Coastline', text: 'Where the mountain meets the ocean.' },
+    { id: 'ann-river', title: 'River', text: NO_EXPLANATION },
+    { id: 'ann-forest', title: 'Forest', text: NO_EXPLANATION },
+  ])
+})
+
+test('each image only gets cards for its own circles', () => {
+  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-b', mountainSpeech).map((card) => card.id), ['ann-cell'])
+  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-c', mountainSpeech), [])
+})
+
+test('cards are identical after a reload returns rows in a different order', () => {
+  const reloaded = [...mountainCircles].reverse()
+  assert.deepEqual(
+    annotationCardsForImage(reloaded, 'image-a', [...mountainSpeech].reverse()),
+    annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech),
+  )
+})
+
+test('untitled circles get a stable positional title', () => {
+  const cards = annotationCardsForImage([circle('ann-x', 'image-a', '2026-11-07T19:00:01Z', '  ')], 'image-a', [])
+  assert.deepEqual(cards, [{ id: 'ann-x', title: 'Annotation 1', text: NO_EXPLANATION }])
+})
+
+test('generated key terms never duplicate annotation cards', () => {
+  const keyTerms = [
+    { term: 'Peak', definition: 'The highest point on the mountain.' },
+    { term: 'coastline ', definition: 'Where the mountain meets the ocean.' },
+    { term: 'Erosion', definition: 'Wearing away of rock.' },
+  ]
+  const titles = annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech).map((card) => card.title)
+
+  assert.deepEqual(studyKeyTerms(keyTerms, true, titles), [])
+  assert.deepEqual(studyKeyTerms(keyTerms, false, titles).map((keyTerm) => keyTerm.term), ['Erosion'])
+  assert.deepEqual(studyKeyTerms(keyTerms, false, []), keyTerms)
 })

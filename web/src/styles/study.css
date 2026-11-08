@@ -87,70 +87,54 @@
   color: var(--d-muted);
 }
 
-.st-annotation-cards {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.p4 .st-annotation-card {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: 12px;
-  width: 100%;
-  min-height: 0;
-  padding: 14px 16px;
-  text-align: left;
-  color: var(--d-text);
-  background: var(--d-bg);
-  border: 1px solid transparent;
-  border-radius: 16px;
-}
-
-.p4 .st-annotation-card.selected {
-  border-color: #ca8a04;
-  background: #fefce8;
-  box-shadow: 0 0 0 2px rgba(202, 138, 4, 0.18);
-}
-
-.st-annotation-card > span:last-child {
-  display: grid;
-  gap: 4px;
-}
-
-.st-annotation-number {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  color: #713f12;
-  background: #fef08a;
-  font-weight: 700;
-}
-
 .st-terms {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: 10px;
   margin: 16px 0 0;
 }
 
-.st-terms > div {
+.st-terms > div,
+.p4 .st-term-card {
   padding: 12px 16px;
   border-radius: 16px;
   background: var(--d-bg);
 }
 
-.st-terms dt {
+.st-terms dt,
+.st-term-card strong {
   font-weight: 700;
 }
 
-.st-terms dd {
+.st-terms dd,
+.st-term-card span {
   margin: 4px 0 0;
   font-size: 15px;
   line-height: 1.5;
   color: var(--d-text);
+}
+
+.p4 .st-term-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  text-align: left;
+  -webkit-user-select: text;
+  user-select: text;
+  font: inherit;
+  color: var(--d-fg);
+  border: 1px solid transparent;
+  scroll-margin: 24px;
+}
+
+.p4 .st-term-card.selected {
+  border-color: #ca8a04;
+  background: #fefce8;
 }
 
 .st-questions {
