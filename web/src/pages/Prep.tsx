@@ -253,7 +253,7 @@ export default function Prep() {
   const noteCount = items.length - imageCount
 
   return (
-    <div className="p4 pp">
+    <div className="p4 pp pp-fit">
       <header className="p4-top">
         <button className="p4-btn" onClick={back} disabled={busy}>
           <IconArrowLeft /> Lectures
@@ -264,8 +264,8 @@ export default function Prep() {
         </button>
       </header>
 
-      <div className="pp-scroll">
-        <div className="pp-inner">
+      <main className="pp-body">
+        <div className="pp-top">
           <input
             className="pp-title"
             aria-label="Lecture title"
@@ -274,40 +274,36 @@ export default function Prep() {
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           />
-          <p className="p4-sub">
-            <span>
-              <IconImage /> {plural(imageCount, 'image')}
-            </span>
-            <span>
-              <IconFile /> {plural(noteCount, 'note')}
-            </span>
-          </p>
 
           {classesAvailable && (
-            <section className="p4-section pp-classes" aria-labelledby="classes-heading">
-              <h2 id="classes-heading" className="p4-label">
+            <div className="pp-classes-row" role="group" aria-labelledby="classes-heading">
+              <h2 id="classes-heading" className="p4-label pp-row-label">
                 Classes
               </h2>
-              <div className="pp-class-chips" role="group" aria-label="Classes this lecture belongs to">
+              <div className="pp-chips">
                 {classes.map((c) => {
                   const on = classIds.includes(c.id)
                   return (
-                    <button key={c.id} className={`pp-class-chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleClass(c.id)}>
-                      <span className="pp-class-dot" style={{ background: c.color }} aria-hidden="true" />
-                      {c.name}
+                    <button key={c.id} className={`pp-chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleClass(c.id)}>
+                      <span className="pp-chip-pill">
+                        <span className="pp-chip-dot" style={{ background: c.color }} aria-hidden="true" />
+                        {c.name}
+                      </span>
                     </button>
                   )
                 })}
                 {newClassName === null ? (
-                  <button className="pp-class-chip add" onClick={() => setNewClassName('')}>
-                    <IconPlus /> New class
+                  <button className="pp-chip add" aria-label="New class" title="New class" onClick={() => setNewClassName('')}>
+                    <span className="pp-chip-pill">
+                      <IconPlus />
+                    </span>
                   </button>
                 ) : (
                   <span className="pp-class-new">
                     <input
                       autoFocus
                       value={newClassName}
-                      placeholder="e.g. Period 2"
+                      placeholder="New class, e.g. Period 2"
                       aria-label="New class name"
                       onChange={(e) => setNewClassName(e.target.value)}
                       onKeyDown={(e) => {
@@ -315,22 +311,37 @@ export default function Prep() {
                         if (e.key === 'Escape') setNewClassName(null)
                       }}
                     />
-                    <button className="p4-btn solid" onClick={addClass} disabled={!newClassName.trim()}>
-                      Add
+                    <button className="pp-chip" onClick={addClass} disabled={!newClassName.trim()}>
+                      <span className="pp-chip-pill dark">Add</span>
                     </button>
-                    <button className="p4-btn" onClick={() => setNewClassName(null)}>
-                      Cancel
+                    <button className="pp-chip" onClick={() => setNewClassName(null)}>
+                      <span className="pp-chip-pill">Cancel</span>
                     </button>
                   </span>
                 )}
               </div>
-            </section>
+            </div>
           )}
+        </div>
 
-          <section className="p4-section" aria-labelledby="materials-heading">
-            <h2 id="materials-heading" className="p4-label">
-              Materials
-            </h2>
+          <section className="pp-materials" aria-labelledby="materials-heading">
+            <div className="pp-card-head">
+              <div className="pp-card-title">
+                <h2 id="materials-heading" className="p4-label">
+                  Materials
+                </h2>
+                <span className="pp-count">{items.length}</span>
+              </div>
+              <span className="pp-card-meta">
+                <span>
+                  <IconImage /> {plural(imageCount, 'image')}
+                </span>
+                <span>
+                  <IconFile /> {plural(noteCount, 'note')}
+                </span>
+              </span>
+            </div>
+            <div className="pp-feed-scroll">
             <div className="pp-feed">
               <div className="pp-ai">
                 <div className="pp-ai-avatar" aria-hidden="true">
@@ -406,9 +417,9 @@ export default function Prep() {
               ))}
               <div ref={feedEnd} />
             </div>
+            </div>
           </section>
-        </div>
-      </div>
+      </main>
 
       <footer className="pp-composer-wrap">
         {error && (
@@ -428,8 +439,10 @@ export default function Prep() {
             hidden
             onChange={(e) => onFiles(e.target.files)}
           />
-          <button className="p4-btn icon-only" onClick={() => fileInput.current?.click()} aria-label="Attach images, PDFs or text files">
-            <IconPaperclip />
+          <button className="pp-icon-btn" onClick={() => fileInput.current?.click()} aria-label="Attach images, PDFs or text files" title="Attach">
+            <span className="pp-icon-circle">
+              <IconPaperclip />
+            </span>
           </button>
           <textarea
             className="pp-textarea"
@@ -445,8 +458,16 @@ export default function Prep() {
             }}
             rows={1}
           />
-          <button className="p4-btn solid" onClick={sendText} disabled={!draft.trim()}>
-            <IconArrowUp /> Send
+          <button
+            className={`pp-icon-btn send${draft.trim() ? ' ready' : ''}`}
+            onClick={sendText}
+            disabled={!draft.trim()}
+            aria-label="Send"
+            title="Send (Ctrl+Enter)"
+          >
+            <span className="pp-icon-circle">
+              <IconArrowUp />
+            </span>
           </button>
         </div>
         <p className="pp-hint">Images go to the image bank. Everything else becomes context.</p>
