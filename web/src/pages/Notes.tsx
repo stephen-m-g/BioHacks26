@@ -1,6 +1,8 @@
-// P4 owns this page. The interactive study document compiled from a session.
+// P4 owns this page. The interactive study document compiled from a session, and (view="transcript") the
+// raw transcript. Both routes render this one component, so switching views keeps the header and the loaded
+// data and only cross-fades the body: no reload, no placeholder title, no "Loading…" in between.
 // Figures are the board's images with their annotations: hover for his words, click to jump to the section.
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import SessionFigure, { revealAnnotationCard } from '../components/SessionFigure'
 import SessionHeader from '../components/SessionHeader'
@@ -10,6 +12,7 @@ import { api } from '../lib/api'
 import { formatDate, renameSession } from '../lib/lectures'
 import { pageInfo } from '../lib/pdfPages'
 import { supabase } from '../lib/supabase'
+import { TranscriptBody } from './RawSession'
 import type { LectureNotes, NotesContent } from '../types'
 import {
   annotationCardsForImage,
@@ -23,7 +26,7 @@ import {
 import '../styles/p4.css'
 import '../styles/study.css'
 
-export default function Notes() {
+export default function Notes({ view = 'notes' }: { view?: 'notes' | 'transcript' }) {
   const { sessionId = '' } = useParams()
   // ?student=1: opened from the student live view, so no teacher links.
   const [searchParams] = useSearchParams()
@@ -97,7 +100,15 @@ export default function Notes() {
     revealAnnotationCard(annotationId)
   }
 
-  const title = data.session?.title || data.lecture?.title || content?.title || 'Study notes'
+  const title = data.session?.title || data.lecture?.title || content?.title || 'Session'
+
+  // A new view starts at the top, before it paints (the body fades in from there).
+  const lastView = useRef(view)
+  useLayoutEffect(() => {
+    if (lastView.current === view) return
+    lastView.current = view
+    window.scrollTo(0, 0)
+  }, [view])
 
   return (
     <div className="p4">
@@ -105,145 +116,151 @@ export default function Notes() {
         sessionId={sessionId}
         title={title}
         onRename={student ? undefined : (name) => renameSession(sessionId, name).then(() => data.patchSession({ title: name }))}
-        view="notes"
+        view={view}
         student={student}
         when={data.session ? formatDate(data.session.started_at) : undefined}
-        onPrint={hasContent ? () => window.print() : undefined}
+        onPrint={view === 'notes' && hasContent ? () => window.print() : undefined}
       />
 
       <main className="sv-body">
-        <div className="st-article">
-          {error && (
-            <div className="p4-notice warn no-print" role="alert">
-              <span>{error}</span>
-              <button className="p4-btn" onClick={() => setError(null)}>
-                Dismiss
-              </button>
-            </div>
-          )}
-          {loaded && !hasContent && (
-            <div className="p4-notice" role="status">
-              {!notes && !compileFailed && <span className="st-spinner" aria-hidden="true" />}
-              <span>
-                {notes
-                  ? 'This session didn’t produce any notes.'
-                  : compileFailed
-                    ? 'Your notes couldn’t be compiled. Reload the page to try again.'
-                    : 'Your notes are compiling. They’ll appear here automatically.'}
-              </span>
-            </div>
-          )}
-
-          {content && hasContent && (
-            <article>
-              <h1 className="sv-print-title">{content.title || title}</h1>
-              {content.overview && (
-                <section className="st-overview-block" aria-labelledby="overview-heading">
-                  <h2 id="overview-heading" className="st-heading">
-                    AI Overview
-                  </h2>
-                  <p className="st-overview">
-                    <RichText text={content.overview} />
-                  </p>
-                </section>
+        <div key={view} className="st-article sv-view">
+          {view === 'transcript' ? (
+            <TranscriptBody data={data} />
+          ) : (
+            <>
+              {error && (
+                <div className="p4-notice warn no-print" role="alert">
+                  <span>{error}</span>
+                  <button className="p4-btn" onClick={() => setError(null)}>
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              {loaded && !hasContent && (
+                <div className="p4-notice" role="status">
+                  {!notes && !compileFailed && <span className="st-spinner" aria-hidden="true" />}
+                  <span>
+                    {notes
+                      ? 'This session didn’t produce any notes.'
+                      : compileFailed
+                        ? 'Your notes couldn’t be compiled. Reload the page to try again.'
+                        : 'Your notes are compiling. They’ll appear here automatically.'}
+                  </span>
+                </div>
               )}
 
-              {content.sections.length > 1 && (
-                <nav className="p4-section no-print" aria-labelledby="toc-heading">
-                  <h2 id="toc-heading" className="p4-label">
-                    Sections
-                  </h2>
-                  <div className="st-toc">
-                    {content.sections.map((s) => (
-                      <a key={s.id} href={`#section-${s.id}`}>
-                        {s.heading}
-                      </a>
-                    ))}
-                  </div>
-                </nav>
-              )}
-
-              <div className="st-sections">
-                {content.sections.map((s) => {
-                  const figures = s.figures.flatMap((f) => {
-                    const block = data.blocks[f.image_block_id]
-                    if (!block) return []
-                    return [{ figure: f, block, cards: annotationCardsForImage(data.annotationList, block.id, data.segmentList, sourceTexts) }]
-                  })
-                  const keyTerms = studyKeyTerms(
-                    s.key_terms,
-                    figures.some(({ cards }) => cards.length > 0),
-                    annotationTitles,
-                  )
-                  // A PDF page leads its section (his words about it follow); other images come after the text.
-                  const pageFigures = figures.filter(({ block }) => pageInfo(block, data.assets))
-                  const otherFigures = figures.filter(({ block }) => !pageInfo(block, data.assets))
-                  const renderFigure = ({ figure: f, block, cards }: (typeof figures)[number]) => (
-                    <SessionFigure
-                      key={f.image_block_id}
-                      block={block}
-                      assets={data.assets}
-                      strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                      annotations={annotationsForImage(data.annotationList, block.id)}
-                      cards={cards}
-                      alt={(block.asset_id && data.assets[block.asset_id]?.label) || f.caption}
-                      caption={f.caption}
-                      selectedAnnotationId={selectedAnnotationId}
-                      onSelectAnnotation={selectAnnotation}
-                      onSelectCard={setSelectedAnnotationId}
-                    />
-                  )
-                  return (
-                    <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
-                      <h2>{s.heading}</h2>
-                      {pageFigures.map(renderFigure)}
-                      {s.paragraphs.map((p, i) => {
-                        const parts = transcriptParagraphParts(p, s.paragraph_block_ids?.[i], data.segmentList)
-                        return (
-                          <p key={i}>
-                            {parts.map((part, partIndex) => (
-                              <span
-                                key={`${part.segmentId ?? 'gap'}-${partIndex}`}
-                                data-segment-id={part.segmentId ?? undefined}
-                                className={
-                                  isTranscriptPartHighlighted(part, selectedAnnotationId)
-                                    ? 'st-transcript-highlight'
-                                    : undefined
-                                }
-                              >
-                                <RichText text={part.text} />
-                              </span>
-                            ))}
-                          </p>
-                        )
-                      })}
-                      {otherFigures.map(renderFigure)}
-                      {keyTerms.length > 0 && (
-                        <dl className="st-terms">
-                          {keyTerms.map((k) => (
-                            <div key={k.term}>
-                              <dt>{k.term}</dt>
-                              <dd>{k.definition}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
+              {content && hasContent && (
+                <article>
+                  <h1 className="sv-print-title">{content.title || title}</h1>
+                  {content.overview && (
+                    <section className="st-overview-block" aria-labelledby="overview-heading">
+                      <h2 id="overview-heading" className="st-heading">
+                        AI Overview
+                      </h2>
+                      <p className="st-overview">
+                        <RichText text={content.overview} />
+                      </p>
                     </section>
-                  )
-                })}
+                  )}
 
-                {content.review_questions.length > 0 && (
-                  <section className="p4-card st-section">
-                    <h2>Review questions</h2>
-                    <ol className="st-questions">
-                      {content.review_questions.map((q, i) => (
-                        <li key={i}>{q}</li>
-                      ))}
-                    </ol>
-                  </section>
-                )}
-              </div>
-            </article>
+                  {content.sections.length > 1 && (
+                    <nav className="p4-section no-print" aria-labelledby="toc-heading">
+                      <h2 id="toc-heading" className="p4-label">
+                        Sections
+                      </h2>
+                      <div className="st-toc">
+                        {content.sections.map((s) => (
+                          <a key={s.id} href={`#section-${s.id}`}>
+                            {s.heading}
+                          </a>
+                        ))}
+                      </div>
+                    </nav>
+                  )}
+
+                  <div className="st-sections">
+                    {content.sections.map((s) => {
+                      const figures = s.figures.flatMap((f) => {
+                        const block = data.blocks[f.image_block_id]
+                        if (!block) return []
+                        return [{ figure: f, block, cards: annotationCardsForImage(data.annotationList, block.id, data.segmentList, sourceTexts) }]
+                      })
+                      const keyTerms = studyKeyTerms(
+                        s.key_terms,
+                        figures.some(({ cards }) => cards.length > 0),
+                        annotationTitles,
+                      )
+                      // A PDF page leads its section (his words about it follow); other images come after the text.
+                      const pageFigures = figures.filter(({ block }) => pageInfo(block, data.assets))
+                      const otherFigures = figures.filter(({ block }) => !pageInfo(block, data.assets))
+                      const renderFigure = ({ figure: f, block, cards }: (typeof figures)[number]) => (
+                        <SessionFigure
+                          key={f.image_block_id}
+                          block={block}
+                          assets={data.assets}
+                          strokes={data.strokeList.filter((st) => st.block_id === block.id)}
+                          annotations={annotationsForImage(data.annotationList, block.id)}
+                          cards={cards}
+                          alt={(block.asset_id && data.assets[block.asset_id]?.label) || f.caption}
+                          caption={f.caption}
+                          selectedAnnotationId={selectedAnnotationId}
+                          onSelectAnnotation={selectAnnotation}
+                          onSelectCard={setSelectedAnnotationId}
+                        />
+                      )
+                      return (
+                        <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
+                          <h2>{s.heading}</h2>
+                          {pageFigures.map(renderFigure)}
+                          {s.paragraphs.map((p, i) => {
+                            const parts = transcriptParagraphParts(p, s.paragraph_block_ids?.[i], data.segmentList)
+                            return (
+                              <p key={i}>
+                                {parts.map((part, partIndex) => (
+                                  <span
+                                    key={`${part.segmentId ?? 'gap'}-${partIndex}`}
+                                    data-segment-id={part.segmentId ?? undefined}
+                                    className={
+                                      isTranscriptPartHighlighted(part, selectedAnnotationId)
+                                        ? 'st-transcript-highlight'
+                                        : undefined
+                                    }
+                                  >
+                                    <RichText text={part.text} />
+                                  </span>
+                                ))}
+                              </p>
+                            )
+                          })}
+                          {otherFigures.map(renderFigure)}
+                          {keyTerms.length > 0 && (
+                            <dl className="st-terms">
+                              {keyTerms.map((k) => (
+                                <div key={k.term}>
+                                  <dt>{k.term}</dt>
+                                  <dd>{k.definition}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          )}
+                        </section>
+                      )
+                    })}
+
+                    {content.review_questions.length > 0 && (
+                      <section className="p4-card st-section">
+                        <h2>Review questions</h2>
+                        <ol className="st-questions">
+                          {content.review_questions.map((q, i) => (
+                            <li key={i}>{q}</li>
+                          ))}
+                        </ol>
+                      </section>
+                    )}
+                  </div>
+                </article>
+              )}
+            </>
           )}
         </div>
       </main>

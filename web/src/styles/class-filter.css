@@ -201,6 +201,48 @@
   transition-delay: calc(var(--t, 0ms) + var(--d, 200ms) * 0.5);
 }
 
+/* ---------- .cf.slide: a two-way switch (Study notes | Transcript) ----------
+   The fill slides across instead of growing from the center: the active chip's fill retracts toward its
+   neighbor, then the neighbor fills from the edge nearest it, like the handover to "All". Each chip's empty
+   state is collapsed against the side facing the other chip, so this works in both directions in pure CSS. */
+.cf.slide {
+  --cf-slide-out: 160ms;
+  --cf-slide-in: 240ms;
+}
+
+.cf.slide .cf-chip:first-child .cf-pill::before {
+  clip-path: inset(0 0 0 100%);
+}
+
+.cf.slide .cf-chip:last-child .cf-pill::before {
+  clip-path: inset(0 100% 0 0);
+}
+
+/* leaving: retract toward the other chip, speeding up into the gap */
+.cf.slide .cf-chip .cf-pill::before {
+  transition: clip-path var(--cf-slide-out) cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cf.slide .cf-chip .cf-pill {
+  transition:
+    color var(--cf-slide-out) linear,
+    border-color var(--cf-slide-out) linear,
+    background-color 0.15s var(--cf-ease);
+}
+
+/* arriving: fill from the near edge once the other has emptied, landing softly */
+.cf.slide .cf-chip.on .cf-pill::before {
+  clip-path: inset(0 0 0 0);
+  transition: clip-path var(--cf-slide-in) cubic-bezier(0, 0, 0.2, 1) var(--cf-slide-out);
+}
+
+.cf.slide .cf-chip.on .cf-pill {
+  transition:
+    color calc(var(--cf-slide-in) * 0.5) linear calc(var(--cf-slide-out) + var(--cf-slide-in) * 0.25),
+    border-color calc(var(--cf-slide-in) * 0.5) linear var(--cf-slide-out),
+    background-color 0.15s var(--cf-ease);
+}
+
 /* ---------- hover, focus ---------- */
 @media (hover: hover) {
   .cf-chip:not(.on):not(.cf-hold):not(.add):hover .cf-pill {

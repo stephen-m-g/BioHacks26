@@ -1,4 +1,4 @@
-// Header for a session's two views (study notes and transcript), matching the list pages and the lecture
+// Header for a session's two views (study notes and transcript; one page, so it stays put when switching), matching the list pages and the lecture
 // editor: ← back + the session's title, then a row with the Study notes / Transcript switch, the date and
 // (notes only) Print. Students (?student=1 on the notes) get no transcript switch and go back to the board.
 import { useEffect, useState } from 'react'
@@ -100,7 +100,7 @@ export default function SessionHeader({
 
       <div className="sv-bar no-print">
         {!student && (
-          <nav className="cf large sv-tabs" aria-label="Session views">
+          <nav className="cf large slide sv-tabs" aria-label="Session views">
             <Link
               className={`cf-chip${view === 'notes' ? ' on' : ''}`}
               to={`/notes/${sessionId}`}
