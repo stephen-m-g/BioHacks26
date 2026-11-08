@@ -254,3 +254,138 @@
   font-weight: 700;
   letter-spacing: -0.015em;
 }
+
+/* =====================================================================
+   Session views (study notes, transcript): header from lists.css (.lp-header),
+   then a bar with the Study notes / Transcript switch, the date and Print,
+   and the content in the same 868px column as the lecture editor.
+   ===================================================================== */
+.sv-bar {
+  width: 100%;
+  max-width: 868px;
+  margin: 0 auto;
+  padding: 0 var(--sp-5);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.sv-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  /* the first pill lines up with the title's left edge */
+}
+
+.sv-tabs .cf-chip {
+  text-decoration: none;
+}
+
+.sv-spacer {
+  flex: 1;
+}
+
+.sv-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  color: var(--c-muted);
+  white-space: nowrap;
+}
+
+.sv-when svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Print: a quiet round button with a hairline ring (like the dashboard's card arrows). */
+.lp-pill.outline-soft {
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
+
+.sv-body {
+  width: 100%;
+  max-width: 868px;
+  margin: 0 auto;
+  padding: var(--sp-4) var(--sp-5) var(--sp-8);
+}
+
+.sv-body .st-article {
+  max-width: none;
+}
+
+/* The notes start straight with their first block now that the title lives in the header. */
+.sv-body .st-overview-block {
+  margin-top: var(--sp-2);
+}
+
+.sv-body .p4-notice {
+  margin-top: 0;
+}
+
+/* Section labels (Board, Transcript): same as the list pages' card header. */
+.sv-section + .sv-section {
+  margin-top: var(--sp-7);
+}
+
+.sv-section-head {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.sv-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sv-body .st-board {
+  margin-top: 0;
+}
+
+/* Transcript: plain rows with hairlines on the page background, like the list pages. */
+.sv-body .st-transcript li {
+  padding: 14px 0;
+  font-size: 17px;
+}
+
+.sv-body .st-time {
+  padding-top: 3px;
+}
+
+/* Printed notes keep their title (the on-screen header doesn't print). */
+.sv-print-title {
+  display: none;
+}
+
+@media print {
+  .sv-print-title {
+    display: block;
+    margin: 0 0 var(--sp-3);
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+  }
+  .sv-body {
+    max-width: none;
+    padding: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .sv-bar {
+    padding: 0 var(--sp-3);
+    flex-wrap: wrap;
+  }
+  .sv-body {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+  .sv-when {
+    display: none;
+  }
+}
