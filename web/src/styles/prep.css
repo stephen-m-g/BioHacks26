@@ -827,10 +827,21 @@
   box-shadow: inset 0 0 0 1px var(--c-line-strong);
 }
 
-/* ---------- header: back arrow + title (no Save). An empty right column keeps the
-   title's text aligned with the content on both sides. ---------- */
+/* ---------- header: back arrow, title, Save lecture on the right ---------- */
 .pp-fit .pp-header {
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+}
+
+.p4 .pp-header .pp-save {
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .p4 .pp-header .pp-save {
+    min-height: 48px;
+    padding: 0 var(--sp-4);
+    font-size: 15px;
+  }
 }
 
 .pp-header .pp-icon-btn.back .pp-icon-circle {

@@ -1,8 +1,9 @@
 // P4 owns this page. Chat-style prep: upload images / PDFs / .txt or type text. Each item gets an
 // AI acknowledgement from /describe. Images go to the image bank; everything else is session context.
 //
-// Save / discard: "Save" applies the title and any removals and returns to the dashboard.
-// "<- Dashboard" discards this visit's changes. Uploads must exist in the database for /describe to
+// Save / discard: "Save lecture" (header, or Save in the back arrow's dialog) applies the title and any
+// removals and returns to the dashboard. A new lecture can't be saved until it has a material.
+// "Don't save" discards this visit's changes. Uploads must exist in the database for /describe to
 // read them, so they are written immediately and tracked; discarding deletes them again (and deletes
 // the lecture itself if it was created for this visit, i.e. opened with ?new=1).
 // Class membership follows the same rule (applied on Save). A brand-new class is created right away,
@@ -17,6 +18,7 @@ import { createClass, listClasses, nextClassColor, setLectureClasses } from '../
 import { deleteLecture } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { Asset, AssetKind, ClassGroup, Lecture } from '../types'
+import { backAction, canSaveLecture, saveLecture } from './prepModel'
 import '../styles/p4.css'
 import '../styles/prep.css'
 
@@ -50,6 +52,9 @@ export default function Prep() {
   const [removed, setRemoved] = useState<Asset[]>([])
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  /** Uploads and typed notes still being written; they don't count as materials yet. */
+  const [pending, setPending] = useState(0)
   /** All classes, this lecture's saved class ids, and the current (unsaved) selection. */
   const [classes, setClasses] = useState<ClassGroup[]>([])
   const [savedClassIds, setSavedClassIds] = useState<string[]>([])
@@ -170,11 +175,14 @@ export default function Prep() {
     const text = draft.trim()
     if (!text) return
     setDraft('')
+    setPending((n) => n + 1)
     try {
       await addAsset({ id: newId(), kind: 'text', text_content: text })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setDraft(text)
+    } finally {
+      setPending((n) => n - 1)
     }
   }
 
@@ -187,6 +195,7 @@ export default function Prep() {
         continue
       }
       const id = newId()
+      setPending((n) => n + 1)
       try {
         if (kind === 'text') {
           await addAsset({ id, kind, text_content: await file.text(), file_name: file.name })
@@ -199,6 +208,8 @@ export default function Prep() {
         }
       } catch (e) {
         setError(`${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setPending((n) => n - 1)
       }
     }
     if (fileInput.current) fileInput.current.value = ''
@@ -219,23 +230,29 @@ export default function Prep() {
   const fail = (e: unknown) => {
     setError(e instanceof Error ? e.message : String(e))
     setBusy(false)
+    setSaving(false)
   }
 
   /** Apply the title, classes and removals, then go back to the dashboard. */
   const save = async () => {
     setConfirmDiscard(false)
     setBusy(true)
+    setSaving(true)
     try {
-      if (titleChanged) {
-        const { error } = await supabase
-          .from('lectures')
-          .update({ title: title.trim() || 'Untitled lecture' })
-          .eq('id', lectureId)
-        if (error) throw error
-      }
-      await deleteAssets(removed)
-      if (classesAvailable && classesChanged) await setLectureClasses(lectureId, classIds)
-      navigate('/')
+      await saveLecture({
+        updateTitle: titleChanged
+          ? async () => {
+              const { error } = await supabase
+                .from('lectures')
+                .update({ title: title.trim() || 'Untitled lecture' })
+                .eq('id', lectureId)
+              if (error) throw error
+            }
+          : undefined,
+        deleteRemoved: () => deleteAssets(removed),
+        updateClasses: classesAvailable && classesChanged ? () => setLectureClasses(lectureId, classIds) : undefined,
+        navigate,
+      })
     } catch (e) {
       fail(e)
     }
@@ -257,12 +274,13 @@ export default function Prep() {
   /** The back arrow: ask Save / Don't save / Cancel when something would be lost. A brand-new lecture
    *  always asks (leaving without saving deletes it); an unchanged one just goes back. */
   const back = () => {
-    if (hasUnsavedWork || isNew) setConfirmDiscard(true)
+    if (backAction(hasUnsavedWork, isNew) === 'confirm') setConfirmDiscard(true)
     else navigate('/')
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
   const noteCount = items.length - imageCount
+  const canSave = canSaveLecture({ isNew, loaded: !!lecture, busy, materialCount: items.length, pending })
 
   return (
     <div className="p4 pp pp-fit">
@@ -286,6 +304,15 @@ export default function Prep() {
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
+        <button
+          className="p4-btn solid pp-save"
+          onClick={save}
+          disabled={!canSave}
+          aria-busy={saving}
+          title={isNew && items.length === 0 ? 'Add a material or a note first' : undefined}
+        >
+          {saving ? 'Saving…' : 'Save lecture'}
+        </button>
       </header>
 
       <main className="pp-body">
@@ -522,7 +549,7 @@ export default function Prep() {
                 Don't save
               </button>
               <button className="primary" onClick={save} disabled={!lecture || busy} autoFocus>
-                {busy ? 'Saving…' : 'Save'}
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>
