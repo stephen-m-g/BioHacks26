@@ -1,7 +1,7 @@
 // P4 owns this page. The interactive study document compiled from a session.
 // Figures are the board's images with their annotations: hover for his words, click to jump to the section.
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { IconArrowLeft, IconClock, IconPrinter, IconRefresh, IconText } from '../components/DashIcons'
 import { annotationCardId } from '../components/annotationPopoverModel'
 import ImageBlock from '../components/ImageBlock'
@@ -25,6 +25,9 @@ import '../styles/study.css'
 
 export default function Notes() {
   const { sessionId = '' } = useParams()
+  // ?student=1: opened from the student live view, so no teacher links.
+  const [searchParams] = useSearchParams()
+  const student = searchParams.get('student') === '1'
   const data = useSessionData(sessionId)
   const [notes, setNotes] = useState<LectureNotes | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -56,8 +59,9 @@ export default function Notes() {
   }, [sessionId])
 
   // If End session's compile never lands (server down, request lost), compile once from here.
+  // Teacher only: a class of students would each start a duplicate compile at the same moment.
   const endedAt = data.session?.ended_at
-  const awaitingNotes = loaded && !notes
+  const awaitingNotes = loaded && !notes && !student
   useEffect(() => {
     if (!awaitingNotes) return
     const delay = compileFallbackDelay(endedAt, Date.now())
@@ -105,9 +109,15 @@ export default function Notes() {
   return (
     <div className="p4">
       <header className="p4-top no-print">
-        <Link className="p4-btn" to="/">
-          <IconArrowLeft /> Lectures
-        </Link>
+        {student ? (
+          <Link className="p4-btn" to={`/live/${sessionId}`}>
+            <IconArrowLeft /> Board
+          </Link>
+        ) : (
+          <Link className="p4-btn" to="/">
+            <IconArrowLeft /> Lectures
+          </Link>
+        )}
         <div className="p4-spacer" />
         {hasContent && (
           <button className="p4-btn solid" onClick={() => window.print()}>
