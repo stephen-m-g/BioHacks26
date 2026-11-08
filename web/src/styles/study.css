@@ -173,6 +173,14 @@
   background: var(--annotation-highlight);
 }
 
+.st-section .annotation-popover {
+  --annotation-popover-bg: rgba(255, 255, 255, 0.92);
+  background: var(--annotation-popover-bg);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: var(--d-fg);
+}
+
 .st-questions {
   margin: 0;
   padding-left: 24px;
