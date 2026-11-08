@@ -82,7 +82,7 @@ export default function Notes() {
     card.focus({ preventScroll: true })
     if (!reduceMotion) {
       card.animate(
-        [{ boxShadow: '0 0 0 6px rgba(202, 138, 4, 0.45)' }, { boxShadow: '0 0 0 0 rgba(202, 138, 4, 0)' }],
+        [{ boxShadow: '0 0 0 6px rgba(17, 17, 17, 0.14)' }, { boxShadow: '0 0 0 0 rgba(17, 17, 17, 0)' }],
         { duration: 1200, easing: 'ease-out' },
       )
     }
