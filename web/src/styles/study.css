@@ -66,9 +66,7 @@
   line-height: 1.2;
 }
 
-.st-section p,
-.st-board .board-text,
-.st-board .board-live {
+.st-section p {
   margin: 0 0 12px;
   font-size: 17px;
   line-height: 1.65;
@@ -103,6 +101,11 @@
 
 .st-section figure {
   margin: 16px 0;
+}
+
+/* Transcript cards for PDF pages have no heading: the page label leads. */
+.st-section > figure:first-child {
+  margin-top: 0;
 }
 
 .st-visually-hidden {
@@ -188,12 +191,6 @@
 }
 
 /* Raw view */
-.st-board {
-  margin-top: 32px;
-  padding: 12px;
-  overflow: hidden;
-}
-
 .st-transcript {
   list-style: none;
   margin: 0;
@@ -346,7 +343,7 @@
   gap: 10px;
 }
 
-.sv-body .st-board {
+.sv-section > .st-sections {
   margin-top: 0;
 }
 

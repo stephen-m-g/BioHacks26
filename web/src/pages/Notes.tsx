@@ -2,15 +2,13 @@
 // Figures are the board's images with their annotations: hover for his words, click to jump to the section.
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { annotationCardId } from '../components/annotationPopoverModel'
-import ImageBlock from '../components/ImageBlock'
+import SessionFigure, { revealAnnotationCard } from '../components/SessionFigure'
 import SessionHeader from '../components/SessionHeader'
 import RichText from '../components/RichText'
 import { useSessionData } from '../hooks/useSessionData'
 import { api } from '../lib/api'
-import { assetUrl } from '../lib/assets'
 import { formatDate } from '../lib/lectures'
-import { pageInfo, pageLabel } from '../lib/pdfPages'
+import { pageInfo } from '../lib/pdfPages'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
 import {
@@ -96,17 +94,7 @@ export default function Notes() {
 
   const selectAnnotation = (annotationId: string) => {
     setSelectedAnnotationId(annotationId)
-    const card = document.getElementById(annotationCardId(annotationId))
-    if (!card) return
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    card.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
-    card.focus({ preventScroll: true })
-    if (!reduceMotion) {
-      card.animate(
-        [{ boxShadow: '0 0 0 6px rgba(17, 17, 17, 0.14)' }, { boxShadow: '0 0 0 0 rgba(17, 17, 17, 0)' }],
-        { duration: 1200, easing: 'ease-out' },
-      )
-    }
+    revealAnnotationCard(annotationId)
   }
 
   const title = data.session?.title || data.lecture?.title || content?.title || 'Study notes'
@@ -188,54 +176,21 @@ export default function Notes() {
                   // A PDF page leads its section (his words about it follow); other images come after the text.
                   const pageFigures = figures.filter(({ block }) => pageInfo(block, data.assets))
                   const otherFigures = figures.filter(({ block }) => !pageInfo(block, data.assets))
-                  const renderFigure = ({ figure: f, block, cards }: (typeof figures)[number]) => {
-                    const asset = block.asset_id ? data.assets[block.asset_id] : undefined
-                    const page = pageInfo(block, data.assets)
-                    const cardById = new Map(cards.map((card) => [card.id, card]))
-                    const popoverAnnotations = annotationsForImage(data.annotationList, block.id).map((annotation) => ({
-                      ...annotation,
-                      label: cardById.get(annotation.id)?.title ?? annotation.label,
-                      bubble_text: cardById.get(annotation.id)?.text ?? null,
-                    }))
-                    return (
-                      <figure key={f.image_block_id} className={page ? 'st-pdf-page' : undefined}>
-                        {page && (
-                          <div className="pdf-page-label">
-                            <span className="pdf-page-name">{page.fileName}</span>
-                            <span aria-hidden="true">·</span>
-                            <span>{pageLabel(page)}</span>
-                          </div>
-                        )}
-                        <ImageBlock
-                          block={block}
-                          src={assetUrl(asset)}
-                          alt={page ? `${page.fileName}, ${pageLabel(page).toLowerCase()}` : (asset?.label ?? f.caption)}
-                          strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                          annotations={popoverAnnotations}
-                          selectedAnnotationId={selectedAnnotationId}
-                          onSelectAnnotation={selectAnnotation}
-                        />
-                        <figcaption className="st-visually-hidden">{f.caption}</figcaption>
-                        {cards.length > 0 && (
-                          <div className="st-terms" aria-label="Image annotations">
-                            {cards.map((card) => (
-                              <button
-                                type="button"
-                                id={annotationCardId(card.id)}
-                                key={card.id}
-                                className={`st-term-card${selectedAnnotationId === card.id ? ' selected' : ''}`}
-                                aria-pressed={selectedAnnotationId === card.id}
-                                onClick={() => setSelectedAnnotationId(card.id)}
-                              >
-                                <strong>{card.title}</strong>
-                                <span>{card.text}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </figure>
-                    )
-                  }
+                  const renderFigure = ({ figure: f, block, cards }: (typeof figures)[number]) => (
+                    <SessionFigure
+                      key={f.image_block_id}
+                      block={block}
+                      assets={data.assets}
+                      strokes={data.strokeList.filter((st) => st.block_id === block.id)}
+                      annotations={annotationsForImage(data.annotationList, block.id)}
+                      cards={cards}
+                      alt={(block.asset_id && data.assets[block.asset_id]?.label) || f.caption}
+                      caption={f.caption}
+                      selectedAnnotationId={selectedAnnotationId}
+                      onSelectAnnotation={selectAnnotation}
+                      onSelectCard={setSelectedAnnotationId}
+                    />
+                  )
                   return (
                     <section key={s.id} id={`section-${s.id}`} className="p4-card st-section">
                       <h2>{s.heading}</h2>

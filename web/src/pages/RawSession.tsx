@@ -1,10 +1,10 @@
-// P4 owns this page. The board exactly as it ended (read-only, popups work) plus the timestamped transcript.
+// P4 owns this page. The board as it ended, one card per page or image (read-only, popups work), plus the
+// timestamped transcript.
 import { useParams } from 'react-router-dom'
-import Board from '../components/Board'
 import SessionHeader from '../components/SessionHeader'
+import TranscriptBoard from '../components/TranscriptBoard'
 import { useSessionData } from '../hooks/useSessionData'
 import { formatDate } from '../lib/lectures'
-import { NO_EXPLANATION, rawAnnotationExplanation } from './notesModel'
 import '../styles/p4.css'
 import '../styles/study.css'
 
@@ -44,11 +44,6 @@ export default function RawSession() {
     )
 
   const segments = data.segmentList
-  // Popovers show his linked words as recognized, not the cleaned bubble the notes use.
-  const rawAnnotations = data.annotationList.map((annotation) => ({
-    ...annotation,
-    bubble_text: rawAnnotationExplanation(annotation.id, segments) ?? NO_EXPLANATION,
-  }))
 
   return (
     <div className="p4">
@@ -62,15 +57,13 @@ export default function RawSession() {
               </h2>
               <span className="lp-hint">As it was when the session ended</span>
             </div>
-            <div className="p4-card st-board">
-              <Board
-                blocks={data.blockList}
-                assets={data.assets}
-                strokes={data.strokeList}
-                annotations={rawAnnotations}
-                segments={segments}
-              />
-            </div>
+            <TranscriptBoard
+              blocks={data.blockList}
+              assets={data.assets}
+              strokes={data.strokeList}
+              annotations={data.annotationList}
+              segments={segments}
+            />
           </section>
 
           <section className="sv-section" aria-labelledby="transcript-heading">

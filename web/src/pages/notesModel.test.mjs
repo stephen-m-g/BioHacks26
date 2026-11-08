@@ -14,6 +14,7 @@ import {
   rawAnnotationExplanation,
   studyKeyTerms,
   transcriptParagraphParts,
+  transcriptSections,
 } from './notesModel.ts'
 
 const annotation = (id, bubbleText = null) => ({ id, bubble_text: bubbleText })
@@ -464,4 +465,82 @@ test('raw explanation does not mutate or reorder segment rows', () => {
   const before = structuredClone(segments)
   rawAnnotationExplanation('ann-a', segments)
   assert.deepEqual(segments, before)
+})
+
+// ---------- Transcript view: section cards ----------
+
+const text = (id, pageBlockId = null) => ({ id, kind: 'text', page_block_id: pageBlockId })
+const image = (id) => ({ id, kind: 'image', page_block_id: null })
+const ownersOf = (blocks, pageIds) =>
+  new Map(blocks.map((b) => [b.id, pageIds.includes(b.id) ? b.id : pageIds.includes(b.page_block_id) ? b.page_block_id : null]))
+const speech = (id, time, extra = {}) => rawSegment(id, null, `words ${id}`, time, extra)
+const shape = (sections) =>
+  sections.map((s) => ({
+    id: s.id,
+    media: s.media?.id ?? null,
+    paragraphs: s.paragraphs.map((b) => b.id),
+    unrefined: s.unrefined.map((x) => x.id),
+  }))
+
+test('sections: each PDF page is one card with its own paragraphs and speech, in page order', () => {
+  const pages = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
+  const blocks = pages.flatMap((p) => [image(p), text(`t-${p}`, p)])
+  const sections = transcriptSections(blocks, ownersOf(blocks, pages), [])
+  assert.equal(sections.length, 7)
+  assert.deepEqual(
+    shape(sections).map((s) => [s.media, s.paragraphs]),
+    pages.map((p) => [p, [`t-${p}`]]),
+  )
+})
+
+test('sections: page paragraphs join their page by page_block_id, wherever they sit on the board', () => {
+  const blocks = [image('p1'), image('p2'), text('t1', 'p1'), text('t2', 'p2'), text('t3', 'p1')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1', 'p2']), [])), [
+    { id: 'p1', media: 'p1', paragraphs: ['t1', 't3'], unrefined: [] },
+    { id: 'p2', media: 'p2', paragraphs: ['t2'], unrefined: [] },
+  ])
+})
+
+test('sections: an ordinary image takes the paragraphs that follow it; leading text has its own card', () => {
+  const blocks = [text('a'), image('img1'), text('b'), text('c'), image('img2'), text('d')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, []), [])), [
+    { id: 'text-a', media: null, paragraphs: ['a'], unrefined: [] },
+    { id: 'img1', media: 'img1', paragraphs: ['b', 'c'], unrefined: [] },
+    { id: 'img2', media: 'img2', paragraphs: ['d'], unrefined: [] },
+  ])
+})
+
+test('sections: ordinary text after a PDF page is not attributed to that page', () => {
+  const blocks = [image('p1'), text('t1', 'p1'), text('loose')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1']), [])), [
+    { id: 'p1', media: 'p1', paragraphs: ['t1'], unrefined: [] },
+    { id: 'text-loose', media: null, paragraphs: ['loose'], unrefined: [] },
+  ])
+})
+
+test('sections: unrefined speech goes to its page, else after the last ordinary card, each exactly once', () => {
+  const blocks = [image('p1'), image('img')]
+  const segments = [
+    speech('s3', '2026-11-07T19:00:03Z'),
+    speech('s1', '2026-11-07T19:00:01Z', { page_block_id: 'p1' }),
+    speech('s2', '2026-11-07T19:00:02Z', { page_block_id: 'gone' }),
+    speech('refined', '2026-11-07T19:00:00Z', { text_block_id: 'x' }),
+  ]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1']), segments)), [
+    { id: 'p1', media: 'p1', paragraphs: [], unrefined: ['s1'] },
+    { id: 'img', media: 'img', paragraphs: [], unrefined: ['s2', 's3'] },
+  ])
+})
+
+test('sections: trailing unrefined speech after a PDF page gets its own card', () => {
+  const blocks = [image('p1')]
+  const segments = [speech('s1', '2026-11-07T19:00:01Z')]
+  assert.deepEqual(shape(transcriptSections(blocks, ownersOf(blocks, ['p1']), segments)), [
+    { id: 'p1', media: 'p1', paragraphs: [], unrefined: [] },
+    { id: 'speech-s1', media: null, paragraphs: [], unrefined: ['s1'] },
+  ])
+})
+
+test('sections: an empty board has no cards', () => {
+  assert.deepEqual(transcriptSections([], new Map(), []), [])
 })

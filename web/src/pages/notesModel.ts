@@ -228,6 +228,74 @@ export function rawAnnotationCardsForImage(
   }))
 }
 
+type SectionBlock = Pick<Block, 'id' | 'kind'>
+type SectionSegment = Pick<TranscriptSegment, 'id' | 'text_block_id' | 'page_block_id' | 't_start' | 't_end' | 'created_at'>
+
+export interface TranscriptSection<B extends SectionBlock, S extends SectionSegment> {
+  id: string
+  /** The PDF page or image the card shows; null for speech before any image or after a PDF page. */
+  media: B | null
+  /** Text blocks, in board order. */
+  paragraphs: B[]
+  /** Speech never refined into a paragraph, in speech order. */
+  unrefined: S[]
+}
+
+/**
+ * Transcript view cards from the board sequence (`blocks` in board order, `owners` from pageOwners). A PDF page
+ * card holds the paragraphs and unrefined speech given under it (page_block_id); an ordinary image card holds the
+ * paragraphs that follow it; other paragraphs and unplaced speech get cards of their own. Each block and segment
+ * appears exactly once.
+ */
+export function transcriptSections<B extends SectionBlock, S extends SectionSegment>(
+  blocks: B[],
+  owners: ReadonlyMap<string, string | null>,
+  segments: S[],
+): TranscriptSection<B, S>[] {
+  const sections: TranscriptSection<B, S>[] = []
+  const pages = new Map<string, TranscriptSection<B, S>>()
+  const isPage = (id: string) => owners.get(id) === id
+  for (const block of blocks) {
+    if (isPage(block.id)) pages.set(block.id, { id: block.id, media: block, paragraphs: [], unrefined: [] })
+  }
+
+  let open: TranscriptSection<B, S> | null = null
+  for (const block of blocks) {
+    const owner = owners.get(block.id) ?? null
+    if (owner === block.id) {
+      sections.push(pages.get(block.id)!)
+      open = null
+    } else if (block.kind !== 'text') {
+      open = { id: block.id, media: block, paragraphs: [], unrefined: [] }
+      sections.push(open)
+    } else if (owner) {
+      pages.get(owner)!.paragraphs.push(block)
+    } else {
+      if (!open) {
+        open = { id: `text-${block.id}`, media: null, paragraphs: [], unrefined: [] }
+        sections.push(open)
+      }
+      open.paragraphs.push(block)
+    }
+  }
+
+  const unrefined = segments.filter((segment) => !segment.text_block_id).sort(compareSpeechOrder)
+  for (const segment of unrefined) {
+    const page = segment.page_block_id ? pages.get(segment.page_block_id) : undefined
+    if (page) {
+      page.unrefined.push(segment)
+      continue
+    }
+    const last = sections.at(-1)
+    if (!last || (last.media && isPage(last.media.id))) {
+      sections.push({ id: `speech-${segment.id}`, media: null, paragraphs: [], unrefined: [segment] })
+    } else {
+      last.unrefined.push(segment)
+    }
+  }
+  return sections
+}
+
 /** Old lectures without source offsets: raw linked speech with the original light cleanup, else the bubble. */
 function legacyExplanation(annotation: ExplanationAnnotation, linked: ExplanationSegment[]): string | null {
   const raw = linked
