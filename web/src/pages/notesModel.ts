@@ -10,6 +10,15 @@ type SpanSegment = Pick<
   'id' | 'text_block_id' | 'text_start' | 'text_end' | 'annotation_id'
 >
 
+/** Longer than the backend's 120s Gemini timeout plus the final refine, so a slow compile isn't duplicated. */
+export const COMPILE_GRACE_MS = 180_000
+
+/** How long the notes page waits for End session's compile before starting one itself; null while not ended. */
+export function compileFallbackDelay(endedAt: string | null | undefined, now: number): number | null {
+  if (!endedAt) return null
+  return Math.max(0, Date.parse(endedAt) + COMPILE_GRACE_MS - now)
+}
+
 export interface TranscriptParagraphPart {
   text: string
   segmentId: string | null

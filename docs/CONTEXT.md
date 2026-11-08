@@ -17,7 +17,7 @@ Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illeg
 | `/sessions` | **Recorded sessions**: every session, newest first (Notes or Resume, Transcript, ⋯ Classes…/Delete). Opened from the arrow on the dashboard's Recorded sessions card. |
 | `/prep/:lectureId` | **Prep** (create/edit a lecture), fits one screen. Header: ← and the editable title (no Save button). ← asks **Save / Don't save / Cancel** when anything would be lost (always for a brand-new lecture, since not saving deletes it); with no changes it just goes back. Save applies title, classes and removals. Class chips (dashboard-style, + for a new class) under the header. **Materials** chat card fills the middle and scrolls inside itself: uploads (images, PDFs, .txt) and typed notes, each with an AI acknowledgement from `/describe`; images go to the image bank, the rest becomes context. Composer at the bottom: Attach, a notes field that grows to about six lines, Send (grey until there's text). |
 | `/teach/:sessionId` | **Live session** (below). Projected for the class. |
-| `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land, plus Recompile and Print/PDF buttons. |
+| `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land (compiling once itself if End session's compile never arrives), plus a Print/PDF button. |
 | `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. Not linked from anywhere for now. |
 
 A prepared lecture can be launched any number of times; each launch is a new session. Archiving only hides it from the dashboard.
