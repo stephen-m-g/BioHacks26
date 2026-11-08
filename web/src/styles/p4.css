@@ -1,21 +1,21 @@
+/* Colors, type and spacing come from styles/tokens.css. */
 /* Shared look for the P4 pages (Prep, All lectures, Notes, Raw view). Everything is scoped under .p4.
    Kept from the app's rules: 64px tap targets, text contrast >= 4.5:1, no hover-only actions. */
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Inter:wght@400;500;600;700&display=swap');
 
 .p4 {
-  --d-bg: #efeeea;
-  --d-fg: #111111;
-  --d-text: #2b2b29;
-  --d-muted: #5c5c58; /* 5.8:1 on --d-bg */
-  --d-faded: #64645f;
-  --d-soft: #e2e1dc;
-  --d-card: #fbfbf9;
-  --d-danger: #b42318;
-  --d-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --d-bg: var(--c-bg);
+  --d-fg: var(--c-fg);
+  --d-text: var(--c-text);
+  --d-muted: var(--c-muted);
+  --d-faded: var(--c-faded);
+  --d-soft: var(--c-soft);
+  --d-card: var(--c-card);
+  --d-danger: var(--c-danger);
+  --d-display: var(--font-display);
   min-height: 100vh;
   background: var(--d-bg);
   color: var(--d-fg);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
 }
 
@@ -50,8 +50,7 @@
 .p4-title {
   margin: 0;
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: clamp(36px, 4.6vw, 56px);
   line-height: 1.05;
   letter-spacing: -0.01em;
@@ -134,8 +133,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: 16px;
 }
 
@@ -152,7 +150,6 @@
 .p4-row-title {
   margin: 0;
   font-family: var(--d-display);
-  font-stretch: 125%;
   font-weight: 700;
   font-size: clamp(19px, 2vw, 23px);
   line-height: 1.15;
@@ -363,4 +360,201 @@
     width: 100%;
     margin-left: 76px;
   }
+}
+
+/* ================= polish pass (tokens + audit fixes) ================= */
+
+/* Page title: SF Pro Display, tight and confident rather than extra-wide. */
+.p4-title {
+  font-size: var(--fs-page-title);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+/* Section labels: a quiet uppercase eyebrow instead of a filled pill. */
+.p4-label {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  color: var(--c-muted);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.p4-section {
+  margin-top: var(--sp-7);
+}
+
+.p4-section-head {
+  margin-bottom: var(--sp-2);
+}
+
+/* Eyebrow badges ("Study notes", "Raw board"): plain text, not black pills. */
+.p4-badge,
+.p4-badge.dark {
+  padding: 0;
+  background: none;
+  color: var(--c-muted);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+/* Rows: hairline separators and even rhythm. */
+.p4-list > li + li {
+  border-top: 1px solid var(--c-line);
+}
+
+.p4-row {
+  padding: var(--sp-4) 0;
+  gap: var(--sp-4);
+}
+
+.p4-row-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-row-title);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.p4-meta {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-meta);
+}
+
+.p4-meta svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Class dot in place of the initials avatar. */
+.p4-avatar.class-holder {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  color: var(--c-muted);
+}
+
+/* Secondary button with a visible edge (outlined, not filled). */
+.p4 .p4-btn.outline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--c-line-strong);
+}
+
+.p4 .p4-btn {
+  font-size: var(--fs-body);
+  transition: background-color 0.15s var(--ease), transform 0.1s var(--ease);
+}
+
+.p4-card {
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+}
+
+.p4-menu {
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-line);
+  box-shadow: var(--shadow-pop);
+}
+
+.p4-notice {
+  border: 1px solid var(--c-line);
+}
+
+.p4-notice.warn {
+  background: var(--c-danger-bg);
+  border-color: transparent;
+  color: #8a1c12;
+}
+
+@media (max-width: 700px) {
+  .p4-actions {
+    margin-left: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p4 .p4-btn {
+    transition: none;
+  }
+  .p4 .p4-btn:not(:disabled):active {
+    transform: none;
+  }
+}
+
+/* Per-row Start on the Lectures page: outlined in black, like the dashboard's. */
+.p4 .p4-btn.outline-strong {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+@media (hover: hover) {
+  .p4 .p4-btn.outline-strong:not(:disabled):hover {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+}
+
+/* "Live" stays a filled badge so a running session is easy to spot. */
+.p4-badge.live {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--c-fg);
+  color: var(--c-card);
+  font-size: 11px;
+}
+
+/* Class circle as a button: the tap area grows outward around the circle (negative margin),
+   so the row layout doesn't move. Hover/focus show a ring on the circle itself. */
+.class-dot-btn {
+  --hit: var(--tap);
+  width: var(--hit);
+  height: var(--hit);
+  min-width: 0;
+  min-height: 0;
+  margin: calc((100% - var(--hit)) / 2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.class-dot-ring {
+  display: block;
+  border-radius: 50%;
+  line-height: 0;
+  transition: box-shadow 0.15s var(--ease);
+}
+
+@media (hover: hover) {
+  .class-dot-btn:hover .class-dot-ring {
+    box-shadow: 0 0 0 3px var(--c-card), 0 0 0 5px var(--c-line-strong);
+  }
+}
+
+.class-dot-btn:focus-visible {
+  outline: none;
+}
+
+.class-dot-btn:focus-visible .class-dot-ring {
+  box-shadow: 0 0 0 3px var(--c-card), 0 0 0 6px var(--c-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .class-dot-ring {
+    transition: none;
+  }
+}
+
+/* Full pages: 64px tap area around the 28px circle (holder is 32px). */
+.p4-avatar.class-holder .class-dot-btn {
+  --hit: var(--tap);
+  margin: -16px;
 }

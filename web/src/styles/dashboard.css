@@ -1,20 +1,19 @@
 /* Dashboard look (P4). Every selector is scoped under .dash so no other page changes.
    Kept from the app's rules: 64px tap targets, text contrast >= 4.5:1, no hover-only actions. */
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Inter:wght@400;500;600;700&display=swap');
 
 .dash {
-  --d-bg: #efeeea;
-  --d-fg: #111111;
-  --d-muted: #5c5c58; /* 5.8:1 on --d-bg */
-  --d-faded: #64645f; /* past-session titles, 5.1:1 */
-  --d-soft: #e2e1dc;
-  --d-card: #fbfbf9;
-  --d-danger: #b42318;
-  --d-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --d-bg: var(--c-bg);
+  --d-fg: var(--c-fg);
+  --d-muted: var(--c-muted);
+  --d-faded: var(--c-faded);
+  --d-soft: var(--c-soft);
+  --d-card: var(--c-card);
+  --d-danger: var(--c-danger);
+  --d-display: var(--font-display);
   min-height: 100vh;
   background: var(--d-bg);
   color: var(--d-fg);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
 }
 
 .dash-inner {
@@ -34,8 +33,7 @@
 
 .dash-title {
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: clamp(40px, 5vw, 60px);
   line-height: 1;
   letter-spacing: -0.01em;
@@ -104,8 +102,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.02em;
 }
@@ -123,7 +120,6 @@
 .dash-row-title {
   margin: 0;
   font-family: var(--d-display);
-  font-stretch: 125%;
   font-weight: 700;
   font-size: clamp(19px, 2vw, 23px);
   line-height: 1.15;
@@ -490,4 +486,1004 @@
 .class-add-btn {
   align-self: flex-start;
   border-style: dashed;
+}
+
+/* Brand logo in place of the page title (transparent PNG, black artwork). */
+.dash-title.dash-logo {
+  line-height: 0;
+}
+
+.dash-logo img {
+  display: block;
+  height: clamp(40px, 5vw, 56px);
+  width: auto;
+}
+
+/* ================= polish pass (tokens + audit fixes) ================= */
+
+.dash-header {
+  align-items: center;
+}
+
+.dash-section {
+  margin-top: var(--sp-7);
+}
+
+.dash-section-head {
+  margin-bottom: var(--sp-2);
+}
+
+.dash-label {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  color: var(--c-muted);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.dash-hint {
+  font-size: 13px;
+}
+
+/* Rows: hairline separators, even rhythm, smaller class dot. */
+.dash-list > li + li {
+  border-top: 1px solid var(--c-line);
+}
+
+.dash-row {
+  padding: var(--sp-4) 0;
+  gap: var(--sp-4);
+}
+
+.dash-avatar.class-holder {
+  width: 32px;
+  height: 32px;
+}
+
+.dash-row-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-row-title);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.dash-meta {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-meta);
+  gap: 4px 16px;
+}
+
+.dash-meta svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Per-row Start: outlined, so a list of lectures isn't a column of black pills. The page's one solid
+   button is "New lecture" (and Resume for a session that's still live). */
+.dash .dash-btn.row-primary {
+  background: transparent;
+  color: var(--c-fg);
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+@media (hover: hover) {
+  .dash .dash-btn.row-primary:not(:disabled):hover {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+}
+
+.dash .dash-btn {
+  font-size: var(--fs-body);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
+}
+
+.dash-menu {
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-line);
+  box-shadow: var(--shadow-pop);
+}
+
+/* Class filter: white chips with a hairline edge; "Edit classes" as a quiet text button. */
+.class-filter {
+  margin: var(--sp-5) 0 0;
+}
+
+.dash .class-chip {
+  border-color: var(--c-line);
+  background: var(--c-card);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.dash .class-chip.quiet {
+  border-color: transparent;
+  background: transparent;
+  text-decoration: none;
+  color: var(--c-muted);
+}
+
+@media (hover: hover) {
+  .dash .class-chip:not(.on):hover {
+    background: var(--c-soft);
+  }
+}
+
+.dash-badge {
+  border: 1px solid var(--c-line);
+}
+
+@media (max-width: 700px) {
+  .dash-actions {
+    margin-left: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash .dash-btn,
+  .dash .class-chip {
+    transition: none;
+  }
+}
+
+/* Footer "Archive" link: a full 64px tap area (it's an inline link in a sentence). */
+.dash-footer a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 var(--sp-2);
+}
+
+/* =====================================================================
+   Bento dashboard: header, class filter, then a grid that fills the rest
+   of the screen. The page never scrolls; each list scrolls in its card.
+   ===================================================================== */
+.dash.bento-page {
+  height: 100vh;
+  height: 100dvh; /* excludes iPad Safari's toolbars */
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bento-inner {
+  height: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: var(--sp-4) var(--sp-6) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.bento-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-shrink: 0;
+}
+
+.bento-header .dash-logo img {
+  height: 40px;
+}
+
+/* ---------- class filter: 40px pills inside 64px tap areas ---------- */
+.bento-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 calc(-1 * var(--sp-1));
+  padding: 0 var(--sp-1);
+}
+
+.bento-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.dash .chip {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-fg);
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.chip-pill {
+  height: 40px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-card);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.chip.on .chip-pill {
+  background: var(--c-fg);
+  border-color: var(--c-fg);
+  color: var(--c-card);
+}
+
+.chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chip.on .chip-dot {
+  box-shadow: 0 0 0 2px var(--c-card);
+}
+
+.chip.add .chip-pill {
+  width: 40px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border: 1px dashed var(--c-line-strong);
+  color: var(--c-muted);
+}
+
+.chip.add svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) {
+  .chip:not(.on):hover .chip-pill {
+    background: var(--c-soft);
+  }
+}
+
+.dash .chip:focus-visible {
+  outline: none;
+}
+
+.dash .chip:focus-visible .chip-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+.bento-notices {
+  flex-shrink: 0;
+}
+
+.bento-notices .dash-notice {
+  margin: 0 0 var(--sp-2);
+}
+
+/* ---------- grid ---------- */
+.bento {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+}
+
+.cell-ready {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.cell-archive {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.cell-sessions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.bento-cell {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-2);
+  flex-shrink: 0;
+}
+
+.cell-count {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--c-soft);
+  color: var(--c-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-5) var(--sp-2);
+}
+
+.bento .dash-empty {
+  margin: var(--sp-2) 0;
+  font-size: 15px;
+}
+
+/* Rows inside a card: one line, title truncates instead of pushing buttons down. */
+.bento .dash-row {
+  flex-wrap: nowrap;
+  padding: var(--sp-2) 0;
+  gap: var(--sp-3);
+}
+
+.bento .dash-main {
+  min-width: 0;
+}
+
+.bento .dash-row-title {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bento .dash-meta {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13px;
+  gap: 4px 12px;
+}
+
+.bento .dash-meta svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bento .dash-avatar.class-holder {
+  width: 24px;
+  height: 24px;
+}
+
+.bento .dash-actions {
+  margin-left: auto;
+  width: auto;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.bento .dash-btn.row-primary,
+.bento .dash-btn.solid {
+  padding: 0 var(--sp-4);
+  gap: var(--sp-2);
+  font-size: 15px;
+}
+
+/* ---------- Archive: one clean link card ---------- */
+.dash .cell-archive {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 88px;
+  padding: var(--sp-4) var(--sp-5);
+  color: var(--c-fg);
+  text-decoration: none;
+  transition: background-color 0.15s var(--ease);
+}
+
+.archive-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.archive-sub {
+  font-size: 15px;
+  color: var(--c-muted);
+}
+
+.archive-go {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--c-line-strong);
+  display: grid;
+  place-items: center;
+}
+
+@media (hover: hover) {
+  .dash .cell-archive:hover {
+    background: var(--c-sunken);
+  }
+}
+
+/* ⋯ menu floats above the page so a scrolling card can't clip it. */
+.dash .dash-menu.floating {
+  position: fixed;
+  right: auto;
+  top: auto;
+  z-index: 51;
+  min-width: 0;
+}
+
+.dash-menu-wrap .dash-menu-backdrop {
+  z-index: 50;
+}
+
+/* ---------- narrower screens (portrait iPad): stack, still one screen ---------- */
+@media (max-width: 960px) {
+  .bento {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .cell-ready {
+    grid-row: 1;
+  }
+  .cell-sessions {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .cell-archive {
+    grid-row: 3;
+  }
+  .bento-inner {
+    padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  }
+}
+
+/* ---------- phones / very short windows: let the page scroll instead of crushing the lists ---------- */
+@media (max-width: 600px), (max-height: 560px) {
+  .dash.bento-page {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .bento {
+    grid-template-rows: auto auto auto;
+  }
+  .cell-scroll {
+    max-height: 60vh;
+  }
+  .bento-inner {
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip-pill,
+  .dash .cell-archive {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+   Thin rows: the visible buttons are small pills (36px), each inside a
+   full 64px tap area (Alex's minimum). Rows are exactly that tall.
+   ===================================================================== */
+.bento .dash-row {
+  padding: 0;
+  min-height: var(--tap);
+}
+
+.bento .dash-actions .dash-btn {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 var(--sp-1);
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-fg);
+}
+
+.bento .dash-actions .dash-btn.icon-only {
+  width: var(--tap);
+  min-width: var(--tap);
+}
+
+.btn-pill {
+  height: 36px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.btn-pill svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-pill.outline {
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+.btn-pill.solid {
+  background: var(--c-fg);
+  color: var(--c-card);
+}
+
+.btn-pill.round {
+  width: 36px;
+  padding: 0;
+}
+
+@media (hover: hover) {
+  .dash-btn:not(:disabled):hover .btn-pill.outline {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+  .dash-btn:not(:disabled):hover .btn-pill.round,
+  .cell-go:hover .btn-pill.round {
+    background: var(--c-soft);
+  }
+}
+
+/* Focus ring on the visible pill, not the invisible tap area. */
+.bento .dash-actions .dash-btn:focus-visible,
+.cell-go:focus-visible {
+  outline: none;
+}
+
+.bento .dash-actions .dash-btn:focus-visible .btn-pill,
+.cell-go:focus-visible .btn-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+/* ---------- card header: title + count on the left, arrow on the right ---------- */
+.cell-head {
+  padding: var(--sp-1) var(--sp-3) 0 var(--sp-5);
+  min-height: var(--tap);
+}
+
+.cell-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.cell-go {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-fg);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.cell-go .btn-pill.round {
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
+
+/* Rows sit a little closer to the header now that the header is tap-sized. */
+.cell-scroll {
+  padding-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-pill {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+   Compact dashboard (chosen trade-off): list rows, row buttons, the card
+   header arrow and class chips use 48px tap areas instead of the app-wide
+   64px (still above the common 44px guideline). "New lecture" and every
+   other page keep 64px.
+   ===================================================================== */
+.bento-page {
+  --tap-compact: 48px;
+}
+
+.bento .dash-row {
+  min-height: var(--tap-compact);
+}
+
+.bento .dash-actions .dash-btn,
+.bento .dash-actions .dash-btn.icon-only {
+  min-height: var(--tap-compact);
+  min-width: var(--tap-compact);
+}
+
+.bento .dash-actions .dash-btn.icon-only {
+  width: var(--tap-compact);
+}
+
+.bento .btn-pill {
+  height: 32px;
+}
+
+.bento .btn-pill.round {
+  width: 32px;
+}
+
+.cell-head {
+  min-height: var(--tap-compact);
+  padding-top: var(--sp-2);
+}
+
+.cell-go {
+  min-width: var(--tap-compact);
+  min-height: var(--tap-compact);
+}
+
+.dash .chip {
+  min-height: var(--tap-compact);
+  min-width: var(--tap-compact);
+}
+
+.chip-pill {
+  height: 36px;
+}
+
+.chip.add .chip-pill {
+  width: 36px;
+}
+
+/* Compact status badges so session rows stay 48px. */
+.bento .dash-badge {
+  padding: 0 6px;
+  font-size: 10.5px;
+  line-height: 16px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* =====================================================================
+   Refinement: 64px rows (spacing) with 48px tap areas; hover only on the
+   visible pill; every card header the same height so titles line up;
+   Archive is a header-only card.
+   ===================================================================== */
+
+/* Rows back to 64px for breathing room; buttons keep their 48px tap areas. */
+.bento .dash-row {
+  min-height: var(--tap);
+}
+
+/* A little more room between a row's buttons. */
+.bento .dash-actions {
+  gap: var(--sp-1);
+}
+
+/* Hover: never shade the invisible tap area, only the small visible pill. */
+@media (hover: hover) {
+  .bento .dash-actions .dash-btn:not(:disabled):hover,
+  .cell-go:hover {
+    background: transparent;
+  }
+}
+
+/* Same header height in every card (Ready has an arrow, Sessions doesn't), so titles align. */
+.cell-head {
+  box-sizing: border-box;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 var(--sp-3) 0 var(--sp-5);
+}
+
+/* Header arrow: smaller circle, still a 48px tap area. */
+.cell-go .btn-pill.round {
+  width: 28px;
+  height: 28px;
+}
+
+.cell-go .btn-pill.round svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Archive: just the header (ARCHIVE · count · arrow), so it's short and Ready gets the height. */
+.dash .cell-archive {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+.dash .cell-archive .cell-head {
+  width: 100%;
+  display: flex;
+}
+
+@media (hover: hover) {
+  .dash .cell-archive:hover .btn-pill.round {
+    background: var(--c-soft);
+  }
+}
+
+.dash .cell-archive:focus-visible {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+/* ---------- list cards: minimal scrollbar; the list is clipped 24px above the card's bottom
+   edge (same as the side inset), so cut-off rows have a frame below them ---------- */
+.cell-ready,
+.cell-sessions {
+  padding-bottom: var(--sp-5);
+}
+
+.cell-scroll {
+  padding-bottom: var(--sp-2);
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.cell-scroll:hover,
+.cell-scroll:focus-within {
+  scrollbar-color: var(--c-line-strong) transparent;
+}
+
+/* Chrome / Safari / Edge: a thin rounded thumb, no track, inset from the card edge. */
+.cell-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.cell-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+.cell-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--r-pill);
+  border: 3px solid transparent; /* 10px gutter, 4px visible thumb */
+  background-clip: padding-box;
+}
+
+.cell-scroll:hover::-webkit-scrollbar-thumb,
+.cell-scroll:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--c-line-strong);
+}
+
+.cell-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--c-muted);
+}
+
+/* Fade where list content meets the top and bottom of its scroll area: content at the very
+   edge shows at 25% opacity, rising to full opacity 24px in. */
+.cell-scroll {
+  --fade: 24px;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.25) 0,
+    #000 var(--fade),
+    #000 calc(100% - var(--fade)),
+    rgba(0, 0, 0, 0.25) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.25) 0,
+    #000 var(--fade),
+    #000 calc(100% - var(--fade)),
+    rgba(0, 0, 0, 0.25) 100%
+  );
+}
+
+/* Header balance: a slightly larger logo, a ~20% smaller New lecture button (52px, still a full tap target). */
+.bento-header .dash-logo img {
+  height: 48px;
+}
+
+.dash .dash-btn.new-lecture {
+  min-height: 52px;
+  padding: 0 var(--sp-5);
+  gap: var(--sp-2);
+  font-size: 15px;
+}
+
+.dash .dash-btn.new-lecture svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Class circle as a button: the tap area grows outward around the circle (negative margin),
+   so the row layout doesn't move. Hover/focus show a ring on the circle itself. */
+.class-dot-btn {
+  --hit: var(--tap);
+  width: var(--hit);
+  height: var(--hit);
+  min-width: 0;
+  min-height: 0;
+  margin: calc((100% - var(--hit)) / 2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.class-dot-ring {
+  display: block;
+  border-radius: 50%;
+  line-height: 0;
+  transition: box-shadow 0.15s var(--ease);
+}
+
+@media (hover: hover) {
+  .class-dot-btn:hover .class-dot-ring {
+    box-shadow: 0 0 0 3px var(--c-card), 0 0 0 5px var(--c-line-strong);
+  }
+}
+
+.class-dot-btn:focus-visible {
+  outline: none;
+}
+
+.class-dot-btn:focus-visible .class-dot-ring {
+  box-shadow: 0 0 0 3px var(--c-card), 0 0 0 6px var(--c-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .class-dot-ring {
+    transition: none;
+  }
+}
+
+/* Dashboard (compact): 48px tap area around the 24px circle (holder is 24px). */
+.dash-avatar.class-holder .class-dot-btn {
+  --hit: var(--tap-compact, 48px);
+  margin: -12px;
+}
+
+.class-option-dot {
+  display: inline-flex;
+  line-height: 0;
+}
+
+/* Header breathing room: bigger logo and more space between the logo row, the class row and the
+   cards. The lists take the remaining height, so they get a little shorter (the page still fits). */
+.bento-inner {
+  padding: var(--sp-6) var(--sp-6) 40px;
+  gap: 0;
+}
+
+.bento-header .dash-logo img {
+  height: 56px;
+}
+
+.bento-filter {
+  margin-top: 20px;
+}
+
+.bento-notices {
+  margin-top: var(--sp-3);
+}
+
+.bento {
+  margin-top: var(--sp-5);
+}
+
+@media (max-width: 960px) {
+  .bento-inner {
+    padding: var(--sp-5) var(--sp-5) var(--sp-6);
+  }
+}
+
+@media (max-width: 600px), (max-height: 560px) {
+  .bento-inner {
+    padding: var(--sp-4) var(--sp-4) var(--sp-5);
+  }
+  .bento-header .dash-logo img {
+    height: 44px;
+  }
+}
+
+/* ⋯ menus on the dashboard: compact (168px wide, 48px items), Delete in red. */
+.dash .dash-menu.floating {
+  padding: var(--sp-1);
+  border-radius: 14px;
+}
+
+.bento .dash-actions .dash-menu-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 var(--sp-3);
+  justify-content: flex-start;
+  border-radius: var(--r-sm);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.bento .dash-actions .dash-menu-item.danger {
+  color: var(--c-danger);
+}
+
+@media (hover: hover) {
+  .bento .dash-actions .dash-menu-item:not(:disabled):hover {
+    background: var(--c-soft);
+  }
+  .bento .dash-actions .dash-menu-item.danger:not(:disabled):hover {
+    background: var(--c-danger-bg);
+  }
+}
+
+/* Slightly less space at the very top and bottom of the page. */
+.bento-inner {
+  padding-top: var(--sp-5);
+  padding-bottom: var(--sp-6);
+}
+
+/* ⋯ menus now render at the page root (outside the scrolling list), so style them there.
+   Same look as before: 168px wide, 48px items, Delete in red. */
+.dash .dash-menu-backdrop.floating {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.dash .dash-menu.floating .dash-menu-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 var(--sp-3);
+  justify-content: flex-start;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-fg);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.dash .dash-menu.floating .dash-menu-item.danger {
+  color: var(--c-danger);
+}
+
+@media (hover: hover) {
+  .dash .dash-menu.floating .dash-menu-item:not(:disabled):hover {
+    background: var(--c-soft);
+  }
+  .dash .dash-menu.floating .dash-menu-item.danger:not(:disabled):hover {
+    background: var(--c-danger-bg);
+  }
 }

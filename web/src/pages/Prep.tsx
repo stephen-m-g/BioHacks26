@@ -5,15 +5,18 @@
 // "<- Dashboard" discards this visit's changes. Uploads must exist in the database for /describe to
 // read them, so they are written immediately and tracked; discarding deletes them again (and deletes
 // the lecture itself if it was created for this visit, i.e. opened with ?new=1).
+// Class membership follows the same rule (applied on Save). A brand-new class is created right away,
+// since classes are shared across lectures rather than part of this one.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { IconArrowLeft, IconArrowUp, IconFile, IconImage, IconPaperclip, IconPlay, IconSparkle, IconX } from '../components/DashIcons'
+import { IconArrowLeft, IconArrowUp, IconFile, IconImage, IconPaperclip, IconPlus, IconSparkle, IconX } from '../components/DashIcons'
 import { api } from '../lib/api'
 import { assetUrl, newId } from '../lib/assets'
+import { createClass, listClasses, nextClassColor, setLectureClasses } from '../lib/classes'
 import { deleteLecture } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
-import type { Asset, AssetKind, Lecture } from '../types'
+import type { Asset, AssetKind, ClassGroup, Lecture } from '../types'
 import '../styles/p4.css'
 import '../styles/prep.css'
 
@@ -47,6 +50,13 @@ export default function Prep() {
   const [removed, setRemoved] = useState<Asset[]>([])
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [busy, setBusy] = useState(false)
+  /** All classes, this lecture's saved class ids, and the current (unsaved) selection. */
+  const [classes, setClasses] = useState<ClassGroup[]>([])
+  const [savedClassIds, setSavedClassIds] = useState<string[]>([])
+  const [classIds, setClassIds] = useState<string[]>([])
+  /** Classes tables missing (migration not run): hide the row instead of failing the page. */
+  const [classesAvailable, setClassesAvailable] = useState(true)
+  const [newClassName, setNewClassName] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const feedEnd = useRef<HTMLDivElement>(null)
 
@@ -62,14 +72,32 @@ export default function Prep() {
       setTitle((l.data as Lecture | null)?.title ?? '')
       setItems((a.data as Asset[]) ?? [])
     })
+    Promise.all([listClasses(), supabase.from('lecture_classes').select('class_id').eq('lecture_id', lectureId)])
+      .then(([all, links]) => {
+        if (cancelled) return
+        if (links.error) throw links.error
+        const ids = (links.data ?? []).map((r) => r.class_id as string)
+        setClasses(all)
+        setSavedClassIds(ids)
+        setClassIds(ids)
+      })
+      .catch(() => !cancelled && setClassesAvailable(false))
     return () => {
       cancelled = true
     }
   }, [lectureId])
 
+  // Follow new items as they're added, but not on first load (that would scroll the title out of view).
+  const initialCount = useRef<number | null>(null)
   useEffect(() => {
-    feedEnd.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [items.length])
+    if (!lecture) return
+    if (initialCount.current === null) {
+      initialCount.current = items.length
+      return
+    }
+    if (items.length > initialCount.current) feedEnd.current?.scrollIntoView({ behavior: 'smooth' })
+    initialCount.current = items.length
+  }, [items.length, lecture])
 
   const describe = useCallback((id: string) => {
     setAi((s) => ({ ...s, [id]: 'reading' }))
@@ -100,8 +128,26 @@ export default function Prep() {
 
   const savedTitle = lecture?.title ?? ''
   const titleChanged = (title.trim() || 'Untitled lecture') !== savedTitle
+  const classesChanged =
+    classIds.length !== savedClassIds.length || classIds.some((id) => !savedClassIds.includes(id))
   /** Something would be lost by leaving without saving. */
-  const hasUnsavedWork = added.length > 0 || removed.length > 0 || (!isNew && titleChanged)
+  const hasUnsavedWork = added.length > 0 || removed.length > 0 || (!isNew && (titleChanged || classesChanged))
+
+  const toggleClass = (id: string) =>
+    setClassIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+
+  const addClass = async () => {
+    const name = (newClassName ?? '').trim()
+    if (!name) return
+    try {
+      const cls = await createClass(name, nextClassColor(classes))
+      setClasses((list) => [...list, cls])
+      setClassIds((ids) => [...ids, cls.id])
+      setNewClassName(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   // Warn before closing the tab with unsaved changes.
   useEffect(() => {
@@ -178,6 +224,7 @@ export default function Prep() {
         if (error) throw error
       }
       await deleteAssets(removed)
+      if (classesAvailable && classesChanged) await setLectureClasses(lectureId, classIds)
       navigate('/')
     } catch (e) {
       fail(e)
@@ -206,20 +253,13 @@ export default function Prep() {
   const noteCount = items.length - imageCount
 
   return (
-    <div className="prep">
-      <header className="prep-header">
-        <button onClick={back} disabled={busy}>
-          ← Dashboard
+    <div className="p4 pp">
+      <header className="p4-top">
+        <button className="p4-btn" onClick={back} disabled={busy}>
+          <IconArrowLeft /> Lectures
         </button>
-        <input
-          className="prep-title"
-          value={title}
-          placeholder="Lecture title"
-          aria-label="Lecture title"
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        />
-        <button className="primary" onClick={save} disabled={!lecture || busy}>
+        <div className="p4-spacer" />
+        <button className="p4-btn solid" onClick={save} disabled={!lecture || busy}>
           {busy ? 'Saving…' : 'Save'}
         </button>
       </header>
@@ -242,6 +282,50 @@ export default function Prep() {
               <IconFile /> {plural(noteCount, 'note')}
             </span>
           </p>
+
+          {classesAvailable && (
+            <section className="p4-section pp-classes" aria-labelledby="classes-heading">
+              <h2 id="classes-heading" className="p4-label">
+                Classes
+              </h2>
+              <div className="pp-class-chips" role="group" aria-label="Classes this lecture belongs to">
+                {classes.map((c) => {
+                  const on = classIds.includes(c.id)
+                  return (
+                    <button key={c.id} className={`pp-class-chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleClass(c.id)}>
+                      <span className="pp-class-dot" style={{ background: c.color }} aria-hidden="true" />
+                      {c.name}
+                    </button>
+                  )
+                })}
+                {newClassName === null ? (
+                  <button className="pp-class-chip add" onClick={() => setNewClassName('')}>
+                    <IconPlus /> New class
+                  </button>
+                ) : (
+                  <span className="pp-class-new">
+                    <input
+                      autoFocus
+                      value={newClassName}
+                      placeholder="e.g. Period 2"
+                      aria-label="New class name"
+                      onChange={(e) => setNewClassName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') addClass()
+                        if (e.key === 'Escape') setNewClassName(null)
+                      }}
+                    />
+                    <button className="p4-btn solid" onClick={addClass} disabled={!newClassName.trim()}>
+                      Add
+                    </button>
+                    <button className="p4-btn" onClick={() => setNewClassName(null)}>
+                      Cancel
+                    </button>
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
 
           <section className="p4-section" aria-labelledby="materials-heading">
             <h2 id="materials-heading" className="p4-label">
@@ -390,7 +474,7 @@ export default function Prep() {
       >
         {isNew
           ? "This lecture hasn't been saved. It and everything you added will be deleted."
-          : 'Changes since you last saved will be lost: new uploads are deleted, removed items come back and the title is restored.'}
+          : 'Changes since you last saved will be lost: new uploads are deleted, removed items come back, and the title and classes are restored.'}
       </ConfirmDialog>
     </div>
   )
