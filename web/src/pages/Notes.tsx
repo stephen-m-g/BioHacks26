@@ -15,6 +15,7 @@ import type { LectureNotes, NotesContent } from '../types'
 import {
   annotationCardsForImage,
   annotationsForImage,
+  compileFallbackDelay,
   isTranscriptPartHighlighted,
   studyKeyTerms,
   transcriptParagraphParts,
@@ -27,7 +28,7 @@ export default function Notes() {
   const data = useSessionData(sessionId)
   const [notes, setNotes] = useState<LectureNotes | null>(null)
   const [loaded, setLoaded] = useState(false)
-  const [compiling, setCompiling] = useState(false)
+  const [compileFailed, setCompileFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null)
 
@@ -54,18 +55,31 @@ export default function Notes() {
     }
   }, [sessionId])
 
-  const compile = async () => {
-    setCompiling(true)
-    setError(null)
-    try {
-      const content = await api.compileSession(sessionId)
-      setNotes((n) => ({ session_id: sessionId, created_at: n?.created_at ?? new Date().toISOString(), content }))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setCompiling(false)
+  // If End session's compile never lands (server down, request lost), compile once from here.
+  const endedAt = data.session?.ended_at
+  const awaitingNotes = loaded && !notes
+  useEffect(() => {
+    if (!awaitingNotes) return
+    const delay = compileFallbackDelay(endedAt, Date.now())
+    if (delay === null) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      api
+        .compileSession(sessionId)
+        .then((content) => {
+          if (!cancelled) setNotes({ session_id: sessionId, created_at: new Date().toISOString(), content })
+        })
+        .catch((e) => {
+          if (cancelled) return
+          setCompileFailed(true)
+          setError(e instanceof Error ? e.message : String(e))
+        })
+    }, delay)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
     }
-  }
+  }, [awaitingNotes, endedAt, sessionId])
 
   const content: NotesContent | null = notes?.content ?? null
   const hasContent = !!content && (content.sections.length > 0 || !!content.overview)
@@ -95,9 +109,6 @@ export default function Notes() {
           <IconArrowLeft /> Lectures
         </Link>
         <div className="p4-spacer" />
-        <button className="p4-btn outline" onClick={compile} disabled={compiling}>
-          {compiling ? 'Compiling…' : hasContent ? 'Recompile' : 'Compile notes'}
-        </button>
         {hasContent && (
           <button className="p4-btn solid" onClick={() => window.print()}>
             <IconPrinter /> Print or PDF
@@ -119,8 +130,10 @@ export default function Notes() {
             <div className="p4-notice" role="status">
               <span>
                 {notes
-                  ? 'The compiled notes came back empty. Try Recompile.'
-                  : 'Your notes are compiling. They’ll appear here automatically.'}
+                  ? 'This session didn’t produce any notes.'
+                  : compileFailed
+                    ? 'Your notes couldn’t be compiled. Reload the page to try again.'
+                    : 'Your notes are compiling. They’ll appear here automatically.'}
               </span>
             </div>
           )}

@@ -5,6 +5,8 @@ import {
   annotationCardsForImage,
   annotationExplanation,
   annotationsForImage,
+  COMPILE_GRACE_MS,
+  compileFallbackDelay,
   isTranscriptPartHighlighted,
   NO_EXPLANATION,
   studyKeyTerms,
@@ -174,4 +176,15 @@ test('generated key terms never duplicate annotation cards', () => {
   assert.deepEqual(studyKeyTerms(keyTerms, true, titles), [])
   assert.deepEqual(studyKeyTerms(keyTerms, false, titles).map((keyTerm) => keyTerm.term), ['Erosion'])
   assert.deepEqual(studyKeyTerms(keyTerms, false, []), keyTerms)
+})
+
+test('the notes page only compiles itself once the end-session compile has had its chance', () => {
+  const endedAt = '2026-11-07T19:00:00Z'
+  const ended = Date.parse(endedAt)
+
+  assert.equal(compileFallbackDelay(null, ended), null)
+  assert.equal(compileFallbackDelay(endedAt, ended), COMPILE_GRACE_MS)
+  assert.equal(compileFallbackDelay(endedAt, ended + 60_000), COMPILE_GRACE_MS - 60_000)
+  assert.equal(compileFallbackDelay(endedAt, ended + COMPILE_GRACE_MS + 1), 0)
+  assert.equal(compileFallbackDelay(endedAt, ended + 24 * 60 * 60_000), 0)
 })
