@@ -28,7 +28,8 @@ create table sessions (
   title text,                 -- session name; starts as the lecture title, renamable per session
   status text default 'live' check (status in ('live','ended')),
   started_at timestamptz default now(),
-  ended_at timestamptz
+  ended_at timestamptz,
+  join_code text unique       -- 6 characters students type at /join; set by the teacher's page when a live session opens
 );
 
 -- The board: blocks sorted by position. Inserting between two blocks uses the midpoint.

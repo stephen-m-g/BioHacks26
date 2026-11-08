@@ -46,6 +46,8 @@ export interface Session {
   status: SessionStatus
   started_at: Timestamp
   ended_at: Timestamp | null
+  /** 6 characters students type at /join. Null until the teacher's page sets it; absent before the join_codes migration. */
+  join_code?: string | null
 }
 
 /** A named grouping (a class, or a section of one). Lectures and sessions can belong to several. */
