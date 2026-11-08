@@ -16,6 +16,7 @@ import type { LectureNotes, NotesContent } from '../types'
 import {
   annotationCardsForImage,
   annotationsForImage,
+  annotationSourceTexts,
   compileFallbackDelay,
   isTranscriptPartHighlighted,
   studyKeyTerms,
@@ -91,6 +92,7 @@ export default function Notes() {
   const annotationTitles = data.annotationList
     .filter((annotation) => annotation.status === 'confirmed' && annotation.label)
     .map((annotation) => annotation.label!)
+  const sourceTexts = annotationSourceTexts(data.blockList, content?.sections ?? [])
 
   const selectAnnotation = (annotationId: string) => {
     setSelectedAnnotationId(annotationId)
@@ -176,7 +178,7 @@ export default function Notes() {
                   const figures = s.figures.flatMap((f) => {
                     const block = data.blocks[f.image_block_id]
                     if (!block) return []
-                    return [{ figure: f, block, cards: annotationCardsForImage(data.annotationList, block.id, data.segmentList) }]
+                    return [{ figure: f, block, cards: annotationCardsForImage(data.annotationList, block.id, data.segmentList, sourceTexts) }]
                   })
                   const keyTerms = studyKeyTerms(
                     s.key_terms,

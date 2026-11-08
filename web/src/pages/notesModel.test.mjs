@@ -5,6 +5,7 @@ import {
   annotationCardsForImage,
   annotationExplanation,
   annotationsForImage,
+  annotationSourceTexts,
   COMPILE_GRACE_MS,
   compileFallbackDelay,
   isTranscriptPartHighlighted,
@@ -19,10 +20,15 @@ const segment = (id, annotationId, rawText, time) => ({
   annotation_id: annotationId,
   raw_text: rawText,
   t_start: time,
+  t_end: time,
   created_at: time,
+  text_block_id: null,
+  text_start: null,
+  text_end: null,
 })
+const NO_SOURCES = new Map()
 
-test('uses each annotations own linked transcript when several annotations share an image', () => {
+test('legacy: uses each annotations own linked transcript when several annotations share an image', () => {
   const segments = [
     segment('s2', 'ann-b', 'Uh, these inner folds are called cristae.', '2026-11-07T19:00:04Z'),
     segment('s1', 'ann-a', 'Um, this oval is the mitochondrion.', '2026-11-07T19:00:02Z'),
@@ -30,22 +36,228 @@ test('uses each annotations own linked transcript when several annotations share
   ]
 
   assert.equal(
-    annotationExplanation(annotation('ann-a'), segments),
+    annotationExplanation(annotation('ann-a'), segments, NO_SOURCES),
     'This oval is the mitochondrion. It makes ATP for the cell.',
   )
-  assert.equal(annotationExplanation(annotation('ann-b'), segments), 'These inner folds are called cristae.')
+  assert.equal(annotationExplanation(annotation('ann-b'), segments, NO_SOURCES), 'These inner folds are called cristae.')
 })
 
-test('prefers complete linked speech over a possibly stale saved bubble', () => {
+test('legacy: prefers complete linked speech over a possibly stale saved bubble', () => {
   const segments = [segment('s1', 'ann-a', 'raw speech', '2026-11-07T19:00:02Z')]
 
-  assert.equal(annotationExplanation(annotation('ann-a', 'A stale partial bubble.'), segments), 'Raw speech')
+  assert.equal(annotationExplanation(annotation('ann-a', 'A stale partial bubble.'), segments, NO_SOURCES), 'Raw speech')
+})
+
+test('legacy: falls back to the saved bubble when no speech is linked', () => {
+  assert.equal(annotationExplanation(annotation('ann-a', ' Saved bubble. '), [], NO_SOURCES), 'Saved bubble.')
 })
 
 test('returns null when an annotation genuinely has no linked speech', () => {
   const segments = [segment('s1', 'another-annotation', 'Unrelated speech.', '2026-11-07T19:00:02Z')]
 
-  assert.equal(annotationExplanation(annotation('ann-empty'), segments), null)
+  assert.equal(annotationExplanation(annotation('ann-empty'), segments, NO_SOURCES), null)
+})
+
+/**
+ * Mirrors the backend refine step (join_refined_segments): cleaned parts joined with one space, each segment
+ * stamped with its UTF-16 span in the block's text, and filler-only segments left with null offsets.
+ */
+function refine(blockId, items) {
+  let text = ''
+  const segments = items.map(({ id, annotationId, raw, cleaned, time }) => {
+    const row = { ...segment(id, annotationId, raw, time), text_block_id: blockId }
+    if (!cleaned) return row
+    if (text) text += ' '
+    const start = text.length
+    text += cleaned
+    return { ...row, text_start: start, text_end: text.length }
+  })
+  return { block: { id: blockId, kind: 'text', text }, segments }
+}
+
+const t = (second) => `2026-11-07T19:00:${String(second).padStart(2, '0')}Z`
+
+/** What the student reads in the paragraph, the card, and the hover popup for one circle. */
+function threeViews(annotationId, blocks, sections, segments, imageBlockId = 'image-1') {
+  const sourceTexts = annotationSourceTexts(blocks, sections)
+  const circles = [...new Set([...segments.map((s) => s.annotation_id).filter(Boolean), annotationId])].map((id, i) =>
+    circle(id, imageBlockId, t(i), id),
+  )
+  const card = annotationCardsForImage(circles, imageBlockId, segments, sourceTexts).find((c) => c.id === annotationId)
+  // Notes.tsx hands each card's text to ImageBlock as bubble_text; the popup renders bubble_text.trim().
+  const popup = card.text.trim()
+  const highlighted = sections
+    .flatMap((s) => s.paragraphs.map((p, i) => transcriptParagraphParts(p, s.paragraph_block_ids?.[i], segments)))
+    .flatMap((parts) => parts.filter((part) => isTranscriptPartHighlighted(part, annotationId)).map((part) => part.text))
+  return { paragraph: highlighted.join(' '), card: card.text, popup }
+}
+
+const sectionFor = (...blocks) => ({
+  paragraphs: blocks.map((b) => b.text),
+  paragraph_block_ids: blocks.map((b) => b.id),
+})
+
+test('paragraph, card and popup show the same cleaned speech after filler removal', () => {
+  const { block, segments } = refine('text-1', [
+    {
+      id: 's1',
+      annotationId: 'ann-mito',
+      raw: 'Um, so this is the, the mitochondria, and uh it produces ATP.',
+      cleaned: 'So this is the mitochondria, and it produces ATP.',
+      time: t(1),
+    },
+  ])
+  const views = threeViews('ann-mito', [block], [sectionFor(block)], segments)
+
+  assert.deepEqual(views, {
+    paragraph: 'So this is the mitochondria, and it produces ATP.',
+    card: 'So this is the mitochondria, and it produces ATP.',
+    popup: 'So this is the mitochondria, and it produces ATP.',
+  })
+})
+
+test('duplicate words, false starts and corrected terms match the paragraph exactly', () => {
+  const { block, segments } = refine('text-1', [
+    { id: 's1', annotationId: 'ann-a', raw: 'the the nucleus holds DNA', cleaned: 'The nucleus holds DNA.', time: t(1) },
+    {
+      id: 's2',
+      annotationId: 'ann-b',
+      raw: 'it goes, well, I mean the ribosome makes a tee pee',
+      cleaned: 'The ribosome makes ATP.',
+      time: t(2),
+    },
+  ])
+  const sections = [sectionFor(block)]
+  const a = threeViews('ann-a', [block], sections, segments)
+  const b = threeViews('ann-b', [block], sections, segments)
+
+  assert.deepEqual(a, { paragraph: 'The nucleus holds DNA.', card: 'The nucleus holds DNA.', popup: 'The nucleus holds DNA.' })
+  assert.deepEqual(b, { paragraph: 'The ribosome makes ATP.', card: 'The ribosome makes ATP.', popup: 'The ribosome makes ATP.' })
+  assert.doesNotMatch(a.card, /the the/i)
+  assert.doesNotMatch(b.card, /I mean|tee pee/)
+})
+
+test('a filler-only segment with null offsets never reappears', () => {
+  const { block, segments } = refine('text-1', [
+    { id: 's1', annotationId: 'ann-a', raw: 'Um, uh.', cleaned: '', time: t(1) },
+    { id: 's2', annotationId: 'ann-a', raw: 'This is the cell wall.', cleaned: 'This is the cell wall.', time: t(2) },
+  ])
+
+  assert.equal(segments[0].text_start, null)
+  assert.equal(threeViews('ann-a', [block], [sectionFor(block)], segments).card, 'This is the cell wall.')
+})
+
+test('an annotation whose speech was all filler shows the empty message, not the raw filler', () => {
+  const spoken = refine('text-1', [
+    { id: 's1', annotationId: 'ann-other', raw: 'The cell wall.', cleaned: 'The cell wall.', time: t(1) },
+    { id: 's2', annotationId: 'ann-filler', raw: 'Um, uh, hmm.', cleaned: '', time: t(2) },
+  ])
+  const sourceTexts = annotationSourceTexts([spoken.block], [sectionFor(spoken.block)])
+  const circles = [circle('ann-filler', 'image-1', t(1), 'Filler')]
+
+  assert.equal(annotationExplanation(annotation('ann-filler', 'Um, uh, hmm.'), spoken.segments, sourceTexts), null)
+  assert.equal(annotationCardsForImage(circles, 'image-1', spoken.segments, sourceTexts)[0].text, NO_EXPLANATION)
+
+  // A batch that was only filler under a PDF page is attached to the page block, which has no text.
+  const page = { id: 'page-1', kind: 'image', text: null }
+  const underPage = [{ ...segment('s3', 'ann-filler', 'Uh, um.', t(3)), text_block_id: 'page-1' }]
+  assert.equal(annotationExplanation(annotation('ann-filler'), underPage, annotationSourceTexts([page], [])), null)
+})
+
+test('multiple annotations on one image show only their own cleaned speech', () => {
+  const { block, segments } = refine('text-1', [
+    { id: 's1', annotationId: 'ann-a', raw: 'uh this is the stem', cleaned: 'This is the stem.', time: t(1) },
+    { id: 's2', annotationId: null, raw: 'and so, um, moving on', cleaned: 'Moving on.', time: t(2) },
+    { id: 's3', annotationId: 'ann-b', raw: 'the the leaf', cleaned: 'The leaf.', time: t(3) },
+  ])
+  const sourceTexts = annotationSourceTexts([block], [sectionFor(block)])
+  const circles = [circle('ann-a', 'image-1', t(1), 'Stem'), circle('ann-b', 'image-1', t(3), 'Leaf')]
+
+  assert.deepEqual(annotationCardsForImage(circles, 'image-1', segments, sourceTexts), [
+    { id: 'ann-a', title: 'Stem', text: 'This is the stem.' },
+    { id: 'ann-b', title: 'Leaf', text: 'The leaf.' },
+  ])
+})
+
+test('several segments for one annotation join in speech order across transcript blocks', () => {
+  const first = refine('text-1', [
+    { id: 's1', annotationId: 'ann-a', raw: 'um first', cleaned: 'First part.', time: t(1) },
+    { id: 's2', annotationId: null, raw: 'aside', cleaned: 'An aside.', time: t(2) },
+    { id: 's3', annotationId: 'ann-a', raw: 'second', cleaned: 'Second part.', time: t(3) },
+  ])
+  const second = refine('text-2', [{ id: 's4', annotationId: 'ann-a', raw: 'uh third', cleaned: 'Third part.', time: t(4) }])
+  const blocks = [first.block, second.block]
+  const segments = [...second.segments, ...first.segments].reverse()
+  const sourceTexts = annotationSourceTexts(blocks, [sectionFor(first.block), sectionFor(second.block)])
+
+  assert.equal(annotationExplanation(annotation('ann-a'), segments, sourceTexts), 'First part. Second part. Third part.')
+})
+
+test('speech given under a PDF page maps to that page annotation', () => {
+  const page = { id: 'page-3', kind: 'image', text: null }
+  const { block, segments } = refine('text-page', [
+    { id: 's1', annotationId: 'ann-graph', raw: 'uh this graph shows, shows growth', cleaned: 'This graph shows growth.', time: t(1) },
+  ])
+  const views = threeViews('ann-graph', [page, { ...block, page_block_id: 'page-3' }], [sectionFor(block)], segments, 'page-3')
+
+  assert.deepEqual(views, {
+    paragraph: 'This graph shows growth.',
+    card: 'This graph shows growth.',
+    popup: 'This graph shows growth.',
+  })
+})
+
+test('UTF-16 offsets after an emoji slice the same text the paragraph shows', () => {
+  const { block, segments } = refine('text-1', [
+    { id: 's1', annotationId: null, raw: 'um 🧬 look', cleaned: '🧬 Look.', time: t(1) },
+    { id: 's2', annotationId: 'ann-dna', raw: 'the the DNA marker 🔬', cleaned: 'The DNA marker 🔬.', time: t(2) },
+  ])
+
+  assert.equal(segments[1].text_start, '🧬 Look. '.length)
+  assert.deepEqual(threeViews('ann-dna', [block], [sectionFor(block)], segments), {
+    paragraph: 'The DNA marker 🔬.',
+    card: 'The DNA marker 🔬.',
+    popup: 'The DNA marker 🔬.',
+  })
+})
+
+test('prefers the displayed compiled paragraph, and uses block text when notes lack paragraph mappings', () => {
+  const { block, segments } = refine('text-1', [
+    { id: 's1', annotationId: 'ann-a', raw: 'uh the vacuole', cleaned: 'The vacuole.', time: t(1) },
+  ])
+  const sourceTexts = annotationSourceTexts([{ ...block, text: 'stale' }], [sectionFor(block)])
+  assert.equal(sourceTexts.get('text-1'), 'The vacuole.')
+
+  const withoutIds = annotationSourceTexts([block], [{ paragraphs: [block.text] }])
+  assert.equal(annotationExplanation(annotation('ann-a'), segments, withoutIds), 'The vacuole.')
+})
+
+test('legacy rows refined before offsets existed keep a raw-speech fallback', () => {
+  const block = { id: 'text-old', kind: 'text', text: 'Old cleaned paragraph.' }
+  const segments = [{ ...segment('s1', 'ann-a', 'um old speech', t(1)), text_block_id: 'text-old' }]
+  const sourceTexts = annotationSourceTexts([block], [sectionFor(block)])
+
+  assert.equal(annotationExplanation(annotation('ann-a', 'Saved.'), segments, sourceTexts), 'Old speech')
+  assert.equal(annotationExplanation(annotation('ann-a', 'Saved.'), [], sourceTexts), 'Saved.')
+})
+
+test('refreshing compiled notes keeps every explanation identical', () => {
+  const first = refine('text-1', [
+    { id: 's1', annotationId: 'ann-a', raw: 'uh alpha', cleaned: 'Alpha.', time: t(1) },
+    { id: 's2', annotationId: 'ann-b', raw: 'beta beta', cleaned: 'Beta.', time: t(2) },
+  ])
+  const second = refine('text-2', [{ id: 's3', annotationId: 'ann-a', raw: 'um gamma', cleaned: 'Gamma.', time: t(3) }])
+  const blocks = [first.block, second.block]
+  const segments = [...first.segments, ...second.segments]
+  const circles = [circle('ann-a', 'image-1', t(1), 'A'), circle('ann-b', 'image-1', t(2), 'B')]
+  const cards = (sections, rows = segments, blockRows = blocks) =>
+    annotationCardsForImage(circles, 'image-1', rows, annotationSourceTexts(blockRows, sections))
+
+  const compiled = cards([sectionFor(first.block, second.block)])
+  assert.deepEqual(compiled.map((card) => card.text), ['Alpha. Gamma.', 'Beta.'])
+  // Recompiled into different sections, rows reloaded in another order, and before the notes row arrives.
+  assert.deepEqual(cards([sectionFor(first.block), sectionFor(second.block)], [...segments].reverse(), [...blocks].reverse()), compiled)
+  assert.deepEqual(cards([]), compiled)
 })
 
 test('returns every confirmed annotation on its own image exactly once, including empty ones', () => {
@@ -139,7 +351,7 @@ const mountainSpeech = [
 ]
 
 test('four confirmed circles produce exactly four compact cards, spoken and silent', () => {
-  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech), [
+  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech, NO_SOURCES), [
     { id: 'ann-peak', title: 'Peak', text: 'The highest point on the mountain.' },
     { id: 'ann-coast', title: 'Coastline', text: 'Where the mountain meets the ocean.' },
     { id: 'ann-river', title: 'River', text: NO_EXPLANATION },
@@ -148,20 +360,20 @@ test('four confirmed circles produce exactly four compact cards, spoken and sile
 })
 
 test('each image only gets cards for its own circles', () => {
-  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-b', mountainSpeech).map((card) => card.id), ['ann-cell'])
-  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-c', mountainSpeech), [])
+  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-b', mountainSpeech, NO_SOURCES).map((card) => card.id), ['ann-cell'])
+  assert.deepEqual(annotationCardsForImage(mountainCircles, 'image-c', mountainSpeech, NO_SOURCES), [])
 })
 
 test('cards are identical after a reload returns rows in a different order', () => {
   const reloaded = [...mountainCircles].reverse()
   assert.deepEqual(
-    annotationCardsForImage(reloaded, 'image-a', [...mountainSpeech].reverse()),
-    annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech),
+    annotationCardsForImage(reloaded, 'image-a', [...mountainSpeech].reverse(), NO_SOURCES),
+    annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech, NO_SOURCES),
   )
 })
 
 test('untitled circles get a stable positional title', () => {
-  const cards = annotationCardsForImage([circle('ann-x', 'image-a', '2026-11-07T19:00:01Z', '  ')], 'image-a', [])
+  const cards = annotationCardsForImage([circle('ann-x', 'image-a', '2026-11-07T19:00:01Z', '  ')], 'image-a', [], NO_SOURCES)
   assert.deepEqual(cards, [{ id: 'ann-x', title: 'Annotation 1', text: NO_EXPLANATION }])
 })
 
@@ -171,7 +383,7 @@ test('generated key terms never duplicate annotation cards', () => {
     { term: 'coastline ', definition: 'Where the mountain meets the ocean.' },
     { term: 'Erosion', definition: 'Wearing away of rock.' },
   ]
-  const titles = annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech).map((card) => card.title)
+  const titles = annotationCardsForImage(mountainCircles, 'image-a', mountainSpeech, NO_SOURCES).map((card) => card.title)
 
   assert.deepEqual(studyKeyTerms(keyTerms, true, titles), [])
   assert.deepEqual(studyKeyTerms(keyTerms, false, titles).map((keyTerm) => keyTerm.term), ['Erosion'])
