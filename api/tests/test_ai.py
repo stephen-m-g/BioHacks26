@@ -8,7 +8,7 @@ import pytest
 import ai
 from schemas import RefineGemini
 
-OK = RefineGemini(text="ok")
+OK = RefineGemini(text="ok", segments=[])
 QUOTA = RuntimeError("429 RESOURCE_EXHAUSTED. quota exceeded")
 OVERLOADED = RuntimeError("503 UNAVAILABLE. high demand")
 

@@ -5,11 +5,14 @@ import {
   DEFAULT_BIOLOGY_KEYTERMS,
   MAX_KEYTERMS,
   ScribeUtteranceBuffer,
+  TimestampedCommitQueue,
   classifyTokenError,
   describeMicrophoneError,
   describeScribeError,
   normalizeKeyterms,
   parseKeyterms,
+  partitionTimestampedTranscript,
+  timestampedTranscript,
 } from './scribeModel.ts'
 import { splitSentences } from './transcriptionModel.ts'
 
@@ -99,4 +102,128 @@ test('flushes an uncommitted partial exactly once', () => {
 test('splits committed text into sentence segments', () => {
   assert.deepEqual(splitSentences('Cells divide. Then what? They grow!'), ['Cells divide.', 'Then what?', 'They grow!'])
   assert.deepEqual(splitSentences('no punctuation here'), ['no punctuation here'])
+})
+
+test('uses word occurrence times instead of delayed finalization time', () => {
+  const timed = timestampedTranscript(
+    'Today we learn mountains.',
+    [
+      { text: 'Today', start: 1.25, end: 1.6, type: 'word' },
+      { text: ' ', start: 1.6, end: 1.6, type: 'spacing' },
+      { text: 'we learn mountains.', start: 1.6, end: 2.8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:09.000Z',
+    '2026-11-07T19:00:10.000Z',
+  )
+
+  assert.deepEqual(timed, {
+    text: 'Today we learn mountains.',
+    tStart: '2026-11-07T19:00:01.250Z',
+    tEnd: '2026-11-07T19:00:02.800Z',
+  })
+})
+
+test('matches delayed timestamp callbacks to the correct rapid commits', () => {
+  const queue = new TimestampedCommitQueue()
+  queue.push('Today we learn mountains.', { utterance: 'first' })
+  queue.push('This is the summit.', { utterance: 'second' })
+
+  assert.deepEqual(queue.take('This is the summit.'), { utterance: 'second' })
+  assert.deepEqual(queue.take('Today we learn mountains.'), { utterance: 'first' })
+  assert.equal(queue.take('Today we learn mountains.'), null)
+})
+
+test('keeps duplicate rapid commits stable when timestamp callbacks have identical text', () => {
+  const queue = new TimestampedCommitQueue()
+  queue.push('Okay.', { occurrence: 1 })
+  queue.push('Okay.', { occurrence: 2 })
+
+  assert.deepEqual(queue.take('Okay.'), { occurrence: 1 })
+  assert.deepEqual(queue.take('Okay.'), { occurrence: 2 })
+})
+
+test('partitions words by the exact circle-to-checkmark intervals despite delayed finalization', () => {
+  const parts = partitionTimestampedTranscript(
+    'Before. First circle. Between. Second circle. After.',
+    [
+      { text: 'Before. ', start: 1, end: 1.8, type: 'word' },
+      { text: 'First circle. ', start: 2.2, end: 3.5, type: 'word' },
+      { text: 'Between. ', start: 4.2, end: 4.8, type: 'word' },
+      { text: 'Second circle. ', start: 5.2, end: 6.5, type: 'word' },
+      { text: 'After.', start: 7.2, end: 8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:09.000Z',
+    '2026-11-07T19:00:10.000Z',
+    [
+      { annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:04.000Z' },
+      { annotationId: 'ann-b', drawnAt: '2026-11-07T19:00:05.000Z', closedAt: '2026-11-07T19:00:07.000Z' },
+    ],
+  )
+
+  assert.deepEqual(parts.map(({ text, annotationId }) => ({ text, annotationId })), [
+    { text: 'Before.', annotationId: null },
+    { text: 'First circle.', annotationId: 'ann-a' },
+    { text: 'Between.', annotationId: null },
+    { text: 'Second circle.', annotationId: 'ann-b' },
+    { text: 'After.', annotationId: null },
+  ])
+  assert.equal(parts[1].tStart, '2026-11-07T19:00:02.200Z')
+  assert.equal(parts[1].tEnd, '2026-11-07T19:00:03.500Z')
+})
+
+test('does not attach an unsplittable fallback utterance that crosses an interval boundary', () => {
+  const parts = partitionTimestampedTranscript(
+    'Speech crossing the checkmark.',
+    undefined,
+    null,
+    '2026-11-07T19:00:03.500Z',
+    '2026-11-07T19:00:04.500Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:04.000Z' }],
+  )
+
+  assert.deepEqual(parts.map(({ annotationId }) => annotationId), [null])
+})
+
+test('preserves the whole utterance when any word timing is missing instead of dropping words', () => {
+  const parts = partitionTimestampedTranscript(
+    'Every spoken word stays.',
+    [
+      { text: 'Every ', start: 2.1, end: 2.5, type: 'word' },
+      { text: 'spoken ', type: 'word' },
+      { text: 'word stays.', start: 3, end: 3.8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:02.100Z',
+    '2026-11-07T19:00:03.800Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:04.000Z' }],
+  )
+
+  assert.deepEqual(parts, [{
+    text: 'Every spoken word stays.',
+    tStart: '2026-11-07T19:00:02.100Z',
+    tEnd: '2026-11-07T19:00:03.800Z',
+    annotationId: 'ann-a',
+  }])
+})
+
+test('does not attach a boundary-crossing word to either side', () => {
+  const parts = partitionTimestampedTranscript(
+    'before crossing inside',
+    [
+      { text: 'before ', start: 1, end: 1.7, type: 'word' },
+      { text: 'crossing ', start: 1.8, end: 2.2, type: 'word' },
+      { text: 'inside', start: 2.3, end: 2.8, type: 'word' },
+    ],
+    Date.parse('2026-11-07T19:00:00.000Z'),
+    '2026-11-07T19:00:01.000Z',
+    '2026-11-07T19:00:02.800Z',
+    [{ annotationId: 'ann-a', drawnAt: '2026-11-07T19:00:02.000Z', closedAt: '2026-11-07T19:00:03.000Z' }],
+  )
+
+  assert.deepEqual(parts.map(({ text, annotationId }) => ({ text, annotationId })), [
+    { text: 'before crossing', annotationId: null },
+    { text: 'inside', annotationId: 'ann-a' },
+  ])
 })

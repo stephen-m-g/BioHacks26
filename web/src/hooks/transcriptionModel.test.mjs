@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { calculateSpeechMetrics, countWords, getRestartDelay } from './transcriptionModel.ts'
+import { calculateSpeechMetrics, compareTranscriptSegments, countWords, getRestartDelay } from './transcriptionModel.ts'
 
 test('counts spoken words while ignoring repeated whitespace', () => {
   assert.equal(countWords('  cells   divide twice '), 3)
@@ -43,4 +43,14 @@ test('bounds automatic reconnects', () => {
   assert.equal(getRestartDelay(1), 1_000)
   assert.equal(getRestartDelay(2), 2_000)
   assert.equal(getRestartDelay(3), null)
+})
+
+test('orders transcript rows by speech start and stable secondary fields', () => {
+  const rows = [
+    { id: 'b', t_start: '2026-11-07T19:00:02Z', t_end: '2026-11-07T19:00:03Z', created_at: '2026-11-07T19:00:06Z' },
+    { id: 'c', t_start: '2026-11-07T19:00:01Z', t_end: '2026-11-07T19:00:02Z', created_at: '2026-11-07T19:00:08Z' },
+    { id: 'a', t_start: '2026-11-07T19:00:02Z', t_end: '2026-11-07T19:00:03Z', created_at: '2026-11-07T19:00:06Z' },
+  ]
+
+  assert.deepEqual(rows.sort(compareTranscriptSegments).map((row) => row.id), ['c', 'a', 'b'])
 })
