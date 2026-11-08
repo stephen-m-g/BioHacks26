@@ -86,10 +86,16 @@
   margin: 16px 0;
 }
 
-.st-section figcaption {
-  margin-top: 8px;
-  font-size: 14px;
-  color: var(--d-muted);
+.st-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .st-terms {

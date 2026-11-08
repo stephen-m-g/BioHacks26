@@ -216,7 +216,7 @@ export default function Notes() {
                               selectedAnnotationId={selectedAnnotationId}
                               onSelectAnnotation={selectAnnotation}
                             />
-                            <figcaption>{f.caption}</figcaption>
+                            <figcaption className="st-visually-hidden">{f.caption}</figcaption>
                             {cards.length > 0 && (
                               <div className="st-terms" aria-label="Image annotations">
                                 {cards.map((card) => (
