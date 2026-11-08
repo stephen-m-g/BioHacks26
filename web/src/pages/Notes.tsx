@@ -1,10 +1,10 @@
 // P4 owns this page. The interactive study document compiled from a session.
 // Figures are the board's images with their annotations: hover for his words, click to jump to the section.
 import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { IconArrowLeft, IconClock, IconPrinter, IconRefresh, IconText } from '../components/DashIcons'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { annotationCardId } from '../components/annotationPopoverModel'
 import ImageBlock from '../components/ImageBlock'
+import SessionHeader from '../components/SessionHeader'
 import RichText from '../components/RichText'
 import { useSessionData } from '../hooks/useSessionData'
 import { api } from '../lib/api'
@@ -107,27 +107,20 @@ export default function Notes() {
     }
   }
 
+  const title = data.session?.title || data.lecture?.title || content?.title || 'Study notes'
+
   return (
     <div className="p4">
-      <header className="p4-top no-print">
-        {student ? (
-          <Link className="p4-btn" to={`/live/${sessionId}`}>
-            <IconArrowLeft /> Board
-          </Link>
-        ) : (
-          <Link className="p4-btn" to="/">
-            <IconArrowLeft /> Lectures
-          </Link>
-        )}
-        <div className="p4-spacer" />
-        {hasContent && (
-          <button className="p4-btn solid" onClick={() => window.print()}>
-            <IconPrinter /> Print or PDF
-          </button>
-        )}
-      </header>
+      <SessionHeader
+        sessionId={sessionId}
+        title={title}
+        view="notes"
+        student={student}
+        when={data.session ? formatDate(data.session.started_at) : undefined}
+        onPrint={hasContent ? () => window.print() : undefined}
+      />
 
-      <div className="p4-inner">
+      <main className="sv-body">
         <div className="st-article">
           {error && (
             <div className="p4-notice warn no-print" role="alert">
@@ -151,18 +144,7 @@ export default function Notes() {
 
           {content && hasContent && (
             <article>
-              <span className="p4-badge dark st-eyebrow">Study notes</span>
-              <h1 className="p4-title" style={{ marginTop: 16 }}>
-                {content.title || data.session?.title || data.lecture?.title}
-              </h1>
-              <p className="p4-sub">
-                <span>
-                  <IconClock /> {formatDate(data.session?.started_at)}
-                </span>
-                <span>
-                  {content.sections.length} section{content.sections.length === 1 ? '' : 's'}
-                </span>
-              </p>
+              <h1 className="sv-print-title">{content.title || title}</h1>
               {content.overview && (
                 <section className="st-overview-block" aria-labelledby="overview-heading">
                   <h2 id="overview-heading" className="st-heading">
@@ -305,7 +287,7 @@ export default function Notes() {
             </article>
           )}
         </div>
-      </div>
+      </main>
     </div>
   )
 }

@@ -132,7 +132,7 @@ export default function Sessions() {
               </span>
             </Link>
           ) : (
-            <Link className="lp-tap" to={`/notes/${s.id}`}>
+            <Link className="lp-tap" to={`/notes/${s.id}`} state={{ from: '/sessions' }}>
               <span className="lp-pill outline same-width">
                 Notes <IconArrowRight />
               </span>
@@ -141,7 +141,7 @@ export default function Sessions() {
           <RowMenu
             label={title}
             items={[
-              { label: 'Transcript', onClick: () => navigate(`/sessions/${s.id}/raw`) },
+              { label: 'Transcript', onClick: () => navigate(`/sessions/${s.id}/raw`, { state: { from: '/sessions' } }) },
               { label: 'Delete session', danger: true, onClick: () => setToDelete(s) },
             ]}
           />
