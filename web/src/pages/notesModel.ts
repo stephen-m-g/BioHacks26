@@ -137,7 +137,10 @@ export function transcriptParagraphParts(
   return parts.length > 0 ? parts : [{ text: paragraph, segmentId: null, annotationId: null }]
 }
 
-function compareSpeechOrder(a: ExplanationSegment, b: ExplanationSegment): number {
+function compareSpeechOrder(
+  a: Pick<TranscriptSegment, 'id' | 't_start' | 't_end' | 'created_at'>,
+  b: Pick<TranscriptSegment, 'id' | 't_start' | 't_end' | 'created_at'>,
+): number {
   const aStart = a.t_start ?? a.created_at
   const bStart = b.t_start ?? b.created_at
   return (
@@ -194,6 +197,35 @@ export function annotationExplanation(
   }
   if (mapped) return cleaned.filter(Boolean).join(' ') || null
   return legacyExplanation(annotation, linked)
+}
+
+type RawSegment = Pick<TranscriptSegment, 'id' | 'annotation_id' | 'raw_text' | 't_start' | 't_end' | 'created_at'>
+
+/**
+ * Transcript view: the circle's linked speech exactly as recognized, in speech order, including filler-only
+ * segments. Never cleaned and never the saved bubble; null when no speech is linked.
+ */
+export function rawAnnotationExplanation(annotationId: string, segments: RawSegment[]): string | null {
+  const raw = segments
+    .filter((segment) => segment.annotation_id === annotationId)
+    .sort(compareSpeechOrder)
+    .map((segment) => segment.raw_text.trim())
+    .filter(Boolean)
+    .join(' ')
+  return raw || null
+}
+
+/** Transcript view: the same one-card-per-confirmed-circle projection as the notes, with raw speech. */
+export function rawAnnotationCardsForImage(
+  annotations: (ImageAnnotation & Pick<Annotation, 'label'>)[],
+  blockId: string,
+  segments: RawSegment[],
+): AnnotationCard[] {
+  return annotationsForImage(annotations, blockId).map((annotation, index) => ({
+    id: annotation.id,
+    title: annotation.label?.trim() || `Annotation ${index + 1}`,
+    text: rawAnnotationExplanation(annotation.id, segments) || NO_EXPLANATION,
+  }))
 }
 
 /** Old lectures without source offsets: raw linked speech with the original light cleanup, else the bubble. */

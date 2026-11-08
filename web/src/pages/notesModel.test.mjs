@@ -10,6 +10,8 @@ import {
   compileFallbackDelay,
   isTranscriptPartHighlighted,
   NO_EXPLANATION,
+  rawAnnotationCardsForImage,
+  rawAnnotationExplanation,
   studyKeyTerms,
   transcriptParagraphParts,
 } from './notesModel.ts'
@@ -399,4 +401,67 @@ test('the notes page only compiles itself once the end-session compile has had i
   assert.equal(compileFallbackDelay(endedAt, ended + 60_000), COMPILE_GRACE_MS - 60_000)
   assert.equal(compileFallbackDelay(endedAt, ended + COMPILE_GRACE_MS + 1), 0)
   assert.equal(compileFallbackDelay(endedAt, ended + 24 * 60 * 60_000), 0)
+})
+
+// ---------- Transcript view: raw speech ----------
+
+const rawSegment = (id, annotationId, rawText, time, extra = {}) => ({
+  ...segment(id, annotationId, rawText, time),
+  ...extra,
+})
+
+test('raw explanation keeps fillers, repeats and recognition errors, in speech order', () => {
+  const segments = [
+    rawSegment('s2', 'ann-a', ' the the mighty condria makes ATP ', '2026-11-07T19:00:03Z'),
+    rawSegment('s1', 'ann-a', 'Um, so uh this oval,', '2026-11-07T19:00:02Z'),
+    rawSegment('s3', 'ann-b', 'Unrelated.', '2026-11-07T19:00:01Z'),
+  ]
+  assert.equal(rawAnnotationExplanation('ann-a', segments), 'Um, so uh this oval, the the mighty condria makes ATP')
+})
+
+test('raw explanation includes filler-only segments whose cleaned offsets are null', () => {
+  const segments = [
+    rawSegment('s1', 'ann-a', 'This is the nucleus.', '2026-11-07T19:00:02Z', { text_block_id: 'b1', text_start: 0, text_end: 20 }),
+    rawSegment('s2', 'ann-a', 'Uh, um.', '2026-11-07T19:00:03Z', { text_block_id: 'b1' }),
+  ]
+  assert.equal(rawAnnotationExplanation('ann-a', segments), 'This is the nucleus. Uh, um.')
+})
+
+test('raw explanation breaks timestamp ties by created_at then id', () => {
+  const t = '2026-11-07T19:00:02Z'
+  const segments = [
+    rawSegment('b', 'ann-a', 'second', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('a', 'ann-a', 'first', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('c', 'ann-a', 'zeroth', t, { created_at: '2026-11-07T19:00:04Z' }),
+  ]
+  assert.equal(rawAnnotationExplanation('ann-a', segments), 'zeroth first second')
+})
+
+test('raw explanation is null without linked speech, never the saved bubble', () => {
+  assert.equal(rawAnnotationExplanation('ann-a', [rawSegment('s1', 'ann-b', 'Other.', '2026-11-07T19:00:02Z')]), null)
+  assert.equal(rawAnnotationExplanation('ann-a', [rawSegment('s1', 'ann-a', '   ', '2026-11-07T19:00:02Z')]), null)
+})
+
+test('raw cards: one per confirmed circle on the image, in drawing order, with raw speech', () => {
+  const annotations = [
+    { id: 'ann-b', block_id: 'img', status: 'confirmed', drawn_at: '2026-11-07T19:00:09Z', label: 'Cristae', bubble_text: 'Cleaned.' },
+    { id: 'ann-a', block_id: 'img', status: 'confirmed', drawn_at: '2026-11-07T19:00:01Z', label: null, bubble_text: 'Saved.' },
+    { id: 'ann-c', block_id: 'img', status: 'rejected', drawn_at: '2026-11-07T19:00:02Z', label: 'X', bubble_text: null },
+    { id: 'ann-d', block_id: 'other', status: 'confirmed', drawn_at: '2026-11-07T19:00:02Z', label: 'Y', bubble_text: null },
+  ]
+  const segments = [rawSegment('s1', 'ann-b', 'uh these folds folds', '2026-11-07T19:00:10Z')]
+  assert.deepEqual(rawAnnotationCardsForImage(annotations, 'img', segments), [
+    { id: 'ann-a', title: 'Annotation 1', text: NO_EXPLANATION },
+    { id: 'ann-b', title: 'Cristae', text: 'uh these folds folds' },
+  ])
+})
+
+test('raw explanation does not mutate or reorder segment rows', () => {
+  const segments = [
+    rawSegment('s2', 'ann-a', ' b ', '2026-11-07T19:00:03Z'),
+    rawSegment('s1', 'ann-a', 'a', '2026-11-07T19:00:02Z'),
+  ]
+  const before = structuredClone(segments)
+  rawAnnotationExplanation('ann-a', segments)
+  assert.deepEqual(segments, before)
 })
