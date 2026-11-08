@@ -1,7 +1,13 @@
-import type { Annotation, TranscriptSegment } from '../types'
+import type { Annotation, Block, NotesSection, TranscriptSegment } from '../types'
 
 type ExplanationAnnotation = Pick<Annotation, 'id' | 'bubble_text'>
-type ExplanationSegment = Pick<TranscriptSegment, 'annotation_id' | 'raw_text' | 't_start' | 'created_at'>
+type ExplanationSegment = Pick<
+  TranscriptSegment,
+  'id' | 'annotation_id' | 'raw_text' | 't_start' | 't_end' | 'created_at' | 'text_block_id' | 'text_start' | 'text_end'
+>
+
+/** Accepted cleaned text by source block ID; the offsets on transcript segments index into these strings. */
+export type SourceTexts = ReadonlyMap<string, string>
 
 type ImageAnnotation = Pick<Annotation, 'id' | 'block_id' | 'status' | 'drawn_at'>
 
@@ -54,12 +60,32 @@ export function annotationCardsForImage(
   annotations: CardAnnotation[],
   blockId: string,
   segments: ExplanationSegment[],
+  sourceTexts: SourceTexts,
 ): AnnotationCard[] {
   return annotationsForImage(annotations, blockId).map((annotation, index) => ({
     id: annotation.id,
     title: annotation.label?.trim() || `Annotation ${index + 1}`,
-    text: annotationExplanation(annotation, segments) || NO_EXPLANATION,
+    text: annotationExplanation(annotation, segments, sourceTexts) || NO_EXPLANATION,
   }))
+}
+
+/**
+ * The text each segment's offsets index into: the displayed compiled paragraph when the notes map it to its
+ * block, otherwise the block's stored cleaned text. Blocks without text (images, PDF pages) map to ''.
+ */
+export function annotationSourceTexts(
+  blocks: Pick<Block, 'id' | 'text'>[],
+  sections: Pick<NotesSection, 'paragraphs' | 'paragraph_block_ids'>[],
+): SourceTexts {
+  const texts = new Map<string, string>()
+  for (const block of blocks) texts.set(block.id, block.text ?? '')
+  for (const section of sections) {
+    section.paragraph_block_ids?.forEach((blockId, index) => {
+      const paragraph = section.paragraphs[index]
+      if (paragraph !== undefined) texts.set(blockId, paragraph)
+    })
+  }
+  return texts
 }
 
 /**
@@ -111,19 +137,74 @@ export function transcriptParagraphParts(
   return parts.length > 0 ? parts : [{ text: paragraph, segmentId: null, annotationId: null }]
 }
 
-/** Persisted linked segments are complete source-of-truth speech; the saved bubble is a legacy fallback. */
+function compareSpeechOrder(a: ExplanationSegment, b: ExplanationSegment): number {
+  const aStart = a.t_start ?? a.created_at
+  const bStart = b.t_start ?? b.created_at
+  return (
+    aStart.localeCompare(bStart) ||
+    (a.t_end ?? aStart).localeCompare(b.t_end ?? bStart) ||
+    a.created_at.localeCompare(b.created_at) ||
+    a.id.localeCompare(b.id)
+  )
+}
+
+function hasValidSpan(segment: ExplanationSegment, source: string): boolean {
+  return (
+    Number.isInteger(segment.text_start) &&
+    Number.isInteger(segment.text_end) &&
+    segment.text_start! >= 0 &&
+    segment.text_end! > segment.text_start! &&
+    segment.text_end! <= source.length
+  )
+}
+
+/**
+ * The circle's explanation is the exact cleaned text the transcript shows for its linked segments, sliced by
+ * their persisted UTF-16 offsets and joined in speech order. A refined segment with null offsets was only
+ * filler and contributes nothing. Lectures refined before offsets existed fall back to raw linked speech, then
+ * the saved bubble.
+ */
 export function annotationExplanation(
   annotation: ExplanationAnnotation,
   segments: ExplanationSegment[],
+  sourceTexts: SourceTexts,
 ): string | null {
-  const linked = segments
-    .filter((segment) => segment.annotation_id === annotation.id && segment.raw_text.trim())
-    .sort((a, b) => (a.t_start ?? a.created_at).localeCompare(b.t_start ?? b.created_at))
-    .map((segment) => segment.raw_text.trim())
-    .join(' ')
-  if (!linked) return annotation.bubble_text?.trim() || null
+  const linked = segments.filter((segment) => segment.annotation_id === annotation.id).sort(compareSpeechOrder)
+  const blocksWithSpans = new Set(
+    segments
+      .filter((segment) => {
+        const source = segment.text_block_id ? sourceTexts.get(segment.text_block_id) : undefined
+        return source !== undefined && hasValidSpan(segment, source)
+      })
+      .map((segment) => segment.text_block_id),
+  )
 
-  const cleaned = linked
+  let mapped = false
+  const cleaned: string[] = []
+  for (const segment of linked) {
+    const source = segment.text_block_id ? sourceTexts.get(segment.text_block_id) : undefined
+    if (source === undefined) continue
+    if (hasValidSpan(segment, source)) {
+      mapped = true
+      cleaned.push(source.slice(segment.text_start!, segment.text_end!).trim())
+    } else if (segment.text_start === null && segment.text_end === null) {
+      // A filler-only batch has no paragraph of its own; otherwise its block's other segments carry offsets.
+      if (!source.trim() || blocksWithSpans.has(segment.text_block_id)) mapped = true
+    }
+  }
+  if (mapped) return cleaned.filter(Boolean).join(' ') || null
+  return legacyExplanation(annotation, linked)
+}
+
+/** Old lectures without source offsets: raw linked speech with the original light cleanup, else the bubble. */
+function legacyExplanation(annotation: ExplanationAnnotation, linked: ExplanationSegment[]): string | null {
+  const raw = linked
+    .map((segment) => segment.raw_text.trim())
+    .filter(Boolean)
+    .join(' ')
+  if (!raw) return annotation.bubble_text?.trim() || null
+
+  const cleaned = raw
     .replace(/\b(?:um+|uh+)\b[\s,]*/gi, '')
     .replace(/\s+([,.!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
