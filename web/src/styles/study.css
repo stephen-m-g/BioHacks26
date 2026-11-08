@@ -1,6 +1,6 @@
 /* Notes (study document) and Raw view layouts (P4). Shared look comes from p4.css. */
 .st-article {
-  --annotation-highlight: #fefce8;
+  --annotation-highlight: #ead9ae;
   --annotation-outline: rgba(17, 17, 17, 0.16);
   max-width: 820px;
   margin: 0 auto;
@@ -166,10 +166,10 @@
 }
 
 .st-section .annotation-popover {
-  --annotation-popover-bg: rgba(255, 255, 255, 0.8);
+  --annotation-popover-bg: rgba(255, 255, 255, 0.6);
   background: var(--annotation-popover-bg);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   color: var(--d-fg);
 }
 
