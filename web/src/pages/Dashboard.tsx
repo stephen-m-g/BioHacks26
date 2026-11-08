@@ -1,6 +1,7 @@
 // P4 owns this page. Bento dashboard: class filter on top, then Ready to present (list), Archive (link card)
 // and Recorded sessions (list). The page fits one screen; each list scrolls inside its own card.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { ClassDot, ClassDotButton, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -103,6 +104,8 @@ export default function Dashboard() {
   const [menu, setMenuState] = useState<MenuAnchor | null>(null)
   const setMenu = (m: MenuAnchor | null) => setMenuState(m)
   const [archivedCount, setArchivedCount] = useState<number | null>(null)
+  /** Page root: ⋯ menus render here so the scrolling (masked) lists can't clip them. */
+  const rootRef = useRef<HTMLDivElement>(null)
   const [toDelete, setToDelete] = useState<SessionRow | null>(null)
   const [toDeleteLecture, setToDeleteLecture] = useState<LectureRow | null>(null)
   const [classes, setClasses] = useState<ClassGroup[]>([])
@@ -212,6 +215,8 @@ export default function Dashboard() {
   /** "···" button with a small menu. Tap to open, tap outside to close (no long-press). The menu floats
    *  above the page (position: fixed) so a scrolling card can't clip it, and opens upward near the bottom. */
   const MENU_WIDTH = 168
+  /** Gap between the visible ⋯ circle and the menu. */
+  const MENU_GAP = 6
   const moreMenu = (key: string, label: string, items: { label: string; danger?: boolean; onClick: () => void }[]) => (
     <div className="dash-menu-wrap">
       <button
@@ -221,20 +226,28 @@ export default function Dashboard() {
         aria-expanded={menu?.key === key}
         onClick={(e) => {
           if (menu?.key === key) return setMenu(null)
-          const r = e.currentTarget.getBoundingClientRect()
+          // Anchor to the visible circle, not the larger invisible tap area around it.
+          const pill = e.currentTarget.querySelector('.btn-pill') ?? e.currentTarget
+          const r = pill.getBoundingClientRect()
           const height = items.length * 48 + 10
           const left = Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8))
-          const below = r.bottom + 8 + height <= window.innerHeight
-          setMenu(below ? { key, left, top: r.bottom + 8 } : { key, left, bottom: window.innerHeight - r.top + 8 })
+          const below = r.bottom + MENU_GAP + height <= window.innerHeight - 8
+          setMenu(
+            below
+              ? { key, left, top: r.bottom + MENU_GAP }
+              : { key, left, bottom: window.innerHeight - r.top + MENU_GAP },
+          )
         }}
       >
         <span className="btn-pill round">
           <IconDots />
         </span>
       </button>
-      {menu?.key === key && (
+      {menu?.key === key &&
+        rootRef.current &&
+        createPortal(
         <>
-          <div className="dash-menu-backdrop" onClick={() => setMenu(null)} />
+          <div className="dash-menu-backdrop floating" onClick={() => setMenu(null)} />
           <div className="dash-menu floating" role="menu" style={{ left: menu.left, top: menu.top, bottom: menu.bottom, width: MENU_WIDTH }}>
             {items.map((item) => (
               <button
@@ -248,13 +261,14 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-        </>
+        </>,
+        rootRef.current,
       )}
     </div>
   )
 
   return (
-    <div className="dash bento-page">
+    <div className="dash bento-page" ref={rootRef}>
       <div className="bento-inner">
         <header className="bento-header">
           <h1 className="dash-title dash-logo">

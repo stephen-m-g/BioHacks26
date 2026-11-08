@@ -1453,3 +1453,37 @@
   padding-top: var(--sp-5);
   padding-bottom: var(--sp-6);
 }
+
+/* ⋯ menus now render at the page root (outside the scrolling list), so style them there.
+   Same look as before: 168px wide, 48px items, Delete in red. */
+.dash .dash-menu-backdrop.floating {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.dash .dash-menu.floating .dash-menu-item {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 var(--sp-3);
+  justify-content: flex-start;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-fg);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.dash .dash-menu.floating .dash-menu-item.danger {
+  color: var(--c-danger);
+}
+
+@media (hover: hover) {
+  .dash .dash-menu.floating .dash-menu-item:not(:disabled):hover {
+    background: var(--c-soft);
+  }
+  .dash .dash-menu.floating .dash-menu-item.danger:not(:disabled):hover {
+    background: var(--c-danger-bg);
+  }
+}
