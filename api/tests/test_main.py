@@ -192,17 +192,21 @@ def test_compile_input_lists_ids_annotations_and_materials(db):
     doc = main.compile_input("T", blocks, [b["a1"]], db.tables["assets"])
     assert f"[IMAGE image_block_id={b['i1']['id']}] Cell: A cell." in doc
     assert f"[ANNOTATION annotation_id={b['a1']['id']}] Mitochondrion" in doc
-    assert "[TEXT] Intro paragraph." in doc and "ATP is energy." in doc
+    assert f"[TEXT text_block_id={b['t1']['id']}] Intro paragraph." in doc
+    assert f"[TEXT text_block_id={b['t2']['id']}] Mitochondria make ATP." in doc
+    assert "ATP is energy." in doc
 
 
 def test_compile_drops_invented_ids_and_saves_notes(db, gemini):
     ses, b = board(db, session_title="Renamed session")
     gemini.result = NotesContent(title="", overview="o", review_questions=[f"q{i}" for i in range(7)], sections=[
-        Section(id="intro", heading="H1", paragraphs=["p"], key_terms=[KeyTerm(term="ATP", definition="energy")],
+        Section(id="intro", heading="H1", paragraphs=["Intro paragraph."],
+                key_terms=[KeyTerm(term="ATP", definition="energy")],
                 figures=[Figure(image_block_id=b["i1"]["id"], caption="c"),
                          Figure(image_block_id="made-up", caption="x")],
                 annotation_ids=[b["a1"]["id"], "made-up"]),
-        Section(id="intro", heading="H2", paragraphs=[], key_terms=[], figures=[], annotation_ids=[]),
+        Section(id="intro", heading="H2", paragraphs=["Mitochondria make ATP."], key_terms=[], figures=[],
+                annotation_ids=[]),
     ])
 
     notes = main.compile_session(ses["id"])
@@ -216,6 +220,41 @@ def test_compile_drops_invented_ids_and_saves_notes(db, gemini):
     assert len(saved) == 1 and saved[0]["content"]["sections"][0]["id"] == "s1"
     # only confirmed annotations reach Gemini
     assert "annotation_id=" + b["a1"]["id"] in gemini.calls[0][2][0]
+
+
+def test_compile_rejects_generated_prose_and_saves_the_complete_cleaned_transcript(db, gemini):
+    ses, _ = board(db)
+    gemini.result = NotesContent(title="AI title", overview="Optional summary.", review_questions=["What makes ATP?"], sections=[
+        Section(id="s1", heading="Cellular energy", paragraphs=[
+            "The lesson introduces cellular structures and explains energy production in polished study prose."
+        ], key_terms=[], figures=[], annotation_ids=[]),
+    ])
+
+    notes = main.compile_session(ses["id"])
+
+    paragraphs = [paragraph for section in notes.sections for paragraph in section.paragraphs]
+    assert paragraphs == ["Intro paragraph.", "Mitochondria make ATP."]
+    assert notes.overview == "Optional summary."
+    assert notes.review_questions == ["What makes ATP?"]
+    saved = db.tables["lecture_notes"][0]["content"]
+    assert [p for section in saved["sections"] for p in section["paragraphs"]] == paragraphs
+
+
+def test_compile_keeps_each_cleaned_transcript_block_once_in_chronological_order(db, gemini):
+    ses, b = board(db)
+    gemini.result = NotesContent(title="Lecture title", overview="", review_questions=[], sections=[
+        Section(id="s1", heading="Introduction", paragraphs=["Intro paragraph."], key_terms=[],
+                figures=[Figure(image_block_id=b["i1"]["id"], caption="Cell")], annotation_ids=[]),
+        Section(id="s2", heading="ATP", paragraphs=["Mitochondria make ATP."], key_terms=[],
+                figures=[], annotation_ids=[b["a1"]["id"]]),
+    ])
+
+    notes = main.compile_session(ses["id"])
+
+    assert [p for section in notes.sections for p in section.paragraphs] == [
+        "Intro paragraph.", "Mitochondria make ATP.",
+    ]
+    assert [section.heading for section in notes.sections] == ["Introduction", "ATP"]
 
 
 @pytest.mark.parametrize("session_title, lecture_title, expected", [

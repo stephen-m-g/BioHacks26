@@ -429,7 +429,7 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
     lines = [f"LECTURE TITLE: {title}", "", "BOARD, in teaching order:"]
     for b in blocks:
         if b["kind"] == "text" and (b.get("text") or "").strip():
-            lines.append(f"[TEXT] {b['text'].strip()}")
+            lines.append(f"[TEXT text_block_id={b['id']}] {b['text'].strip()}")
         elif b["kind"] == "image":
             a = assets_by_id.get(b.get("asset_id"), {})
             lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
@@ -451,8 +451,12 @@ DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he 
 
 
 def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> NotesContent:
-    """Drop ids Gemini invented, renumber sections, cap review questions. His own title wins over Gemini's;
-    Gemini's is only used while the lecture still has the default name."""
+    """Validate Gemini metadata without allowing it to replace the cleaned transcript.
+
+    Drop invented ids, renumber sections, and cap review questions. If Gemini omitted, duplicated, reordered,
+    or rewrote any cleaned text block, use deterministic board sections while retaining its clearly separated
+    overview and review questions. His own title wins unless it is still the default.
+    """
     image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
     ann_ids = {a["id"] for a in anns}
     for i, s in enumerate(notes.sections, 1):
@@ -461,6 +465,15 @@ def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> No
         s.annotation_ids = [a for a in s.annotation_ids if a in ann_ids]
     notes.title = title if title and title != DEFAULT_TITLE else (notes.title.strip() or title)
     notes.review_questions = notes.review_questions[:5]
+    source_paragraphs = [b["text"].strip() for b in blocks
+                         if b["kind"] == "text" and (b.get("text") or "").strip()]
+    compiled_paragraphs = [paragraph for section in notes.sections for paragraph in section.paragraphs]
+    if compiled_paragraphs != source_paragraphs:
+        log.warning("[compile] rejected Gemini paragraphs that did not preserve the complete transcript")
+        fallback = fallback_notes(notes.title, blocks, anns)
+        fallback.overview = notes.overview.strip()
+        fallback.review_questions = notes.review_questions
+        return fallback
     return notes
 
 

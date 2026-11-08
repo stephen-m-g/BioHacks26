@@ -37,12 +37,15 @@ CLOSE = (
 )
 
 COMPILE = (
-    "Turn this live lecture into a clear, well-structured study document for high-school senior biology "
-    "students. Use ONLY content from the transcript, the annotations and the provided teaching materials; do "
-    "not add outside facts. Organize into sections in teaching order. Paragraphs should be concise and in "
-    "plain language; you may mark key terms with **bold**. key_terms: define only terms the teacher explained "
-    "or the materials define, using that explanation. figures: reference image_block_ids of images that "
-    "illustrate the section, with a one-line caption based on what he said. annotation_ids: the annotations "
-    "whose content is discussed in that section. review_questions: 3-5 questions answerable from these notes. "
-    "Return JSON matching the schema."
+    "Organize this live lecture into a well-structured study document for high-school senior biology students. "
+    "The [TEXT] entries are the cleaned transcript and are the primary content. Copy every [TEXT] entry exactly "
+    "once into paragraphs, each as its own paragraph, in the same chronological order. Never summarize, "
+    "paraphrase, combine, split, polish, correct, omit, or duplicate those paragraphs. Teaching materials are "
+    "context only and must not become transcript paragraphs. You may generate a short optional overview, a title "
+    "when the supplied title is generic, section headings, key terms, figure captions, and review questions, but "
+    "keep that generated study material separate from the transcript paragraphs and use only supplied content. "
+    "Do not add outside facts. key_terms: define only terms the teacher explained or the materials define, using "
+    "that explanation. figures: reference image_block_ids of images that illustrate the nearby transcript, with "
+    "a one-line caption based on what he said. annotation_ids: the annotations whose content is discussed in that "
+    "section. review_questions: 3-5 questions answerable from these notes. Return JSON matching the schema."
 )
