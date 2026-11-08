@@ -5,6 +5,7 @@ interface BuildTranscriptSegmentInput {
   id: string
   defaultSessionId: string
   defaultAnnotationId?: string | null
+  defaultPageBlockId?: string | null
   context: TranscriptionContext | null
   rawText: string
   confidence: number | null
@@ -64,9 +65,17 @@ export function buildTranscriptSegment(input: BuildTranscriptSegmentInput): Tran
     raw_text: input.rawText,
     confidence: input.confidence,
     annotation_id: input.context ? input.context.annotationId : (input.defaultAnnotationId ?? null),
+    page_block_id: input.context ? (input.context.pageBlockId ?? null) : (input.defaultPageBlockId ?? null),
     text_block_id: null,
     text_start: null,
     text_end: null,
     created_at: input.createdAt,
   }
+}
+
+/** The insert payload: ordinary speech leaves out page_block_id, so it saves even before the page_speech migration. */
+export function segmentInsertRow(row: TranscriptSegment): TranscriptSegment {
+  if (row.page_block_id) return row
+  const { page_block_id: _, ...rest } = row
+  return rest
 }

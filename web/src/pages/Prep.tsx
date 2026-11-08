@@ -1,8 +1,9 @@
 // P4 owns this page. Chat-style prep: upload images / PDFs / .txt or type text. Each item gets an
 // AI acknowledgement from /describe. Images go to the image bank; everything else is session context.
 //
-// Save / discard: "Save" applies the title and any removals and returns to the dashboard.
-// "<- Dashboard" discards this visit's changes. Uploads must exist in the database for /describe to
+// Save / discard: "Save lecture" (header, or Save in the back arrow's dialog) applies the title and any
+// removals and returns to the dashboard. A new lecture can't be saved until it has a material.
+// "Don't save" discards this visit's changes. Uploads must exist in the database for /describe to
 // read them, so they are written immediately and tracked; discarding deletes them again (and deletes
 // the lecture itself if it was created for this visit, i.e. opened with ?new=1).
 // Class membership follows the same rule (applied on Save). A brand-new class is created right away,
@@ -11,18 +12,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowLeft, IconArrowUp, IconFile, IconImage, IconPaperclip, IconPlus, IconSparkle, IconX } from '../components/DashIcons'
-import { api } from '../lib/api'
+import { api, apiErrorMessage } from '../lib/api'
 import { assetUrl, newId } from '../lib/assets'
 import { createClass, listClasses, nextClassColor, setLectureClasses } from '../lib/classes'
 import { deleteLecture } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { Asset, AssetKind, ClassGroup, Lecture } from '../types'
+import { backAction, canSaveLecture, saveLecture } from './prepModel'
 import '../styles/p4.css'
 import '../styles/prep.css'
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 type AiState = 'reading' | 'error' | 'done'
+type PdfPagesState = { state: 'preparing' } | { state: 'ready'; count: number } | { state: 'error'; error: string }
 
 function kindOf(file: File): AssetKind | null {
   const name = file.name.toLowerCase()
@@ -41,6 +44,8 @@ export default function Prep() {
   const [title, setTitle] = useState('')
   const [items, setItems] = useState<Asset[]>([])
   const [ai, setAi] = useState<Record<string, AiState>>({})
+  /** Board pages per PDF: rendered once here so a live session can place them straight away. */
+  const [pdfPages, setPdfPages] = useState<Record<string, PdfPagesState>>({})
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [toRemove, setToRemove] = useState<Asset | null>(null)
@@ -50,6 +55,9 @@ export default function Prep() {
   const [removed, setRemoved] = useState<Asset[]>([])
   const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [saving, setSaving] = useState(false)
+  /** Uploads and typed notes still being written; they don't count as materials yet. */
+  const [pending, setPending] = useState(0)
   /** All classes, this lecture's saved class ids, and the current (unsaved) selection. */
   const [classes, setClasses] = useState<ClassGroup[]>([])
   const [savedClassIds, setSavedClassIds] = useState<string[]>([])
@@ -79,7 +87,13 @@ export default function Prep() {
       if (l.error || !l.data) setError(l.error?.message ?? 'Lecture not found')
       setLecture(l.data as Lecture | null)
       setTitle((l.data as Lecture | null)?.title ?? '')
-      setItems((a.data as Asset[]) ?? [])
+      // Rendered PDF pages belong to their PDF; they aren't materials of their own.
+      const materials = ((a.data as Asset[]) ?? []).filter((x) => x.kind !== 'pdf_page')
+      setItems(materials)
+      for (const pdf of materials.filter((x) => x.kind === 'pdf')) {
+        if (pdf.page_count) setPdfPages((s) => ({ ...s, [pdf.id]: { state: 'ready', count: pdf.page_count! } }))
+        else preparePages(pdf.id) // uploaded before PDF pages existed, or rendering failed last time
+      }
     })
     Promise.all([listClasses(), supabase.from('lecture_classes').select('class_id').eq('lecture_id', lectureId)])
       .then(([all, links]) => {
@@ -119,17 +133,35 @@ export default function Prep() {
       .catch(() => setAi((s) => ({ ...s, [id]: 'error' })))
   }, [])
 
+  const preparePages = useCallback((id: string) => {
+    setPdfPages((s) => ({ ...s, [id]: { state: 'preparing' } }))
+    api
+      .renderPdfPages(id)
+      .then((r) => setPdfPages((s) => ({ ...s, [id]: { state: 'ready', count: r.page_count } })))
+      .catch((e) =>
+        setPdfPages((s) => ({ ...s, [id]: { state: 'error', error: apiErrorMessage(e, 'Couldn’t prepare its pages for the board.') } })),
+      )
+  }, [])
+
   const addAsset = async (row: Partial<Asset> & { id: string; kind: AssetKind }) => {
     const { data, error } = await supabase.from('assets').insert({ lecture_id: lectureId, ...row }).select().single()
     if (error) throw error
     setItems((list) => [...list, data as Asset])
     setAdded((list) => [...list, data as Asset])
     describe(row.id)
+    if (row.kind === 'pdf') preparePages(row.id)
   }
 
+  /** Deletes the rows and their files; a PDF's rendered page rows go with it (cascade), their files here. */
   const deleteAssets = async (assets: Asset[]) => {
     if (assets.length === 0) return
     const paths = assets.map((a) => a.storage_path).filter((p): p is string => !!p)
+    const pdfIds = assets.filter((a) => a.kind === 'pdf').map((a) => a.id)
+    if (pdfIds.length) {
+      // Errors here only mean the PDF-pages migration hasn't run, so there are no pages to remove.
+      const pages = await supabase.from('assets').select('storage_path').in('source_asset_id', pdfIds)
+      for (const page of pages.data ?? []) if (page.storage_path) paths.push(page.storage_path as string)
+    }
     if (paths.length) await supabase.storage.from('assets').remove(paths)
     const { error } = await supabase.from('assets').delete().in('id', assets.map((a) => a.id))
     if (error) throw error
@@ -170,11 +202,14 @@ export default function Prep() {
     const text = draft.trim()
     if (!text) return
     setDraft('')
+    setPending((n) => n + 1)
     try {
       await addAsset({ id: newId(), kind: 'text', text_content: text })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       setDraft(text)
+    } finally {
+      setPending((n) => n - 1)
     }
   }
 
@@ -187,6 +222,7 @@ export default function Prep() {
         continue
       }
       const id = newId()
+      setPending((n) => n + 1)
       try {
         if (kind === 'text') {
           await addAsset({ id, kind, text_content: await file.text(), file_name: file.name })
@@ -199,6 +235,8 @@ export default function Prep() {
         }
       } catch (e) {
         setError(`${file.name}: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setPending((n) => n - 1)
       }
     }
     if (fileInput.current) fileInput.current.value = ''
@@ -219,23 +257,29 @@ export default function Prep() {
   const fail = (e: unknown) => {
     setError(e instanceof Error ? e.message : String(e))
     setBusy(false)
+    setSaving(false)
   }
 
   /** Apply the title, classes and removals, then go back to the dashboard. */
   const save = async () => {
     setConfirmDiscard(false)
     setBusy(true)
+    setSaving(true)
     try {
-      if (titleChanged) {
-        const { error } = await supabase
-          .from('lectures')
-          .update({ title: title.trim() || 'Untitled lecture' })
-          .eq('id', lectureId)
-        if (error) throw error
-      }
-      await deleteAssets(removed)
-      if (classesAvailable && classesChanged) await setLectureClasses(lectureId, classIds)
-      navigate('/')
+      await saveLecture({
+        updateTitle: titleChanged
+          ? async () => {
+              const { error } = await supabase
+                .from('lectures')
+                .update({ title: title.trim() || 'Untitled lecture' })
+                .eq('id', lectureId)
+              if (error) throw error
+            }
+          : undefined,
+        deleteRemoved: () => deleteAssets(removed),
+        updateClasses: classesAvailable && classesChanged ? () => setLectureClasses(lectureId, classIds) : undefined,
+        navigate,
+      })
     } catch (e) {
       fail(e)
     }
@@ -257,12 +301,13 @@ export default function Prep() {
   /** The back arrow: ask Save / Don't save / Cancel when something would be lost. A brand-new lecture
    *  always asks (leaving without saving deletes it); an unchanged one just goes back. */
   const back = () => {
-    if (hasUnsavedWork || isNew) setConfirmDiscard(true)
+    if (backAction(hasUnsavedWork, isNew) === 'confirm') setConfirmDiscard(true)
     else navigate('/')
   }
 
   const imageCount = items.filter((a) => a.kind === 'image').length
   const noteCount = items.length - imageCount
+  const canSave = canSaveLecture({ isNew, loaded: !!lecture, busy, materialCount: items.length, pending })
 
   return (
     <div className="p4 pp pp-fit">
@@ -286,6 +331,15 @@ export default function Prep() {
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
+        <button
+          className="p4-btn solid pp-save"
+          onClick={save}
+          disabled={!canSave}
+          aria-busy={saving}
+          title={isNew && items.length === 0 ? 'Add a material or a note first' : undefined}
+        >
+          {saving ? 'Saving…' : 'Save lecture'}
+        </button>
       </header>
 
       <main className="pp-body">
@@ -363,7 +417,7 @@ export default function Prep() {
                   <p className="pp-ai-title">Add what you'll teach with</p>
                   <p className="pp-ai-desc">
                     Diagrams and photos go to your image bank for the board. PDFs, text files and typed notes become context for
-                    cleaning up your speech and writing the study notes.
+                    cleaning up your speech and writing the study notes, and a PDF's pages can also go on the board.
                   </p>
                 </div>
               </div>
@@ -426,6 +480,23 @@ export default function Prep() {
                         <p className="pp-ai-desc">{ai[a.id] === 'error' ? 'Saved. A description isn’t available right now.' : 'Saved.'}</p>
                       )}
                       <p className="pp-ai-foot">{a.kind === 'image' ? 'Added to image bank' : 'Added to context'}</p>
+                      {a.kind === 'pdf' && pdfPages[a.id] && (
+                        <p className={`pp-ai-foot${pdfPages[a.id].state === 'error' ? ' pp-pages-error' : ''}`} role="status">
+                          {(() => {
+                            const p = pdfPages[a.id]
+                            if (p.state === 'preparing') return 'Preparing its pages for the board…'
+                            if (p.state === 'ready') return `${plural(p.count, 'page')} ready for the board`
+                            return (
+                              <>
+                                {p.error}{' '}
+                                <button className="pp-retry" onClick={() => preparePages(a.id)}>
+                                  Try again
+                                </button>
+                              </>
+                            )
+                          })()}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -498,6 +569,7 @@ export default function Prep() {
       >
         It's removed when you press Save.
         {toRemove?.kind === 'image' && ' Past sessions that placed this image on the board will then show a blank image.'}
+        {toRemove?.kind === 'pdf' && ' Past sessions that placed its pages on the board will then show blank pages.'}
       </ConfirmDialog>
 
       {confirmDiscard && (
@@ -522,7 +594,7 @@ export default function Prep() {
                 Don't save
               </button>
               <button className="primary" onClick={save} disabled={!lecture || busy} autoFocus>
-                {busy ? 'Saving…' : 'Save'}
+                {saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

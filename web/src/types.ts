@@ -21,7 +21,8 @@ export interface Lecture {
   created_at: Timestamp
 }
 
-export type AssetKind = 'image' | 'text' | 'pdf'
+/** 'pdf_page': one rendered page of a 'pdf' asset (POST /assets/{id}/pages); never shown as its own material. */
+export type AssetKind = 'image' | 'text' | 'pdf' | 'pdf_page'
 
 export interface Asset {
   id: UUID
@@ -33,6 +34,14 @@ export interface Asset {
   label: string | null
   description: string | null
   key_terms: string[] | null
+  /** pdf_page: the PDF it was rendered from. Absent before the pdf_pages migration. */
+  source_asset_id?: UUID | null
+  /** pdf_page: 1-based page number. */
+  page_number?: number | null
+  /** pdf: number of rendered pages; null until every page has been rendered. */
+  page_count?: number | null
+  /** pdf_page: width / height. */
+  aspect?: number | null
   created_at: Timestamp
 }
 
@@ -70,6 +79,8 @@ export interface Block {
   asset_id: UUID | null
   /** image width / height */
   aspect: number | null
+  /** Text blocks: the PDF page block this speech was given under. Absent before the page_speech migration. */
+  page_block_id?: UUID | null
   created_at: Timestamp
 }
 
@@ -109,6 +120,8 @@ export interface TranscriptSegment {
   annotation_id: UUID | null
   /** null = not refined into a text block yet */
   text_block_id: UUID | null
+  /** PDF page block that was active when this was said; null/absent = ordinary speech. */
+  page_block_id?: UUID | null
   /** Half-open UTF-16 range inside the cleaned text block (browser String units). Null on legacy rows. */
   text_start: number | null
   text_end: number | null

@@ -21,12 +21,13 @@ from PIL import Image  # noqa: E402
 
 import ai  # noqa: E402
 import cleanup  # noqa: E402
+import pdf_pages  # noqa: E402
 import prompts  # noqa: E402
 import scribe  # noqa: E402
-from db import download, get_db  # noqa: E402
+from db import download, get_db, upload  # noqa: E402
 from schemas import (  # noqa: E402
-    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, RefineGemini, RefineOut, ScribeTokenOut,
-    Section,
+    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, PdfPagesOut, RefineGemini, RefineOut,
+    ScribeTokenOut, Section,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -78,34 +79,39 @@ def refine_session(session_id: str) -> RefineOut:
 
 
 def refine_batch(db, session_id: str) -> RefineOut:
-    """Refine the oldest unrefined segments (up to ~MAX_REFINE_WORDS) into one text block. Call under refine_lock."""
+    """Refine the oldest unrefined segments (up to ~MAX_REFINE_WORDS, all from the same PDF page or all from no
+    page) into one text block. Call under refine_lock.
+
+    No page: the paragraph is appended to the end of the board. A page: it goes right after that page's existing
+    paragraphs (before whatever follows the page), so each page's speech stays under it in spoken order."""
     t0 = time.perf_counter()
     unrefined = (
         db.table("transcript_segments")
-        .select("id, raw_text, t_start, t_end, created_at")
+        .select("*")
         .eq("session_id", session_id)
         .is_("text_block_id", "null")
         .execute()
         .data
     )
+    if not unrefined:
+        return RefineOut(block=None, segment_ids=[])
     unrefined.sort(key=segment_order_key)
+    blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
+    image_ids = {b["id"] for b in blocks if b["kind"] == "image"}
+    page_of = lambda s: s.get("page_block_id") if s.get("page_block_id") in image_ids else None  # noqa: E731
+    page_id = page_of(unrefined[0])
     segs, words = [], 0
     for s in unrefined:
+        if page_of(s) != page_id:
+            break  # speech about another page (or none) is its own paragraph, in the next call
         segs.append(s)
         words += len(s["raw_text"].split())
         if words >= MAX_REFINE_WORDS:
             break  # the rest goes in the next call
-    if not segs:
-        return RefineOut(block=None, segment_ids=[])
 
     vocab = lecture_vocab(db, session_id)
-    blocks = (
-        db.table("blocks").select("*").eq("session_id", session_id)
-        .order("position", desc=True).execute().data
-    )
-    max_pos = blocks[0]["position"] if blocks else 0.0
-    prev_block = next((b for b in blocks if b["kind"] == "text" and b.get("text")), None)
-    prev_text = prev_block["text"] if prev_block else ""
+    position, prev_block, moved = paragraph_slot(db, blocks, page_id)
+    prev_text = prev_block["text"] if prev_block and prev_block["kind"] == "text" else ""
     db_read_ms = ms(t0)
 
     # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
@@ -116,23 +122,54 @@ def refine_batch(db, session_id: str) -> RefineOut:
 
     t_write = time.perf_counter()
     if text or not prev_block:
-        block = (
-            db.table("blocks")
-            .insert({"session_id": session_id, "kind": "text", "position": max_pos + 1, "text": text})
-            .execute()
-            .data[0]
-        )
+        row = {"session_id": session_id, "kind": "text", "position": position, "text": text}
+        if page_id:
+            row["page_block_id"] = page_id
+        block = db.table("blocks").insert(row).execute().data[0]
     else:
-        block = prev_block  # only filler was said: mark it refined without adding an empty paragraph
+        # Only filler was said: mark it refined without adding an empty paragraph (under a page with no
+        # paragraphs yet, the page block itself holds it; it has no text, so nothing is shown).
+        block = prev_block
     ids = [s["id"] for s in segs]
     for segment, (text_start, text_end) in zip(segs, offsets):
         db.table("transcript_segments").update({
             "text_block_id": block["id"], "text_start": text_start, "text_end": text_end,
         }).eq("id", segment["id"]).execute()
-    log.info("[refine] segs=%d words_in=%d words_out=%d left=%d gemini=%s outcomes=%s db=%.0fms gemini=%.0fms "
-             "total=%.0fms", len(ids), words, len(text.split()), len(unrefined) - len(ids),
-             "ok" if out else "failed", dict(sorted(outcomes.items())), db_read_ms + ms(t_write), gemini_ms, ms(t0))
-    return RefineOut(block=block, segment_ids=ids)
+    log.info("[refine] segs=%d words_in=%d words_out=%d left=%d page=%s gemini=%s outcomes=%s db=%.0fms "
+             "gemini=%.0fms total=%.0fms", len(ids), words, len(text.split()), len(unrefined) - len(ids),
+             "yes" if page_id else "no", "ok" if out else "failed", dict(sorted(outcomes.items())),
+             db_read_ms + ms(t_write), gemini_ms, ms(t0))
+    return RefineOut(block=block, segment_ids=ids, moved_blocks=moved)
+
+
+MIN_POSITION_GAP = 1e-6
+
+
+def paragraph_slot(db, blocks: list[dict], page_id: str | None) -> tuple[float, dict | None, list[dict]]:
+    """(position for a new paragraph, the block before it, blocks shifted to make room).
+
+    `blocks` is the board in position order. No page: after the last block, following the last ordinary
+    paragraph. A page: after the page's last paragraph (or the page itself), before the next block. If
+    repeated midpoints have worn the gap down, the blocks from the next one on move down by 1 (and are returned
+    so the teacher's board can update without waiting for realtime)."""
+    if page_id is None:
+        prev = next((b for b in reversed(blocks) if b["kind"] == "text" and b.get("text")
+                     and not b.get("page_block_id")), None)
+        return (blocks[-1]["position"] + 1 if blocks else 1.0), prev, []
+    index = max(i for i, b in enumerate(blocks) if b["id"] == page_id or b.get("page_block_id") == page_id)
+    prev = blocks[index]
+    following = blocks[index + 1:]
+    if not following:
+        return prev["position"] + 1, prev, []
+    gap = following[0]["position"] - prev["position"]
+    moved = []
+    if gap < MIN_POSITION_GAP:
+        for b in following:
+            b["position"] += 1
+            db.table("blocks").update({"position": b["position"]}).eq("id", b["id"]).execute()
+            moved.append(dict(b))
+        gap += 1
+    return prev["position"] + gap / 2, prev, moved
 
 
 def refine_prompt(vocab: list[str], prev_text: str, segments: list[dict]) -> str:
@@ -345,6 +382,89 @@ def asset_contents(asset: dict) -> list | None:
     return [ai.image_part(data, mime), f"File name: {name}"]
 
 
+_pdf_locks: dict[str, threading.Lock] = {}
+_pdf_locks_guard = threading.Lock()
+PAGE_ID_NAMESPACE = uuid.UUID("5d1f0c1e-7a43-4c7e-9a55-0b1a2c3d4e5f")
+
+
+def pdf_lock(asset_id: str) -> threading.Lock:
+    """Prep and a session (or two tabs) may ask for the same PDF's pages at once: render it only once."""
+    with _pdf_locks_guard:
+        return _pdf_locks.setdefault(asset_id, threading.Lock())
+
+
+def page_asset_id(pdf_id: str, page_number: int) -> str:
+    """Stable id per (PDF, page), so a retry after a partial failure overwrites instead of duplicating."""
+    return str(uuid.uuid5(PAGE_ID_NAMESPACE, f"{pdf_id}:{page_number}"))
+
+
+@app.post("/assets/{asset_id}/pages", response_model=PdfPagesOut)
+def render_pdf_pages(asset_id: str) -> PdfPagesOut:
+    """Render every page of a PDF asset to a 'pdf_page' image asset (once; later calls return the same rows)."""
+    db = get_db()
+    rows = db.table("assets").select("*").eq("id", asset_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(404, "asset not found")
+    if rows[0].get("kind") != "pdf":
+        raise HTTPException(400, "only PDF assets have pages")
+    with pdf_lock(asset_id):
+        try:
+            return ensure_pdf_pages(db, rows[0])
+        except pdf_pages.PdfPagesError as e:
+            log.info("[pages] %s: %s", asset_id, e.message)
+            raise HTTPException(e.status, e.message) from None
+
+
+def existing_pdf_pages(db, pdf_id: str) -> list[dict]:
+    pages = db.table("assets").select("*").eq("source_asset_id", pdf_id).execute().data
+    return sorted(pages, key=lambda page: page.get("page_number") or 0)
+
+
+def ensure_pdf_pages(db, pdf: dict) -> PdfPagesOut:
+    t0 = time.perf_counter()
+    # Re-read under the lock: another request may have finished rendering while this one waited.
+    pdf = db.table("assets").select("*").eq("id", pdf["id"]).limit(1).execute().data[0]
+    count = pdf.get("page_count")
+    if count:
+        pages = existing_pdf_pages(db, pdf["id"])
+        if [page.get("page_number") for page in pages] == list(range(1, count + 1)):
+            return PdfPagesOut(page_count=count, pages=pages)
+
+    path = pdf.get("storage_path") or ""
+    if not path or path.startswith("data:"):
+        raise pdf_pages.PdfPagesError(422, "This PDF has no stored file.")
+    try:
+        data = download(path)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[pages] download failed for %s: %s", path, e)
+        raise pdf_pages.PdfPagesError(404, "The PDF file is missing from storage. Remove it and upload it again.") \
+            from None
+
+    name = pdf.get("file_name") or "PDF"
+    pages: list[dict] = []
+    for page in pdf_pages.render_pages(data):
+        page_path = f"{pdf['lecture_id']}/{pdf['id']}/page-{page.number:04d}.png"
+        try:
+            upload(page_path, page.png, "image/png")
+        except Exception as e:  # noqa: BLE001
+            log.warning("[pages] upload failed for %s: %s", page_path, e)
+            raise pdf_pages.PdfPagesError(502, "Couldn't save the page images. Try again.") from None
+        pages.append({
+            "id": page_asset_id(pdf["id"], page.number), "lecture_id": pdf["lecture_id"], "kind": "pdf_page",
+            "storage_path": page_path, "file_name": f"{name}, page {page.number}", "source_asset_id": pdf["id"],
+            "page_number": page.number, "aspect": page.width / page.height,
+        })
+    try:
+        db.table("assets").upsert(pages).execute()
+        db.table("assets").update({"page_count": len(pages)}).eq("id", pdf["id"]).execute()
+    except Exception as e:  # noqa: BLE001 - most likely the pdf_pages migration hasn't been run
+        log.warning("[pages] saving page rows failed: %s", e)
+        raise pdf_pages.PdfPagesError(503, "The database isn't set up for PDF pages yet "
+                                           "(run supabase/migrations/2026-11-08_pdf_pages.sql).") from None
+    log.info("[pages] %s: %d pages rendered in %.0fms", pdf["id"], len(pages), ms(t0))
+    return PdfPagesOut(page_count=len(pages), pages=existing_pdf_pages(db, pdf["id"]))
+
+
 @app.post("/annotations/{annotation_id}/close", response_model=CloseOut)
 def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOut:
     """Confirm a lasso and clean all speech deterministically captured while it was open."""
@@ -500,8 +620,7 @@ def compile_session(session_id: str) -> NotesContent:
     for ann in anns:
         closed_at = parse_ts(ann["closed_at"]) if ann.get("closed_at") else datetime.now(timezone.utc)
         reconcile_annotation_segments(db, ann, closed_at)
-    assets = (db.table("assets").select("id, kind, label, description, text_content, file_name")
-              .eq("lecture_id", lecture_id).execute().data)
+    assets = db.table("assets").select("*").eq("lecture_id", lecture_id).execute().data
     db_ms = ms(t0)
 
     out, gemini_ms = (None, 0.0)
@@ -509,6 +628,7 @@ def compile_session(session_id: str) -> NotesContent:
         doc = compile_input(title, blocks, anns, assets)
         out, gemini_ms = ai.generate("compile", prompts.COMPILE, [doc], NotesContent, timeout_ms=120_000)
     notes = clean_notes(out, blocks, anns, title) if out else fallback_notes(title, blocks, anns)
+    arrange_pdf_pages(notes, blocks, anns, assets)
 
     t_write = time.perf_counter()
     db.table("lecture_notes").upsert({"session_id": session_id, "content": notes.model_dump()}).execute()
@@ -518,7 +638,10 @@ def compile_session(session_id: str) -> NotesContent:
 
 
 def chronological_blocks(blocks: list[dict], segments: list[dict]) -> list[dict]:
-    """Order text blocks by their earliest spoken segment while leaving image slots in place."""
+    """Order text blocks by their earliest spoken segment while leaving image slots in place.
+
+    Paragraphs under a PDF page stay where they are: refine already put them under their page in spoken order,
+    and moving them by time would carry a page's explanation to another page."""
     ordered = sorted(blocks, key=lambda block: (block.get("position", 0), block.get("id") or ""))
     by_block: dict[str, list[dict]] = {}
     for segment in segments:
@@ -526,7 +649,7 @@ def chronological_blocks(blocks: list[dict], segments: list[dict]) -> list[dict]
             by_block.setdefault(segment["text_block_id"], []).append(segment)
     timed_indexes = [
         index for index, block in enumerate(ordered)
-        if block["kind"] == "text" and by_block.get(block["id"])
+        if block["kind"] == "text" and by_block.get(block["id"]) and not block.get("page_block_id")
     ]
     timed_blocks = sorted(
         (ordered[index] for index in timed_indexes),
@@ -549,7 +672,10 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
             lines.append(f"[TEXT text_block_id={b['id']}] {b['text'].strip()}")
         elif b["kind"] == "image":
             a = assets_by_id.get(b.get("asset_id"), {})
-            lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
+            if a.get("kind") == "pdf_page":
+                lines.append(f"[IMAGE image_block_id={b['id']}] {page_label(a, assets_by_id)}")
+            else:
+                lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
             for ann in anns_by_block.get(b["id"], []):
                 lines.append(f"    [ANNOTATION annotation_id={ann['id']}] {ann.get('label') or ''}: "
                              f"\"{ann.get('bubble_text') or ''}\"")
@@ -562,6 +688,79 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
             lines.append(f"- {name}: {a.get('description') or ''} {body}".strip())
     lines += ["", "Section ids: use s1, s2, ... in order."]
     return "\n".join(lines)
+
+
+def page_label(page: dict, assets_by_id: dict) -> str:
+    """"Page 2 of 4 of Forces worksheet (forces.pdf)" for a pdf_page asset."""
+    pdf = assets_by_id.get(page.get("source_asset_id"), {})
+    count = pdf.get("page_count")
+    name = pdf.get("file_name") or "PDF"
+    title = f"{pdf['label']} ({name})" if pdf.get("label") and pdf.get("label") != name else name
+    return f"Page {page.get('page_number')}{f' of {count}' if count else ''} of {title}"
+
+
+def page_block_ids(blocks: list, assets: list) -> list[str]:
+    """Board blocks showing a PDF page, in board order."""
+    page_assets = {a["id"] for a in assets if a.get("kind") == "pdf_page"}
+    return [b["id"] for b in blocks if b["kind"] == "image" and b.get("asset_id") in page_assets]
+
+
+def page_heading(page: dict, assets_by_id: dict) -> str:
+    pdf = assets_by_id.get(page.get("source_asset_id"), {})
+    return f"{pdf.get('label') or pdf.get('file_name') or 'PDF'}, page {page.get('page_number')}"
+
+
+def arrange_pdf_pages(notes: NotesContent, blocks: list, anns: list, assets: list) -> None:
+    """Give every PDF page on the board its own section: the page, then exactly the paragraphs spoken under it.
+
+    Deterministic, from the board (blocks.page_block_id), never from Gemini: a page nobody talked about is shown
+    with no text, each cleaned paragraph appears once, and paragraphs that aren't about a page keep Gemini's
+    sections (split where a page interrupts them), headings, key terms and figure captions. Does nothing on
+    boards without PDF pages."""
+    pages = set(page_block_ids(blocks, assets))
+    if not pages:
+        return
+    assets_by_id = {a["id"]: a for a in assets}
+    origin = {block_id: s for s in notes.sections for block_id in s.paragraph_block_ids}
+    captions = {f.image_block_id: f.caption for s in notes.sections for f in s.figures}
+    out: list[Section] = []
+    page_sections: dict[str, Section] = {}
+    terms_placed: set[int] = set()
+    current: Section | None = None
+    current_origin: int | None = None  # id() of the Gemini section the current section continues
+
+    def start(heading: str) -> Section:
+        section = Section(id="", heading=heading, paragraphs=[], key_terms=[], figures=[], annotation_ids=[])
+        out.append(section)
+        return section
+
+    for b in blocks:
+        if b["id"] in pages:
+            current = start(page_heading(assets_by_id.get(b.get("asset_id"), {}), assets_by_id))
+            current.figures.append(Figure(image_block_id=b["id"], caption=captions.get(b["id"], "")))
+            page_sections[b["id"]], current_origin = current, None
+        elif b["kind"] == "text" and (b.get("text") or "").strip():
+            source = origin.get(b["id"])
+            target = page_sections.get(b.get("page_block_id"))
+            if target is None:
+                if current is None or current_origin != id(source):
+                    current = start(source.heading if source else "Notes")
+                    current_origin = id(source)
+                target = current
+            target.paragraphs.append(b["text"].strip())
+            target.paragraph_block_ids.append(b["id"])
+            if source is not None and id(source) not in terms_placed:
+                target.key_terms = target.key_terms + source.key_terms
+                terms_placed.add(id(source))
+        elif b["kind"] == "image" and b["id"] in captions:
+            if current is None:
+                current, current_origin = start("Notes"), None
+            current.figures.append(Figure(image_block_id=b["id"], caption=captions[b["id"]]))
+
+    notes.sections = [s for s in out if s.paragraphs or s.figures]
+    for i, s in enumerate(notes.sections, 1):
+        s.id = f"s{i}"
+    ensure_annotation_figures(notes, blocks, anns)
 
 
 DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he renames it

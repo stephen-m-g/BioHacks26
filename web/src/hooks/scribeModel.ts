@@ -164,6 +164,22 @@ export interface AnnotationCaptureInterval {
 
 export interface AnnotationTranscriptPart extends TimestampedTranscript {
   annotationId: string | null
+  /** PDF page block that was active when these words were spoken; null = no page. */
+  pageBlockId: string | null
+}
+
+/** Which PDF page was active at a wall-clock time. */
+export interface PageLookup {
+  /** The page at `ms`, null for no page, undefined if unknown (then `fallback` is used). */
+  at: (ms: number) => string | null | undefined
+  /** The page captured when the utterance began. */
+  fallback: string | null
+}
+
+function pageAt(pages: PageLookup | undefined, ms: number): string | null {
+  if (!pages) return null
+  const page = pages.at(ms)
+  return page === undefined ? pages.fallback : page
 }
 
 /** Convert Scribe's cumulative input-audio clock to persisted wall-clock occurrence times. */
@@ -199,7 +215,11 @@ function containingInterval(
   return interval?.annotationId ?? null
 }
 
-/** Split a delayed commit at word boundaries and assign each word by when it was spoken. */
+/**
+ * Split a delayed commit at word boundaries and assign each word, by when it was spoken, to the Smart circle
+ * open at that time and to the PDF page active at that time. Without complete word timing, the whole utterance
+ * keeps the page captured when it began.
+ */
 export function partitionTimestampedTranscript(
   text: string,
   words: readonly ScribeWordTimestamp[] | undefined,
@@ -207,6 +227,7 @@ export function partitionTimestampedTranscript(
   fallbackStart: string,
   fallbackEnd: string,
   intervals: readonly AnnotationCaptureInterval[],
+  pages?: PageLookup,
 ): AnnotationTranscriptPart[] {
   const wordsWithText = (words ?? []).filter((word): word is ScribeWordTimestamp & { text: string } =>
     typeof word.text === 'string',
@@ -227,7 +248,13 @@ export function partitionTimestampedTranscript(
       const closedAt = item.closedAt ? Date.parse(item.closedAt) : Number.POSITIVE_INFINITY
       return drawnAt <= startMs && endMs <= closedAt
     })
-    return [{ text, tStart: fallbackStart, tEnd: fallbackEnd, annotationId: interval?.annotationId ?? null }]
+    return [{
+      text,
+      tStart: fallbackStart,
+      tEnd: fallbackEnd,
+      annotationId: interval?.annotationId ?? null,
+      pageBlockId: pages?.fallback ?? null,
+    }]
   }
 
   const parts: Array<{
@@ -235,17 +262,19 @@ export function partitionTimestampedTranscript(
     startMs: number
     endMs: number
     annotationId: string | null
+    pageBlockId: string | null
   }> = []
   for (const word of timedWords) {
     const startMs = audioStartedAt + word.start * 1_000
     const endMs = audioStartedAt + word.end * 1_000
     const annotationId = containingInterval(startMs, endMs, intervals)
+    const pageBlockId = pageAt(pages, startMs)
     const current = parts.at(-1)
-    if (current?.annotationId === annotationId) {
+    if (current?.annotationId === annotationId && current.pageBlockId === pageBlockId) {
       current.text += word.text
       current.endMs = Math.max(current.endMs, endMs)
     } else {
-      parts.push({ text: word.text, startMs, endMs, annotationId })
+      parts.push({ text: word.text, startMs, endMs, annotationId, pageBlockId })
     }
   }
   return parts
@@ -254,6 +283,7 @@ export function partitionTimestampedTranscript(
       tStart: new Date(part.startMs).toISOString(),
       tEnd: new Date(part.endMs).toISOString(),
       annotationId: part.annotationId,
+      pageBlockId: part.pageBlockId,
     }))
     .filter((part) => part.text.length > 0)
 }

@@ -24,19 +24,40 @@ export interface Recording {
   toggle: () => void
 }
 
+/** A PDF in the sidebar: one item for the whole document, however many pages it has. */
+export interface SidebarDocument {
+  asset: Asset
+  /** Page 1's image, once rendered (thumbnail and drag ghost). */
+  firstPage: Asset | null
+  pageCount: number | null
+  status: 'ready' | 'preparing' | 'error'
+  error?: string
+  /** Its pages are already on this board (it is placed once; tapping shows it). */
+  onBoard: boolean
+}
+
 interface Props {
   title: string
   recording: Recording
   /** Save a new session name. */
   onRename: (title: string) => void
   images: Asset[]
+  documents: SidebarDocument[]
   onUndo: () => void
   /** Drop an image on a slot (drag). */
   onDrop: (assetId: string, aspect: number, slot: number) => void
+  /** Drop a PDF on a slot (drag): all of its pages go there, in order. */
+  onDropDocument: (pdfId: string, slot: number) => void
+  /** Scroll to a PDF that is already on the board. */
+  onShowDocument: (pdfId: string) => void
+  /** Try rendering a PDF's pages again after an error. */
+  onRetryDocument: (pdfId: string) => void
   onEnd: () => void
   /** Remember each image's aspect ratio once its thumbnail loads. */
   onImageAspect: (assetId: string, aspect: number) => void
 }
+
+type Placeable = { id: string; kind: 'image' | 'pdf'; src: string }
 
 const COLOR_NAMES: Record<string, string> = {
   '#111111': 'Black',
@@ -106,7 +127,20 @@ function SessionClock({ recording }: { recording: Recording }) {
   )
 }
 
-export default function Sidebar({ title, recording, onRename, images, onUndo, onDrop, onEnd, onImageAspect }: Props) {
+export default function Sidebar({
+  title,
+  recording,
+  onRename,
+  images,
+  documents,
+  onUndo,
+  onDrop,
+  onDropDocument,
+  onShowDocument,
+  onRetryDocument,
+  onEnd,
+  onImageAspect,
+}: Props) {
   const s = useSessionStore()
   const settings = useSettings()
   const locked = s.pendingAnnotationId !== null
@@ -133,16 +167,16 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
   }
   const press = useRef<{ assetId: string; x: number; y: number; dragging: boolean; aspect: number } | null>(null)
 
-  const onThumbDown = (e: ReactPointerEvent<HTMLButtonElement>, asset: Asset) => {
+  const onThumbDown = (e: ReactPointerEvent<HTMLButtonElement>, item: Placeable) => {
     if (locked) return
     const img = e.currentTarget.querySelector('img')
     const aspect = img && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 4 / 3
-    press.current = { assetId: asset.id, x: e.clientX, y: e.clientY, dragging: false, aspect }
+    press.current = { assetId: item.id, x: e.clientX, y: e.clientY, dragging: false, aspect }
   }
 
-  const onThumbMove = (e: ReactPointerEvent<HTMLButtonElement>, asset: Asset) => {
+  const onThumbMove = (e: ReactPointerEvent<HTMLButtonElement>, item: Placeable) => {
     const p = press.current
-    if (!p || p.assetId !== asset.id) return
+    if (!p || p.assetId !== item.id) return
     if (!p.dragging && Math.hypot(e.clientX - p.x, e.clientY - p.y) > DRAG_THRESHOLD) {
       p.dragging = true
       try {
@@ -150,30 +184,42 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
       } catch {
         // synthetic or already-released pointer
       }
-      s.setDraggingAsset(asset.id)
+      s.setDraggingAsset(item.id)
       s.setSelectedAsset(null)
     }
     if (p.dragging) {
-      setGhost({ src: assetUrl(asset), x: e.clientX, y: e.clientY })
+      setGhost({ src: item.src, x: e.clientX, y: e.clientY })
       highlightSlot(nearestSlot(e.clientX, e.clientY))
     }
   }
 
-  const onThumbUp = (e: ReactPointerEvent<HTMLButtonElement>, asset: Asset) => {
+  const onThumbUp = (e: ReactPointerEvent<HTMLButtonElement>, item: Placeable) => {
     const p = press.current
     press.current = null
-    if (!p || p.assetId !== asset.id) return
+    if (!p || p.assetId !== item.id) return
     if (p.dragging) {
       const target = nearestSlot(e.clientX, e.clientY)
       highlightSlot(null)
       setGhost(null)
       s.setDraggingAsset(null)
-      if (target) onDrop(asset.id, p.aspect, Number(target.dataset.slot))
+      if (!target) return
+      const slot = Number(target.dataset.slot)
+      if (item.kind === 'pdf') onDropDocument(item.id, slot)
+      else onDrop(item.id, p.aspect, slot)
     } else {
       // Tap: select, then tap a spot on the board.
-      s.setSelectedAsset(s.selectedAssetId === asset.id ? null : asset.id)
+      s.setSelectedAsset(s.selectedAssetId === item.id ? null : item.id)
     }
   }
+
+  const imageItem = (a: Asset): Placeable => ({ id: a.id, kind: 'image', src: assetUrl(a) })
+  const documentItem = (d: SidebarDocument): Placeable => ({ id: d.asset.id, kind: 'pdf', src: assetUrl(d.firstPage) })
+  const documentStatus = (d: SidebarDocument) =>
+    d.status === 'preparing'
+      ? 'Preparing pages…'
+      : d.status === 'error'
+        ? 'Couldn’t prepare pages. Tap to retry.'
+        : `${d.pageCount === 1 ? '1 page' : `${d.pageCount} pages`}${d.onBoard ? ' · on the board' : ''}`
 
   const onThumbCancel = () => {
     press.current = null
@@ -354,7 +400,7 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
             ? 'Finish the open annotation (✓ or ✗) first.'
             : s.selectedAssetId
               ? 'Now tap a spot on the board.'
-              : images.length === 0
+              : images.length === 0 && documents.length === 0
                 ? 'No images uploaded for this lecture.'
                 : 'Drag onto the board or tap and place.'}
         </p>
@@ -367,9 +413,9 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
               aria-label={a.label || a.file_name || 'Image'}
               aria-pressed={s.selectedAssetId === a.id}
               title={a.label || a.file_name || 'Image'}
-              onPointerDown={(e) => onThumbDown(e, a)}
-              onPointerMove={(e) => onThumbMove(e, a)}
-              onPointerUp={(e) => onThumbUp(e, a)}
+              onPointerDown={(e) => onThumbDown(e, imageItem(a))}
+              onPointerMove={(e) => onThumbMove(e, imageItem(a))}
+              onPointerUp={(e) => onThumbUp(e, imageItem(a))}
               onPointerCancel={onThumbCancel}
             >
               <img
@@ -384,6 +430,60 @@ export default function Sidebar({ title, recording, onRename, images, onUndo, on
             </button>
           ))}
         </div>
+        {documents.length > 0 && (
+          <>
+            <div className="sidebar-label docs-label">Documents</div>
+            <div className="doc-list">
+              {documents.map((d) => {
+                const name = d.asset.file_name || d.asset.label || 'PDF'
+                const status = documentStatus(d)
+                if (d.status !== 'ready' || d.onBoard) {
+                  return (
+                    <button
+                      key={d.asset.id}
+                      className={`doc-item ${d.status}${d.onBoard ? ' placed' : ''}`}
+                      disabled={d.status === 'preparing' || locked}
+                      aria-label={`${name}: ${status}`}
+                      title={d.status === 'error' ? d.error : name}
+                      onClick={() => (d.status === 'error' ? onRetryDocument(d.asset.id) : onShowDocument(d.asset.id))}
+                    >
+                      <span className="doc-thumb" aria-hidden="true">
+                        {d.firstPage && <img src={assetUrl(d.firstPage)} alt="" draggable={false} />}
+                      </span>
+                      <span className="doc-text">
+                        <span className="doc-name">{name}</span>
+                        <span className="doc-meta">{status}</span>
+                      </span>
+                    </button>
+                  )
+                }
+                const item = documentItem(d)
+                return (
+                  <button
+                    key={d.asset.id}
+                    className={`doc-item ready${s.selectedAssetId === d.asset.id ? ' on' : ''}`}
+                    disabled={locked}
+                    aria-label={`${name}, ${status}`}
+                    aria-pressed={s.selectedAssetId === d.asset.id}
+                    title={`${name}: drag onto the board to place every page`}
+                    onPointerDown={(e) => onThumbDown(e, item)}
+                    onPointerMove={(e) => onThumbMove(e, item)}
+                    onPointerUp={(e) => onThumbUp(e, item)}
+                    onPointerCancel={onThumbCancel}
+                  >
+                    <span className="doc-thumb" aria-hidden="true">
+                      {d.firstPage && <img src={item.src} alt="" draggable={false} />}
+                    </span>
+                    <span className="doc-text">
+                      <span className="doc-name">{name}</span>
+                      <span className="doc-meta">{status}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="sidebar-footer">
