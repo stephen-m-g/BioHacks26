@@ -497,3 +497,12 @@
     color: var(--c-card);
   }
 }
+
+/* "Live" stays a filled badge so a running session is easy to spot. */
+.p4-badge.live {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--c-fg);
+  color: var(--c-card);
+  font-size: 11px;
+}

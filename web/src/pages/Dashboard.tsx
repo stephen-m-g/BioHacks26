@@ -438,6 +438,11 @@ export default function Dashboard() {
                   {shownSessions.length}
                 </span>
               </div>
+              <Link className="cell-go" to="/sessions" aria-label="All recorded sessions" title="All recorded sessions">
+                <span className="btn-pill round">
+                  <IconArrowRight />
+                </span>
+              </Link>
             </div>
             <div className="cell-scroll" onScroll={() => menu && setMenu(null)}>
               {supabaseConfigured && sessions.length === 0 && <p className="dash-empty">Sessions appear here after you start a lecture.</p>}
