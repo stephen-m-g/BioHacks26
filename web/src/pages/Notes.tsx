@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { IconArrowLeft, IconClock, IconPrinter, IconRefresh, IconText } from '../components/DashIcons'
+import { annotationCardId } from '../components/annotationPopoverModel'
 import ImageBlock from '../components/ImageBlock'
 import RichText from '../components/RichText'
 import { useSessionData } from '../hooks/useSessionData'
@@ -74,7 +75,17 @@ export default function Notes() {
 
   const selectAnnotation = (annotationId: string) => {
     setSelectedAnnotationId(annotationId)
-    document.getElementById(`annotation-card-${annotationId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    const card = document.getElementById(annotationCardId(annotationId))
+    if (!card) return
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    card.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
+    card.focus({ preventScroll: true })
+    if (!reduceMotion) {
+      card.animate(
+        [{ boxShadow: '0 0 0 6px rgba(202, 138, 4, 0.45)' }, { boxShadow: '0 0 0 0 rgba(202, 138, 4, 0)' }],
+        { duration: 1200, easing: 'ease-out' },
+      )
+    }
   }
 
   return (
@@ -197,7 +208,6 @@ export default function Notes() {
                               alt={asset?.label ?? f.caption}
                               strokes={data.strokeList.filter((st) => st.block_id === block.id)}
                               annotations={popoverAnnotations}
-                              onJump={selectAnnotation}
                               selectedAnnotationId={selectedAnnotationId}
                               onSelectAnnotation={selectAnnotation}
                             />
@@ -207,7 +217,7 @@ export default function Notes() {
                                 {cards.map((card) => (
                                   <button
                                     type="button"
-                                    id={`annotation-card-${card.id}`}
+                                    id={annotationCardId(card.id)}
                                     key={card.id}
                                     className={`st-term-card${selectedAnnotationId === card.id ? ' selected' : ''}`}
                                     aria-pressed={selectedAnnotationId === card.id}

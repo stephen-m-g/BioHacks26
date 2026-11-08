@@ -1,10 +1,11 @@
 // P1 owns this component. One image on the board with its ink and lasso annotations.
 // Interactive (teacher, live): draw ink or a lasso with pen/finger/mouse.
-// Read-only (raw view, notes): hover or tap an annotation for its popup.
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+// Read-only (raw view, notes): hover for its popup; click navigates when the page provides a target.
+import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { bboxOf, clamp01, lassoPath, strokePath, VB_W } from '../lib/ink'
 import type { BoardMode } from '../store/session'
 import type { Annotation, Block, Point, Stroke } from '../types'
+import { popoverReducer } from './annotationPopoverModel'
 
 export interface ImageBlockInteraction {
   mode: BoardMode
@@ -28,7 +29,7 @@ interface Props {
   strokes: Stroke[]
   annotations: Annotation[]
   interactive?: ImageBlockInteraction
-  /** Read-only: an optional secondary action for the shown annotation. */
+  /** Read-only: where clicking a circle navigates. */
   onJump?: (annotationId: string) => void
   selectedAnnotationId?: string | null
   onSelectAnnotation?: (annotationId: string) => void
@@ -36,6 +37,8 @@ interface Props {
 
 /** Lassos smaller than this (fraction of image width/height) are treated as accidental. */
 const MIN_LASSO = 0.03
+/** Time to cross the gap from a circle into its popover before the popover closes. */
+const HOVER_GRACE_MS = 150
 
 export default function ImageBlock({
   block,
@@ -53,9 +56,10 @@ export default function ImageBlock({
   const svgRef = useRef<SVGSVGElement>(null)
   const drawing = useRef<{ pointerId: number; points: Point[] } | null>(null)
   const [draft, setDraft] = useState<Point[] | null>(null)
-  const [hoverId, setHoverId] = useState<string | null>(null)
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const lastPointerType = useRef<string>('mouse')
+  const [popover, dispatchPopover] = useReducer(popoverReducer, null)
+  const leaveTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => () => window.clearTimeout(leaveTimer.current), [])
 
   // Apple Pencil: stop the page from scrolling under the pen once fingers are set to scroll.
   useEffect(() => {
@@ -129,9 +133,20 @@ export default function ImageBlock({
   }
 
   const readOnly = !interactive
-  const shownId = hoverId ?? selectedAnnotationId ?? activeId
-  const shown = annotations.find((a) => a.id === shownId)
+  const navigate = onSelectAnnotation ?? onJump
+  const shown = popover ? annotations.find((a) => a.id === popover.id) : undefined
   const pending = interactive ? annotations.find((a) => a.id === interactive.pendingId) : undefined
+
+  const cancelLeave = () => window.clearTimeout(leaveTimer.current)
+  const leaveSoon = (id: string) => {
+    cancelLeave()
+    leaveTimer.current = window.setTimeout(() => dispatchPopover({ type: 'leave', id }), HOVER_GRACE_MS)
+  }
+  const activate = (id: string) => {
+    cancelLeave()
+    dispatchPopover({ type: 'activate', id, navigates: !!navigate })
+    navigate?.(id)
+  }
 
   return (
     <div className="image-block" style={{ aspectRatio: String(aspect) }}>
@@ -160,19 +175,29 @@ export default function ImageBlock({
               </g>
             )
           }
+          if (!readOnly) return <path key={a.id} d={d} className="lasso-confirmed" />
+          const isShown = shown?.id === a.id || selectedAnnotationId === a.id
           return (
             <path
               key={a.id}
               d={d}
-              className={`lasso-confirmed${readOnly ? ' hoverable' : ''}${shownId === a.id ? ' is-shown' : ''}`}
-              onPointerEnter={(e) => readOnly && e.pointerType === 'mouse' && setHoverId(a.id)}
-              onPointerLeave={() => readOnly && setHoverId(null)}
-              onPointerDown={(e) => (lastPointerType.current = e.pointerType)}
-              onClick={() => {
-                if (!readOnly) return
-                onSelectAnnotation?.(a.id)
-                if (!onSelectAnnotation && lastPointerType.current === 'mouse' && onJump) onJump(a.id)
-                else setActiveId((cur) => (cur === a.id ? null : a.id))
+              className={`lasso-confirmed hoverable${isShown ? ' is-shown' : ''}`}
+              role="button"
+              tabIndex={0}
+              aria-label={a.label ?? 'Annotation'}
+              onPointerEnter={(e) => {
+                if (e.pointerType === 'touch') return
+                cancelLeave()
+                dispatchPopover({ type: 'enter', id: a.id })
+              }}
+              onPointerLeave={() => leaveSoon(a.id)}
+              onFocus={(e) => e.currentTarget.matches(':focus-visible') && dispatchPopover({ type: 'focus', id: a.id })}
+              onBlur={() => dispatchPopover({ type: 'blur', id: a.id })}
+              onClick={() => activate(a.id)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                activate(a.id)
               }}
             />
           )
@@ -210,14 +235,15 @@ export default function ImageBlock({
 
       {/* Read-only: popup with his words */}
       {readOnly && shown && (
-        <div className="annotation-popover" style={popoverPosition(shown)}>
+        <div
+          className="annotation-popover"
+          role="tooltip"
+          style={popoverPosition(shown)}
+          onPointerEnter={cancelLeave}
+          onPointerLeave={() => leaveSoon(shown.id)}
+        >
           <strong>{shown.label ?? 'Annotation'}</strong>
-          <p>{shown.bubble_text?.trim() || 'No explanation recorded'}</p>
-          {onJump && activeId === shown.id && (
-            <button className="primary" onClick={() => onJump(shown.id)}>
-              Show explanation
-            </button>
-          )}
+          <p>{shown.bubble_text?.trim() || 'No explanation recorded.'}</p>
         </div>
       )}
     </div>
