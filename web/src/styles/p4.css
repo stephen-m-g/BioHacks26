@@ -484,3 +484,16 @@
     transform: none;
   }
 }
+
+/* Per-row Start on the Lectures page: outlined in black, like the dashboard's. */
+.p4 .p4-btn.outline-strong {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+@media (hover: hover) {
+  .p4 .p4-btn.outline-strong:not(:disabled):hover {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+}

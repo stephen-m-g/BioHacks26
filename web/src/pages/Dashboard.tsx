@@ -228,7 +228,9 @@ export default function Dashboard() {
           setMenu(below ? { key, left, top: r.bottom + 8 } : { key, left, bottom: window.innerHeight - r.top + 8 })
         }}
       >
-        <IconDots />
+        <span className="btn-pill round">
+          <IconDots />
+        </span>
       </button>
       {menu?.key === key && (
         <>
@@ -316,10 +318,19 @@ export default function Dashboard() {
           {/* ---------- top left: Ready to present ---------- */}
           <section className="bento-cell cell-ready" aria-labelledby="ready-heading">
             <div className="cell-head">
-              <h2 id="ready-heading" className="dash-label">
-                Ready to present
-              </h2>
-              <span className="cell-count">{shownLectures.length}</span>
+              <div className="cell-title">
+                <h2 id="ready-heading" className="dash-label">
+                  Ready to present
+                </h2>
+                <span className="cell-count" aria-label={`${shownLectures.length} lectures`}>
+                  {shownLectures.length}
+                </span>
+              </div>
+              <Link className="cell-go" to="/lectures" aria-label="All active lectures" title="All active lectures">
+                <span className="btn-pill round">
+                  <IconArrowRight />
+                </span>
+              </Link>
             </div>
             <div className="cell-scroll" onScroll={() => menu && setMenu(null)}>
               {supabaseConfigured && lectures.length === 0 && (
@@ -351,14 +362,18 @@ export default function Dashboard() {
                       </div>
                       <div className="dash-actions">
                         <button
-                          className="dash-btn row-primary"
+                          className="dash-btn row-btn"
                           disabled={busy}
                           onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}
                         >
-                          <IconPlay /> Start
+                          <span className="btn-pill outline">
+                            <IconPlay /> Start
+                          </span>
                         </button>
                         <Link className="dash-btn icon-only" to={`/prep/${l.id}`} aria-label={`Edit ${l.title}`} title="Edit">
-                          <IconEdit />
+                          <span className="btn-pill round">
+                            <IconEdit />
+                          </span>
                         </Link>
                         {moreMenu(`l:${l.id}`, l.title, [
                           ...(classesMissing
@@ -398,11 +413,11 @@ export default function Dashboard() {
           </section>
 
           {/* ---------- bottom left: Archive ---------- */}
-          <Link className="bento-cell cell-archive" to="/lectures">
+          <Link className="bento-cell cell-archive" to="/archive">
             <span className="archive-text">
               <span className="dash-label">Archive</span>
               <span className="archive-sub">
-                {archivedCount === null ? 'All lectures, including archived' : `${plural(archivedCount, 'archived lecture')} · all lectures`}
+                {archivedCount === null ? 'Archived lectures' : plural(archivedCount, 'archived lecture')}
               </span>
             </span>
             <span className="archive-go" aria-hidden="true">
@@ -413,10 +428,14 @@ export default function Dashboard() {
           {/* ---------- right: Recorded sessions ---------- */}
           <section className="bento-cell cell-sessions" aria-labelledby="past-heading">
             <div className="cell-head">
-              <h2 id="past-heading" className="dash-label">
-                Recorded sessions
-              </h2>
-              <span className="cell-count">{shownSessions.length}</span>
+              <div className="cell-title">
+                <h2 id="past-heading" className="dash-label">
+                  Recorded sessions
+                </h2>
+                <span className="cell-count" aria-label={`${shownSessions.length} sessions`}>
+                  {shownSessions.length}
+                </span>
+              </div>
             </div>
             <div className="cell-scroll" onScroll={() => menu && setMenu(null)}>
               {supabaseConfigured && sessions.length === 0 && <p className="dash-empty">Sessions appear here after you start a lecture.</p>}
@@ -447,12 +466,16 @@ export default function Dashboard() {
                       </div>
                       <div className="dash-actions">
                         {live ? (
-                          <Link className="dash-btn solid" to={`/teach/${s.id}`}>
-                            <IconPlay /> Resume
+                          <Link className="dash-btn row-btn" to={`/teach/${s.id}`}>
+                            <span className="btn-pill solid">
+                              <IconPlay /> Resume
+                            </span>
                           </Link>
                         ) : (
-                          <Link className="dash-btn" to={`/notes/${s.id}`}>
-                            Notes <IconArrowRight />
+                          <Link className="dash-btn row-btn" to={`/notes/${s.id}`}>
+                            <span className="btn-pill outline">
+                              Notes <IconArrowRight />
+                            </span>
                           </Link>
                         )}
                         {moreMenu(`s:${s.id}`, title, [

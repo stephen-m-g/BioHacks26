@@ -11,7 +11,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Dashboard />} />
-      <Route path="/lectures" element={<AllLectures />} />
+      <Route path="/lectures" element={<AllLectures mode="active" />} />
+      <Route path="/archive" element={<AllLectures mode="archived" />} />
       <Route path="/prep/:lectureId" element={<Prep />} />
       <Route path="/teach/:sessionId" element={<Teach />} />
       <Route path="/notes/:sessionId" element={<Notes />} />

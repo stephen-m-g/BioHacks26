@@ -1,11 +1,12 @@
-// P4 owns this page. Every lecture, archived or not: edit, archive/restore, delete.
+// P4 owns this page. Two modes: /lectures lists active lectures (start, edit, archive, delete) and
+// /archive lists archived ones (restore, edit, delete).
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ClassDot } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { IconArrowLeft, IconClock, IconDots, IconEdit } from '../components/DashIcons'
+import { IconArrowLeft, IconClock, IconDots, IconEdit, IconPlay } from '../components/DashIcons'
 import { listClasses } from '../lib/classes'
-import { deleteLecture, setArchived } from '../lib/lectures'
+import { deleteLecture, setArchived, startSession } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { ClassGroup, Lecture } from '../types'
 import '../styles/p4.css'
@@ -16,7 +17,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
-export default function AllLectures() {
+export default function AllLectures({ mode }: { mode: 'active' | 'archived' }) {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
@@ -52,8 +54,7 @@ export default function AllLectures() {
     }
   }
 
-  const active = rows.filter((r) => !r.archived_at)
-  const archived = rows.filter((r) => r.archived_at)
+  const shown = rows.filter((r) => (mode === 'archived' ? !!r.archived_at : !r.archived_at))
   const sessionCount = toDelete?.sessions?.[0]?.count ?? 0
 
   const renderRow = (l: Row) => {
@@ -78,6 +79,11 @@ export default function AllLectures() {
           </div>
         </div>
         <div className="p4-actions">
+          {!isArchived && (
+            <button className="p4-btn outline-strong" onClick={() => act(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}>
+              <IconPlay /> Start
+            </button>
+          )}
           <Link className="p4-btn" to={`/prep/${l.id}`}>
             <IconEdit /> Edit
           </Link>
@@ -121,13 +127,19 @@ export default function AllLectures() {
     <div className="p4">
       <header className="p4-top">
         <Link className="p4-btn" to="/">
-          <IconArrowLeft /> Lectures
+          <IconArrowLeft /> Dashboard
+        </Link>
+        <div className="p4-spacer" />
+        <Link className="p4-btn quiet" to={mode === 'archived' ? '/lectures' : '/archive'}>
+          {mode === 'archived' ? 'Active lectures' : 'Archive'}
         </Link>
       </header>
       <div className="p4-inner">
-        <h1 className="p4-title">All lectures</h1>
+        <h1 className="p4-title">{mode === 'archived' ? 'Archive' : 'Lectures'}</h1>
         <p className="p4-sub">
-          {plural(active.length, 'active lecture')} · {archived.length} archived
+          {mode === 'archived'
+            ? `${plural(shown.length, 'archived lecture')} · hidden from the dashboard, sessions and notes kept`
+            : `${plural(shown.length, 'active lecture')} · newest first`}
         </p>
 
         {error && (
@@ -139,26 +151,15 @@ export default function AllLectures() {
           </div>
         )}
 
-        <section className="p4-section" aria-labelledby="active-heading">
-          <div className="p4-section-head">
-            <h2 id="active-heading" className="p4-label">
-              Active
-            </h2>
-            {active.length > 1 && <span className="p4-hint">Newest first</span>}
-          </div>
-          {active.length === 0 && <p className="p4-empty">No active lectures. Create one from the dashboard.</p>}
-          <ul className="p4-list">{active.map(renderRow)}</ul>
-        </section>
-
-        <section className="p4-section" aria-labelledby="archived-heading">
-          <div className="p4-section-head">
-            <h2 id="archived-heading" className="p4-label">
-              Archived
-            </h2>
-            <span className="p4-hint">Hidden from the dashboard</span>
-          </div>
-          {archived.length === 0 && <p className="p4-empty">Archived lectures show up here. Their sessions and notes are kept.</p>}
-          <ul className="p4-list">{archived.map(renderRow)}</ul>
+        <section className="p4-section" aria-label={mode === 'archived' ? 'Archived lectures' : 'Active lectures'}>
+          {shown.length === 0 && (
+            <p className="p4-empty">
+              {mode === 'archived'
+                ? 'Nothing archived. Archive a lecture from its ⋯ menu to hide it from the dashboard.'
+                : 'No active lectures. Create one from the dashboard.'}
+            </p>
+          )}
+          <ul className="p4-list">{shown.map(renderRow)}</ul>
         </section>
       </div>
 

@@ -689,7 +689,8 @@
 
 .dash .chip {
   min-height: var(--tap);
-  min-width: 48px;
+  min-width: var(--tap);
+  justify-content: center;
   padding: 0;
   border: none;
   background: transparent;
@@ -987,6 +988,124 @@
 @media (prefers-reduced-motion: reduce) {
   .chip-pill,
   .dash .cell-archive {
+    transition: none;
+  }
+}
+
+/* =====================================================================
+   Thin rows: the visible buttons are small pills (36px), each inside a
+   full 64px tap area (Alex's minimum). Rows are exactly that tall.
+   ===================================================================== */
+.bento .dash-row {
+  padding: 0;
+  min-height: var(--tap);
+}
+
+.bento .dash-actions .dash-btn {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 var(--sp-1);
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-fg);
+}
+
+.bento .dash-actions .dash-btn.icon-only {
+  width: var(--tap);
+  min-width: var(--tap);
+}
+
+.btn-pill {
+  height: 36px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.btn-pill svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn-pill.outline {
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+.btn-pill.solid {
+  background: var(--c-fg);
+  color: var(--c-card);
+}
+
+.btn-pill.round {
+  width: 36px;
+  padding: 0;
+}
+
+@media (hover: hover) {
+  .dash-btn:not(:disabled):hover .btn-pill.outline {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+  .dash-btn:not(:disabled):hover .btn-pill.round,
+  .cell-go:hover .btn-pill.round {
+    background: var(--c-soft);
+  }
+}
+
+/* Focus ring on the visible pill, not the invisible tap area. */
+.bento .dash-actions .dash-btn:focus-visible,
+.cell-go:focus-visible {
+  outline: none;
+}
+
+.bento .dash-actions .dash-btn:focus-visible .btn-pill,
+.cell-go:focus-visible .btn-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+/* ---------- card header: title + count on the left, arrow on the right ---------- */
+.cell-head {
+  padding: var(--sp-1) var(--sp-3) 0 var(--sp-5);
+  min-height: var(--tap);
+}
+
+.cell-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.cell-go {
+  min-width: var(--tap);
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-fg);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.cell-go .btn-pill.round {
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
+
+/* Rows sit a little closer to the header now that the header is tap-sized. */
+.cell-scroll {
+  padding-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-pill {
     transition: none;
   }
 }
