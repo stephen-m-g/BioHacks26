@@ -1,20 +1,19 @@
 /* Dashboard look (P4). Every selector is scoped under .dash so no other page changes.
    Kept from the app's rules: 64px tap targets, text contrast >= 4.5:1, no hover-only actions. */
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Inter:wght@400;500;600;700&display=swap');
 
 .dash {
-  --d-bg: #efeeea;
-  --d-fg: #111111;
-  --d-muted: #5c5c58; /* 5.8:1 on --d-bg */
-  --d-faded: #64645f; /* past-session titles, 5.1:1 */
-  --d-soft: #e2e1dc;
-  --d-card: #fbfbf9;
-  --d-danger: #b42318;
-  --d-display: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --d-bg: var(--c-bg);
+  --d-fg: var(--c-fg);
+  --d-muted: var(--c-muted);
+  --d-faded: var(--c-faded);
+  --d-soft: var(--c-soft);
+  --d-card: var(--c-card);
+  --d-danger: var(--c-danger);
+  --d-display: var(--font-display);
   min-height: 100vh;
   background: var(--d-bg);
   color: var(--d-fg);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
 }
 
 .dash-inner {
@@ -34,8 +33,7 @@
 
 .dash-title {
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: clamp(40px, 5vw, 60px);
   line-height: 1;
   letter-spacing: -0.01em;
@@ -104,8 +102,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.02em;
 }
@@ -123,7 +120,6 @@
 .dash-row-title {
   margin: 0;
   font-family: var(--d-display);
-  font-stretch: 125%;
   font-weight: 700;
   font-size: clamp(19px, 2vw, 23px);
   line-height: 1.15;
@@ -501,4 +497,143 @@
   display: block;
   height: clamp(40px, 5vw, 56px);
   width: auto;
+}
+
+/* ================= polish pass (tokens + audit fixes) ================= */
+
+.dash-header {
+  align-items: center;
+}
+
+.dash-section {
+  margin-top: var(--sp-7);
+}
+
+.dash-section-head {
+  margin-bottom: var(--sp-2);
+}
+
+.dash-label {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  color: var(--c-muted);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.dash-hint {
+  font-size: 13px;
+}
+
+/* Rows: hairline separators, even rhythm, smaller class dot. */
+.dash-list > li + li {
+  border-top: 1px solid var(--c-line);
+}
+
+.dash-row {
+  padding: var(--sp-4) 0;
+  gap: var(--sp-4);
+}
+
+.dash-avatar.class-holder {
+  width: 32px;
+  height: 32px;
+}
+
+.dash-row-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-row-title);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.dash-meta {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-meta);
+  gap: 4px 16px;
+}
+
+.dash-meta svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Per-row Start: outlined, so a list of lectures isn't a column of black pills. The page's one solid
+   button is "New lecture" (and Resume for a session that's still live). */
+.dash .dash-btn.row-primary {
+  background: transparent;
+  color: var(--c-fg);
+  box-shadow: inset 0 0 0 1.5px var(--c-fg);
+}
+
+@media (hover: hover) {
+  .dash .dash-btn.row-primary:not(:disabled):hover {
+    background: var(--c-fg);
+    color: var(--c-card);
+  }
+}
+
+.dash .dash-btn {
+  font-size: var(--fs-body);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
+}
+
+.dash-menu {
+  border-radius: var(--r-md);
+  border: 1px solid var(--c-line);
+  box-shadow: var(--shadow-pop);
+}
+
+/* Class filter: white chips with a hairline edge; "Edit classes" as a quiet text button. */
+.class-filter {
+  margin: var(--sp-5) 0 0;
+}
+
+.dash .class-chip {
+  border-color: var(--c-line);
+  background: var(--c-card);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.dash .class-chip.quiet {
+  border-color: transparent;
+  background: transparent;
+  text-decoration: none;
+  color: var(--c-muted);
+}
+
+@media (hover: hover) {
+  .dash .class-chip:not(.on):hover {
+    background: var(--c-soft);
+  }
+}
+
+.dash-badge {
+  border: 1px solid var(--c-line);
+}
+
+@media (max-width: 700px) {
+  .dash-actions {
+    margin-left: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash .dash-btn,
+  .dash .class-chip {
+    transition: none;
+  }
+}
+
+/* Footer "Archive" link: a full 64px tap area (it's an inline link in a sentence). */
+.dash-footer a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap);
+  min-width: var(--tap);
+  padding: 0 var(--sp-2);
 }

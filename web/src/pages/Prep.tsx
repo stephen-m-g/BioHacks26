@@ -87,9 +87,17 @@ export default function Prep() {
     }
   }, [lectureId])
 
+  // Follow new items as they're added, but not on first load (that would scroll the title out of view).
+  const initialCount = useRef<number | null>(null)
   useEffect(() => {
-    feedEnd.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [items.length])
+    if (!lecture) return
+    if (initialCount.current === null) {
+      initialCount.current = items.length
+      return
+    }
+    if (items.length > initialCount.current) feedEnd.current?.scrollIntoView({ behavior: 'smooth' })
+    initialCount.current = items.length
+  }, [items.length, lecture])
 
   const describe = useCallback((id: string) => {
     setAi((s) => ({ ...s, [id]: 'reading' }))

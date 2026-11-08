@@ -27,8 +27,7 @@
   background: transparent;
   color: var(--d-fg);
   font-family: var(--d-display);
-  font-stretch: 125%;
-  font-weight: 800;
+  font-weight: 700;
   font-size: clamp(30px, 4vw, 44px);
   line-height: 1.1;
 }
@@ -127,7 +126,6 @@
 .pp-ai-title {
   margin: 0 0 4px;
   font-family: var(--d-display);
-  font-stretch: 125%;
   font-weight: 700;
   font-size: 18px;
   line-height: 1.25;
@@ -280,4 +278,54 @@
   font: inherit;
   font-size: 16px;
   width: 200px;
+}
+
+/* ================= polish pass (tokens + audit fixes) ================= */
+
+/* Title input reads as the page title. */
+.p4 .pp-title {
+  font-weight: 700;
+  font-size: var(--fs-page-title);
+  letter-spacing: -0.025em;
+}
+
+/* AI avatar: an outlined mark rather than a solid black disc. */
+.pp-ai-avatar {
+  width: 36px;
+  height: 36px;
+  background: var(--c-card);
+  color: var(--c-fg);
+  box-shadow: inset 0 0 0 1px var(--c-line-strong);
+}
+
+.pp-ai-title {
+  font-weight: 600;
+  font-size: 17px;
+}
+
+/* Chips match the dashboard filter chips. */
+.p4 .pp-class-chip {
+  border-color: var(--c-line);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+@media (hover: hover) {
+  .p4 .pp-class-chip:not(.on):hover {
+    background: var(--c-soft);
+  }
+}
+
+.p4 .pp-class-chip.add {
+  border-color: var(--c-line-strong);
+}
+
+/* Composer: a hairline edge on top of the soft shadow. */
+.pp-composer {
+  border: 1px solid var(--c-line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p4 .pp-class-chip {
+    transition: none;
+  }
 }

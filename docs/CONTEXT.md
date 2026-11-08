@@ -94,3 +94,6 @@ Figures render the image with its confirmed annotations. Hovering an annotation 
 Named, colored groupings: different classes, or sections of one class. Tables `classes(id, name, color)`, `lecture_classes(lecture_id, class_id)`,
 `session_classes(session_id, class_id)` (many-to-many; migration `supabase/migrations/2026-11-07_classes.sql`). A new session copies its lecture's
 classes. A lecture created while the dashboard is filtered to a class starts in that class. Deleting a class keeps its lectures and sessions.
+
+## Design system
+Colors, type, spacing and radii live in `web/src/styles/tokens.css` (SF Pro system font, neutral black-and-white palette, contrast >= 4.5:1, 64px tap targets). Page stylesheets reference these tokens instead of defining their own.

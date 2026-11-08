@@ -1,21 +1,18 @@
 // P4 owns this page. Every lecture, archived or not: edit, archive/restore, delete.
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ClassDot } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { IconArrowLeft, IconClock, IconDots, IconEdit } from '../components/DashIcons'
+import { listClasses } from '../lib/classes'
 import { deleteLecture, setArchived } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
-import type { Lecture } from '../types'
+import type { ClassGroup, Lecture } from '../types'
 import '../styles/p4.css'
 
-type Row = Lecture & { sessions: { count: number }[] }
+type Row = Lecture & { sessions: { count: number }[]; lecture_classes?: { class_id: string }[] | null }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-
-function initials(title: string | null | undefined) {
-  const words = (title ?? '').trim().split(/\s+/).filter(Boolean)
-  return ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase() || '?'
-}
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 
@@ -24,12 +21,22 @@ export default function AllLectures() {
   const [error, setError] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Row | null>(null)
+  const [classes, setClasses] = useState<ClassGroup[]>([])
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.from('lectures').select('*, sessions(count)').order('created_at', { ascending: false })
-    setError(error?.message ?? null)
-    setRows((data as Row[]) ?? [])
+    const query = (withClasses: boolean) =>
+      supabase
+        .from('lectures')
+        .select(`*, sessions(count)${withClasses ? ', lecture_classes(class_id)' : ''}`)
+        .order('created_at', { ascending: false })
+    let res = await query(true)
+    if (res.error) res = await query(false) // classes migration not run yet
+    setError(res.error?.message ?? null)
+    setRows((res.data as unknown as Row[]) ?? [])
+    setClasses(await listClasses().catch(() => []))
   }, [])
+
+  const byId = new Map(classes.map((c) => [c.id, c]))
 
   useEffect(() => {
     load()
@@ -54,8 +61,11 @@ export default function AllLectures() {
     const sessions = l.sessions?.[0]?.count ?? 0
     return (
       <li key={l.id} className={`p4-row${isArchived ? ' faded' : ''}`}>
-        <div className={`p4-avatar${isArchived ? '' : ' dark'}`} aria-hidden="true">
-          {initials(l.title)}
+        <div className="p4-avatar class-holder">
+          <ClassDot
+            size={28}
+            classes={(l.lecture_classes ?? []).map((x) => byId.get(x.class_id)).filter((x): x is ClassGroup => !!x)}
+          />
         </div>
         <div className="p4-main">
           <h3 className="p4-row-title">{l.title}</h3>

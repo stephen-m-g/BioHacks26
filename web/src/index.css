@@ -2,23 +2,21 @@
    UI rules: every tap target is at least 64px (visuals may be smaller inside a larger hit area);
    no pinch, long-press or double-tap. Text contrast is at least 4.5:1. */
 :root {
-  --tap: 64px;
-  --fg: #111111;
-  --bg: #f4f4f4;
-  --panel: #ffffff;
-  --sidebar: #fafafa;
-  --line: #e5e5e5;
-  --line-strong: #cfcfcf;
-  --muted: #5f5f5f; /* 6.4:1 on white */
-  --hover: #ededed;
-  --accent: #111111;
-  --ok: #15803d;
-  --bad: #b91c1c;
-  --lasso: #111111;
-  --radius: 16px;
-  /* SF Pro on Apple devices (system font); Segoe UI / Roboto elsewhere. */
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
+  /* Short names used by the live session; values come from styles/tokens.css. */
+  --fg: var(--c-fg);
+  --bg: var(--c-bg);
+  --panel: var(--c-card);
+  --sidebar: var(--c-sunken);
+  --line: var(--c-line);
+  --line-strong: var(--c-line-strong);
+  --muted: var(--c-muted);
+  --hover: var(--c-soft);
+  --accent: var(--c-fg);
+  --ok: var(--c-ok);
+  --bad: var(--c-danger);
+  --lasso: var(--c-fg);
+  --radius: var(--r-md);
+  font-family: var(--font-sans);
   font-size: 18px;
   color: var(--fg);
   background: var(--bg);
@@ -136,15 +134,18 @@ textarea {
 }
 
 .notice {
-  padding: 16px;
-  border-radius: 12px;
-  background: #eef2ff;
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  color: var(--c-text);
   margin: 12px 0;
 }
 
 .notice.warn {
-  background: #fef2f2;
-  color: #991b1b;
+  background: var(--c-danger-bg);
+  border-color: transparent;
+  color: #8a1c12;
 }
 
 .tag {
@@ -1157,4 +1158,42 @@ figcaption {
   body {
     background: white;
   }
+}
+
+/* ================= polish pass ================= */
+/* Dialogs: same radius, hairline and shadow as menus elsewhere. */
+.dialog {
+  border-radius: var(--r-lg);
+  border: 1px solid var(--c-line);
+  box-shadow: var(--shadow-pop);
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+}
+
+.dialog h2 {
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.dialog-body {
+  color: var(--c-text);
+  line-height: 1.5;
+}
+
+.dialog-backdrop {
+  background: rgba(17, 17, 17, 0.32);
+}
+
+/* Board text: a comfortable reading measure and rhythm. */
+.board-text {
+  color: var(--c-text);
+}
+
+.image-block {
+  border-color: var(--c-line);
+  border-radius: var(--r-sm);
+  overflow: visible;
+}
+
+.breadcrumb {
+  font-size: var(--fs-meta);
 }

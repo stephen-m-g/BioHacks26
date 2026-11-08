@@ -59,7 +59,6 @@
 .st-section h2 {
   margin: 0 0 12px;
   font-family: var(--d-display);
-  font-stretch: 125%;
   font-weight: 700;
   font-size: clamp(20px, 2.2vw, 26px);
   line-height: 1.2;
@@ -176,4 +175,15 @@
     break-inside: avoid;
     box-shadow: none;
   }
+}
+
+/* ================= polish pass (tokens + audit fixes) ================= */
+.st-eyebrow {
+  margin-bottom: var(--sp-3);
+}
+
+.st-section h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }

@@ -299,7 +299,7 @@ export default function Dashboard() {
               return (
                 <li key={l.id} className="dash-row">
                   <div className="dash-avatar class-holder">
-                    <ClassDot classes={classesOf(l.lecture_classes)} />
+                    <ClassDot classes={classesOf(l.lecture_classes)} size={28} />
                   </div>
                   <div className="dash-main">
                     <h3 className="dash-row-title">{l.title}</h3>
@@ -315,7 +315,7 @@ export default function Dashboard() {
                   </div>
                   <div className="dash-actions">
                     <button
-                      className="dash-btn solid"
+                      className="dash-btn row-primary"
                       disabled={busy}
                       onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}
                     >
@@ -380,7 +380,7 @@ export default function Dashboard() {
               return (
                 <li key={s.id} className={`dash-row${live ? '' : ' past'}`}>
                   <div className="dash-avatar class-holder">
-                    <ClassDot classes={classesOf(s.session_classes)} />
+                    <ClassDot classes={classesOf(s.session_classes)} size={28} />
                   </div>
                   <div className="dash-main">
                     <h3 className="dash-row-title">{title}</h3>
