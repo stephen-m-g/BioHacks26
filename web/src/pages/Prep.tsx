@@ -254,32 +254,35 @@ export default function Prep() {
 
   return (
     <div className="p4 pp pp-fit">
-      <header className="p4-top">
-        <button className="p4-btn" onClick={back} disabled={busy}>
-          <IconArrowLeft /> Lectures
+      <header className="p4-top pp-header">
+        <button
+          className="pp-icon-btn back"
+          onClick={back}
+          disabled={busy}
+          aria-label="Back to the dashboard without saving"
+          title="Back to the dashboard (doesn't save)"
+        >
+          <span className="pp-icon-circle">
+            <IconArrowLeft />
+          </span>
         </button>
-        <div className="p4-spacer" />
-        <button className="p4-btn solid" onClick={save} disabled={!lecture || busy}>
+        <input
+          className="pp-title pp-header-title"
+          aria-label="Lecture title"
+          value={title}
+          placeholder="Lecture title"
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        />
+        <button className="p4-btn solid pp-save" onClick={save} disabled={!lecture || busy}>
           {busy ? 'Saving…' : 'Save'}
         </button>
       </header>
 
       <main className="pp-body">
         <div className="pp-top">
-          <input
-            className="pp-title"
-            aria-label="Lecture title"
-            value={title}
-            placeholder="Lecture title"
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-          />
-
           {classesAvailable && (
-            <div className="pp-classes-row" role="group" aria-labelledby="classes-heading">
-              <h2 id="classes-heading" className="p4-label pp-row-label">
-                Classes
-              </h2>
+            <div className="pp-classes-row" role="group" aria-label="Classes this lecture belongs to">
               <div className="pp-chips">
                 {classes.map((c) => {
                   const on = classIds.includes(c.id)
@@ -470,7 +473,6 @@ export default function Prep() {
             </span>
           </button>
         </div>
-        <p className="pp-hint">Images go to the image bank. Everything else becomes context.</p>
       </footer>
 
       <ConfirmDialog

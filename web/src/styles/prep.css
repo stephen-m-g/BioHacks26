@@ -676,3 +676,79 @@
     transition: none;
   }
 }
+
+/* =====================================================================
+   Header row: ← back (discards), the editable title, Save. Chips sit right
+   under it; the Materials card takes the rest; a slimmer composer at the
+   bottom (48px tap areas, like the dashboard's compact controls).
+   ===================================================================== */
+.pp-fit .pp-header {
+  max-width: 868px;
+  padding: var(--sp-3) var(--sp-5) 0;
+  gap: var(--sp-2);
+}
+
+/* The back arrow's visible circle lines up with the content's left edge. */
+.p4 .pp-header .pp-icon-btn.back {
+  min-width: 48px;
+  min-height: 48px;
+  margin-left: -4px;
+}
+
+.p4 .pp-header .pp-header-title {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 var(--sp-1);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+}
+
+.p4 .pp-header .pp-save {
+  min-height: 48px;
+  padding: 0 var(--sp-5);
+  font-size: 15px;
+}
+
+.pp-fit .pp-body {
+  gap: var(--sp-3);
+}
+
+.pp-fit .pp-classes-row {
+  margin-top: 0;
+}
+
+/* Slimmer composer, closer to the bottom edge. */
+.pp-fit .pp-composer-wrap {
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+}
+
+.pp-fit .pp-composer {
+  align-items: center;
+  padding: 0 var(--sp-1);
+  border-radius: 26px;
+}
+
+.p4.pp-fit .pp-textarea {
+  min-height: 48px;
+  padding: 13px var(--sp-2);
+  line-height: 1.4;
+}
+
+.p4.pp-fit .pp-composer .pp-icon-btn {
+  min-width: 48px;
+  min-height: 48px;
+}
+
+.pp-fit .pp-composer .pp-icon-circle {
+  width: 36px;
+  height: 36px;
+}
+
+.pp-fit .pp-composer .pp-icon-circle svg {
+  width: 18px;
+  height: 18px;
+}
