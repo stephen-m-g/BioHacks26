@@ -1,9 +1,9 @@
-// P4 owns this page. Prepared lectures (ready to launch) and past sessions.
+// P4 owns this page. Bento dashboard: class filter on top, then Ready to present (list), Archive (link card)
+// and Recorded sessions (list). The page fits one screen; each list scrolls inside its own card.
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ClassDot, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
-import SystemCheck from '../components/SystemCheck'
 import { IconArrowRight, IconClock, IconDots, IconEdit, IconFile, IconImage, IconPlay, IconPlus } from '../components/DashIcons'
 import { createClass, deleteClass, listClasses, setLectureClasses, setSessionClasses, updateClass } from '../lib/classes'
 import { createLecture, deleteLecture, deleteSession, formatDate, setArchived, startSession } from '../lib/lectures'
@@ -24,23 +24,29 @@ type SessionRow = Session & {
   session_classes?: ClassLink[] | null
 }
 
-/** 'all', or a class id. Remembered per device. */
-type Filter = string
+/** Selected class ids; empty means "All". Remembered per device. */
+type Filter = string[]
 const FILTER_KEY = 'dash-class-filter'
 function readFilter(): Filter {
   try {
-    return localStorage.getItem(FILTER_KEY) ?? 'all'
+    const raw = localStorage.getItem(FILTER_KEY)
+    if (!raw || raw === 'all') return []
+    const parsed: unknown = raw.startsWith('[') ? JSON.parse(raw) : [raw] // older builds stored one id
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
   } catch {
-    return 'all'
+    return []
   }
 }
 function writeFilter(f: Filter) {
   try {
-    localStorage.setItem(FILTER_KEY, f)
+    localStorage.setItem(FILTER_KEY, JSON.stringify(f))
   } catch {
     // private mode / blocked storage: the filter just isn't remembered
   }
 }
+
+/** Where a ⋯ menu opens: it floats above the page so scrolling cards can't clip it. */
+type MenuAnchor = { key: string; left: number; top?: number; bottom?: number }
 
 type Picker = { kind: 'lecture' | 'session'; id: string; title: string; selected: string[] }
 
@@ -94,7 +100,9 @@ export default function Dashboard() {
   const [sessions, setSessions] = useState<SessionRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [menu, setMenu] = useState<string | null>(null)
+  const [menu, setMenuState] = useState<MenuAnchor | null>(null)
+  const setMenu = (m: MenuAnchor | null) => setMenuState(m)
+  const [archivedCount, setArchivedCount] = useState<number | null>(null)
   const [toDelete, setToDelete] = useState<SessionRow | null>(null)
   const [toDeleteLecture, setToDeleteLecture] = useState<LectureRow | null>(null)
   const [classes, setClasses] = useState<ClassGroup[]>([])
@@ -107,6 +115,12 @@ export default function Dashboard() {
   const setFilter = (f: Filter) => {
     setFilterState(f)
     writeFilter(f)
+  }
+
+  /** Toggle one class. Selecting every class (or none) collapses back to "All". */
+  const toggleFilter = (id: string) => {
+    const next = filter.includes(id) ? filter.filter((x) => x !== id) : [...filter, id]
+    setFilter(next.length === 0 || next.length === classes.length ? [] : next)
   }
 
   const load = useCallback(async () => {
@@ -124,6 +138,11 @@ export default function Dashboard() {
           .order('started_at', { ascending: false }),
         withClasses ? listClasses().then((data) => ({ data, error: null })).catch((error) => ({ data: [], error })) : null,
       ])
+    supabase
+      .from('lectures')
+      .select('id', { count: 'exact', head: true })
+      .not('archived_at', 'is', null)
+      .then(({ count }) => setArchivedCount(count ?? 0))
     let [l, s, c] = await query(true)
     const missing = !!(l.error || s.error || c?.error)
     if (missing) [l, s, c] = await query(false) // classes migration not run yet
@@ -135,8 +154,11 @@ export default function Dashboard() {
     setSessions((s.data as unknown as SessionRow[]) ?? [])
     const cls = (c?.data as ClassGroup[]) ?? []
     setClasses(cls)
-    // A remembered filter for a class that no longer exists falls back to "All".
-    setFilterState((f) => (f === 'all' || cls.some((x) => x.id === f) ? f : 'all'))
+    // Drop remembered classes that no longer exist; every class selected means "All".
+    setFilterState((f) => {
+      const kept = f.filter((id) => cls.some((x) => x.id === id))
+      return kept.length === cls.length ? [] : kept
+    })
   }, [])
 
   useEffect(() => {
@@ -158,11 +180,13 @@ export default function Dashboard() {
   const byId = new Map(classes.map((c) => [c.id, c]))
   const classesOf = (links: ClassLink[] | null | undefined) =>
     (links ?? []).map((x) => byId.get(x.class_id)).filter((x): x is ClassGroup => !!x)
+  /** A lecture or session shows if it's in any selected class. */
   const inFilter = (links: ClassLink[] | null | undefined) =>
-    filter === 'all' || (links ?? []).some((x) => x.class_id === filter)
+    filter.length === 0 || (links ?? []).some((x) => filter.includes(x.class_id))
   const shownLectures = lectures.filter((l) => inFilter(l.lecture_classes))
   const shownSessions = sessions.filter((s) => inFilter(s.session_classes))
-  const filterName = filter === 'all' ? null : byId.get(filter)?.name
+  const filterName =
+    filter.length === 0 ? null : filter.length === 1 ? byId.get(filter[0])?.name : 'the selected classes'
 
 
   const savePicker = (ids: string[], fresh: { name: string; color: string }[]) =>
@@ -185,22 +209,31 @@ export default function Dashboard() {
       await load()
     })
 
-  /** "···" button with a small menu. Tap to open, tap outside to close (no long-press). */
+  /** "···" button with a small menu. Tap to open, tap outside to close (no long-press). The menu floats
+   *  above the page (position: fixed) so a scrolling card can't clip it, and opens upward near the bottom. */
+  const MENU_WIDTH = 240
   const moreMenu = (key: string, label: string, items: { label: string; danger?: boolean; onClick: () => void }[]) => (
     <div className="dash-menu-wrap">
       <button
         className="dash-btn icon-only"
         aria-label={`More actions for ${label}`}
         aria-haspopup="menu"
-        aria-expanded={menu === key}
-        onClick={() => setMenu(menu === key ? null : key)}
+        aria-expanded={menu?.key === key}
+        onClick={(e) => {
+          if (menu?.key === key) return setMenu(null)
+          const r = e.currentTarget.getBoundingClientRect()
+          const height = items.length * 64 + 18
+          const left = Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8))
+          const below = r.bottom + 8 + height <= window.innerHeight
+          setMenu(below ? { key, left, top: r.bottom + 8 } : { key, left, bottom: window.innerHeight - r.top + 8 })
+        }}
       >
         <IconDots />
       </button>
-      {menu === key && (
+      {menu?.key === key && (
         <>
           <div className="dash-menu-backdrop" onClick={() => setMenu(null)} />
-          <div className="dash-menu" role="menu">
+          <div className="dash-menu floating" role="menu" style={{ left: menu.left, top: menu.top, bottom: menu.bottom, width: MENU_WIDTH }}>
             {items.map((item) => (
               <button
                 key={item.label}
@@ -219,228 +252,245 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="dash">
-      <div className="dash-inner">
-        <header className="dash-header">
-          <div>
-            <h1 className="dash-title dash-logo">
-              <img src="/aside-logo.png" alt="aside" width={1065} height={321} />
-            </h1>
-          </div>
+    <div className="dash bento-page">
+      <div className="bento-inner">
+        <header className="bento-header">
+          <h1 className="dash-title dash-logo">
+            <img src="/aside-logo.png" alt="aside" width={1065} height={321} />
+          </h1>
           <button
             className="dash-btn solid"
             disabled={busy || !supabaseConfigured}
-            onClick={() =>
-              run(async () =>
-                navigate(`/prep/${await createLecture(undefined, filter === 'all' ? [] : [filter])}?new=1`),
-              )
-            }
+            onClick={() => run(async () => navigate(`/prep/${await createLecture(undefined, filter)}?new=1`))}
           >
             <IconPlus /> New lecture
           </button>
         </header>
 
-        {!supabaseConfigured && (
-          <div className="dash-notice">
-            Supabase isn't configured. Copy <code>web/.env.example</code> to <code>web/.env.local</code> and fill it in.
-          </div>
-        )}
-        {error && (
-          <div className="dash-notice warn" role="alert">
-            {error}
-          </div>
-        )}
-
-        {classesMissing && (
-          <div className="dash-notice">
-            Classes need a one-time database update: run <code>supabase/migrations/2026-11-07_classes.sql</code> in the Supabase SQL
-            editor.
-          </div>
-        )}
         {supabaseConfigured && !classesMissing && (
-          <nav className="class-filter" aria-label="Filter by class">
-            <button className={`class-chip${filter === 'all' ? ' on' : ''}`} aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
-              All
+          <nav className="bento-filter" aria-label="Filter by class">
+            <button className={`chip${filter.length === 0 ? ' on' : ''}`} aria-pressed={filter.length === 0} onClick={() => setFilter([])}>
+              <span className="chip-pill">All</span>
             </button>
-            {classes.map((c) => (
-              <button
-                key={c.id}
-                className={`class-chip${filter === c.id ? ' on' : ''}`}
-                aria-pressed={filter === c.id}
-                onClick={() => setFilter(c.id)}
-              >
-                <span className="class-chip-dot" style={{ background: c.color }} aria-hidden="true" />
-                {c.name}
-              </button>
-            ))}
-            <button className="class-chip quiet" onClick={() => setManageOpen(true)}>
-              {classes.length ? 'Edit classes' : '+ Add a class'}
+            {classes.map((c) => {
+              const on = filter.includes(c.id)
+              return (
+                <button key={c.id} className={`chip${on ? ' on' : ''}`} aria-pressed={on} onClick={() => toggleFilter(c.id)}>
+                  <span className="chip-pill">
+                    <span className="chip-dot" style={{ background: c.color }} aria-hidden="true" />
+                    {c.name}
+                  </span>
+                </button>
+              )
+            })}
+            <button className="chip add" aria-label={classes.length ? 'Add or edit classes' : 'Add a class'} title="Add or edit classes" onClick={() => setManageOpen(true)}>
+              <span className="chip-pill">
+                <IconPlus />
+              </span>
             </button>
           </nav>
         )}
 
-        <section className="dash-section" aria-labelledby="ready-heading">
-          <div className="dash-section-head">
-            <h2 id="ready-heading" className="dash-label">
-              Ready to present
-            </h2>
-            {shownLectures.length > 1 && <span className="dash-hint">Sorted by last updated</span>}
+        {(!supabaseConfigured || error || classesMissing) && (
+          <div className="bento-notices">
+            {!supabaseConfigured && (
+              <div className="dash-notice">
+                Supabase isn't configured. Copy <code>web/.env.example</code> to <code>web/.env.local</code> and fill it in.
+              </div>
+            )}
+            {error && (
+              <div className="dash-notice warn" role="alert">
+                {error}
+              </div>
+            )}
+            {classesMissing && (
+              <div className="dash-notice">
+                Classes need a one-time database update: run <code>supabase/migrations/2026-11-07_classes.sql</code> in the Supabase
+                SQL editor.
+              </div>
+            )}
           </div>
-          {supabaseConfigured && lectures.length === 0 && (
-            <p className="dash-empty">Create your first lecture to upload diagrams and notes before class.</p>
-          )}
-          {lectures.length > 0 && shownLectures.length === 0 && (
-            <p className="dash-empty">No lectures in {filterName ?? 'this class'} yet.</p>
-          )}
-          <ul className="dash-list">
-            {shownLectures.map((l) => {
-              const images = (l.assets ?? []).filter((a) => a.kind === 'image').length
-              const notes = (l.assets ?? []).length - images
-              return (
-                <li key={l.id} className="dash-row">
-                  <div className="dash-avatar class-holder">
-                    <ClassDot classes={classesOf(l.lecture_classes)} size={28} />
-                  </div>
-                  <div className="dash-main">
-                    <h3 className="dash-row-title">{l.title}</h3>
-                    <div className="dash-meta">
-                      <span>
-                        <IconImage /> {plural(images, 'image')}
-                      </span>
-                      <span>
-                        <IconFile /> {plural(notes, 'note')}
-                      </span>
-                      <span>Updated {relative(lastUpdated(l))}</span>
-                    </div>
-                  </div>
-                  <div className="dash-actions">
-                    <button
-                      className="dash-btn row-primary"
-                      disabled={busy}
-                      onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}
-                    >
-                      <IconPlay /> Start
-                    </button>
-                    <Link className="dash-btn" to={`/prep/${l.id}`}>
-                      <IconEdit /> Edit
-                    </Link>
-                    {moreMenu(`l:${l.id}`, l.title, [
-                      ...(classesMissing
-                        ? []
-                        : [
-                            {
-                              label: 'Classes…',
-                              onClick: () => {
-                                setMenu(null)
-                                setPicker({ kind: 'lecture', id: l.id, title: l.title, selected: (l.lecture_classes ?? []).map((x) => x.class_id) })
-                              },
+        )}
+
+        <div className="bento">
+          {/* ---------- top left: Ready to present ---------- */}
+          <section className="bento-cell cell-ready" aria-labelledby="ready-heading">
+            <div className="cell-head">
+              <h2 id="ready-heading" className="dash-label">
+                Ready to present
+              </h2>
+              <span className="cell-count">{shownLectures.length}</span>
+            </div>
+            <div className="cell-scroll" onScroll={() => menu && setMenu(null)}>
+              {supabaseConfigured && lectures.length === 0 && (
+                <p className="dash-empty">Create your first lecture to upload diagrams and notes before class.</p>
+              )}
+              {lectures.length > 0 && shownLectures.length === 0 && (
+                <p className="dash-empty">No lectures in {filterName ?? 'this class'} yet.</p>
+              )}
+              <ul className="dash-list">
+                {shownLectures.map((l) => {
+                  const images = (l.assets ?? []).filter((a) => a.kind === 'image').length
+                  const notes = (l.assets ?? []).length - images
+                  return (
+                    <li key={l.id} className="dash-row">
+                      <div className="dash-avatar class-holder">
+                        <ClassDot classes={classesOf(l.lecture_classes)} size={24} />
+                      </div>
+                      <div className="dash-main">
+                        <h3 className="dash-row-title">{l.title}</h3>
+                        <div className="dash-meta">
+                          <span>
+                            <IconImage /> {images}
+                          </span>
+                          <span>
+                            <IconFile /> {notes}
+                          </span>
+                          <span>{relative(lastUpdated(l))}</span>
+                        </div>
+                      </div>
+                      <div className="dash-actions">
+                        <button
+                          className="dash-btn row-primary"
+                          disabled={busy}
+                          onClick={() => run(async () => navigate(`/teach/${await startSession(l.id, l.title)}`))}
+                        >
+                          <IconPlay /> Start
+                        </button>
+                        <Link className="dash-btn icon-only" to={`/prep/${l.id}`} aria-label={`Edit ${l.title}`} title="Edit">
+                          <IconEdit />
+                        </Link>
+                        {moreMenu(`l:${l.id}`, l.title, [
+                          ...(classesMissing
+                            ? []
+                            : [
+                                {
+                                  label: 'Classes…',
+                                  onClick: () => {
+                                    setMenu(null)
+                                    setPicker({ kind: 'lecture', id: l.id, title: l.title, selected: (l.lecture_classes ?? []).map((x) => x.class_id) })
+                                  },
+                                },
+                              ]),
+                          {
+                            label: 'Archive',
+                            onClick: () =>
+                              run(async () => {
+                                await setArchived(l.id, true)
+                                await load()
+                              }),
+                          },
+                          {
+                            label: 'Delete',
+                            danger: true,
+                            onClick: () => {
+                              setMenu(null)
+                              setToDeleteLecture(l)
                             },
-                          ]),
-                      {
-                        label: 'Archive',
-                        onClick: () =>
-                          run(async () => {
-                            await setArchived(l.id, true)
-                            await load()
-                          }),
-                      },
-                      {
-                        label: 'Delete',
-                        danger: true,
-                        onClick: () => {
-                          setMenu(null)
-                          setToDeleteLecture(l)
-                        },
-                      },
-                    ])}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
+                          },
+                        ])}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </section>
 
-        <section className="dash-section" aria-labelledby="past-heading">
-          <div className="dash-section-head">
-            <h2 id="past-heading" className="dash-label">
-              Past sessions
-            </h2>
-            {shownSessions.length > 1 && <span className="dash-hint">Newest first</span>}
-          </div>
-          {supabaseConfigured && sessions.length === 0 && (
-            <p className="dash-empty">Sessions appear here after you start a lecture.</p>
-          )}
-          {sessions.length > 0 && shownSessions.length === 0 && (
-            <p className="dash-empty">No sessions in {filterName ?? 'this class'} yet.</p>
-          )}
-          <ul className="dash-list">
-            {shownSessions.map((s) => {
-              const title = s.title || s.lectures?.title || 'Lecture'
-              const live = s.status === 'live'
-              return (
-                <li key={s.id} className={`dash-row${live ? '' : ' past'}`}>
-                  <div className="dash-avatar class-holder">
-                    <ClassDot classes={classesOf(s.session_classes)} size={28} />
-                  </div>
-                  <div className="dash-main">
-                    <h3 className="dash-row-title">{title}</h3>
-                    <div className="dash-meta">
-                      <span>
-                        <IconClock /> {sessionWhen(s)}
-                      </span>
-                      {live ? (
-                        <span className="dash-badge live">Live</span>
-                      ) : (
-                        hasNotes(s) && <span className="dash-badge">Notes ready</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="dash-actions">
-                    <Link className="dash-btn quiet" to={`/sessions/${s.id}/raw`}>
-                      Transcript
-                    </Link>
-                    {moreMenu(`s:${s.id}`, title, [
-                      ...(classesMissing
-                        ? []
-                        : [
-                            {
-                              label: 'Classes…',
-                              onClick: () => {
-                                setMenu(null)
-                                setPicker({ kind: 'session', id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })
-                              },
+          {/* ---------- bottom left: Archive ---------- */}
+          <Link className="bento-cell cell-archive" to="/lectures">
+            <span className="archive-text">
+              <span className="dash-label">Archive</span>
+              <span className="archive-sub">
+                {archivedCount === null ? 'All lectures, including archived' : `${plural(archivedCount, 'archived lecture')} · all lectures`}
+              </span>
+            </span>
+            <span className="archive-go" aria-hidden="true">
+              <IconArrowRight />
+            </span>
+          </Link>
+
+          {/* ---------- right: Recorded sessions ---------- */}
+          <section className="bento-cell cell-sessions" aria-labelledby="past-heading">
+            <div className="cell-head">
+              <h2 id="past-heading" className="dash-label">
+                Recorded sessions
+              </h2>
+              <span className="cell-count">{shownSessions.length}</span>
+            </div>
+            <div className="cell-scroll" onScroll={() => menu && setMenu(null)}>
+              {supabaseConfigured && sessions.length === 0 && <p className="dash-empty">Sessions appear here after you start a lecture.</p>}
+              {sessions.length > 0 && shownSessions.length === 0 && (
+                <p className="dash-empty">No sessions in {filterName ?? 'this class'} yet.</p>
+              )}
+              <ul className="dash-list">
+                {shownSessions.map((s) => {
+                  const title = s.title || s.lectures?.title || 'Lecture'
+                  const live = s.status === 'live'
+                  return (
+                    <li key={s.id} className={`dash-row${live ? '' : ' past'}`}>
+                      <div className="dash-avatar class-holder">
+                        <ClassDot classes={classesOf(s.session_classes)} size={24} />
+                      </div>
+                      <div className="dash-main">
+                        <h3 className="dash-row-title">{title}</h3>
+                        <div className="dash-meta">
+                          <span>
+                            <IconClock /> {sessionWhen(s)}
+                          </span>
+                          {live ? (
+                            <span className="dash-badge live">Live</span>
+                          ) : (
+                            hasNotes(s) && <span className="dash-badge">Notes ready</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="dash-actions">
+                        {live ? (
+                          <Link className="dash-btn solid" to={`/teach/${s.id}`}>
+                            <IconPlay /> Resume
+                          </Link>
+                        ) : (
+                          <Link className="dash-btn" to={`/notes/${s.id}`}>
+                            Notes <IconArrowRight />
+                          </Link>
+                        )}
+                        {moreMenu(`s:${s.id}`, title, [
+                          {
+                            label: 'Transcript',
+                            onClick: () => {
+                              setMenu(null)
+                              navigate(`/sessions/${s.id}/raw`)
                             },
-                          ]),
-                      {
-                        label: 'Delete session',
-                        danger: true,
-                        onClick: () => {
-                          setMenu(null)
-                          setToDelete(s)
-                        },
-                      },
-                    ])}
-                    {live ? (
-                      <Link className="dash-btn solid" to={`/teach/${s.id}`}>
-                        <IconPlay /> Resume
-                      </Link>
-                    ) : (
-                      <Link className="dash-btn" to={`/notes/${s.id}`}>
-                        Open notes <IconArrowRight />
-                      </Link>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <p className="dash-footer">
-          Archived lectures live in <Link to="/lectures">Archive</Link>.
-        </p>
-
-        <SystemCheck />
+                          },
+                          ...(classesMissing
+                            ? []
+                            : [
+                                {
+                                  label: 'Classes…',
+                                  onClick: () => {
+                                    setMenu(null)
+                                    setPicker({ kind: 'session', id: s.id, title, selected: (s.session_classes ?? []).map((x) => x.class_id) })
+                                  },
+                                },
+                              ]),
+                          {
+                            label: 'Delete session',
+                            danger: true,
+                            onClick: () => {
+                              setMenu(null)
+                              setToDelete(s)
+                            },
+                          },
+                        ])}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          </section>
+        </div>
       </div>
 
       <ConfirmDialog

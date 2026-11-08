@@ -637,3 +637,356 @@
   min-width: var(--tap);
   padding: 0 var(--sp-2);
 }
+
+/* =====================================================================
+   Bento dashboard: header, class filter, then a grid that fills the rest
+   of the screen. The page never scrolls; each list scrolls in its card.
+   ===================================================================== */
+.dash.bento-page {
+  height: 100vh;
+  height: 100dvh; /* excludes iPad Safari's toolbars */
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bento-inner {
+  height: 100%;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: var(--sp-4) var(--sp-6) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.bento-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-shrink: 0;
+}
+
+.bento-header .dash-logo img {
+  height: 40px;
+}
+
+/* ---------- class filter: 40px pills inside 64px tap areas ---------- */
+.bento-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 calc(-1 * var(--sp-1));
+  padding: 0 var(--sp-1);
+}
+
+.bento-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.dash .chip {
+  min-height: var(--tap);
+  min-width: 48px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--c-fg);
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.chip-pill {
+  height: 40px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-pill);
+  background: var(--c-card);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.chip.on .chip-pill {
+  background: var(--c-fg);
+  border-color: var(--c-fg);
+  color: var(--c-card);
+}
+
+.chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.chip.on .chip-dot {
+  box-shadow: 0 0 0 2px var(--c-card);
+}
+
+.chip.add .chip-pill {
+  width: 40px;
+  padding: 0;
+  justify-content: center;
+  background: transparent;
+  border: 1px dashed var(--c-line-strong);
+  color: var(--c-muted);
+}
+
+.chip.add svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) {
+  .chip:not(.on):hover .chip-pill {
+    background: var(--c-soft);
+  }
+}
+
+.dash .chip:focus-visible {
+  outline: none;
+}
+
+.dash .chip:focus-visible .chip-pill {
+  outline: 3px solid var(--c-fg);
+  outline-offset: 2px;
+}
+
+.bento-notices {
+  flex-shrink: 0;
+}
+
+.bento-notices .dash-notice {
+  margin: 0 0 var(--sp-2);
+}
+
+/* ---------- grid ---------- */
+.bento {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+}
+
+.cell-ready {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.cell-archive {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.cell-sessions {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.bento-cell {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-card);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.cell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-2);
+  flex-shrink: 0;
+}
+
+.cell-count {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--c-soft);
+  color: var(--c-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-5) var(--sp-2);
+}
+
+.bento .dash-empty {
+  margin: var(--sp-2) 0;
+  font-size: 15px;
+}
+
+/* Rows inside a card: one line, title truncates instead of pushing buttons down. */
+.bento .dash-row {
+  flex-wrap: nowrap;
+  padding: var(--sp-2) 0;
+  gap: var(--sp-3);
+}
+
+.bento .dash-main {
+  min-width: 0;
+}
+
+.bento .dash-row-title {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bento .dash-meta {
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 13px;
+  gap: 4px 12px;
+}
+
+.bento .dash-meta svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bento .dash-avatar.class-holder {
+  width: 24px;
+  height: 24px;
+}
+
+.bento .dash-actions {
+  margin-left: auto;
+  width: auto;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.bento .dash-btn.row-primary,
+.bento .dash-btn.solid {
+  padding: 0 var(--sp-4);
+  gap: var(--sp-2);
+  font-size: 15px;
+}
+
+/* ---------- Archive: one clean link card ---------- */
+.dash .cell-archive {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  min-height: 88px;
+  padding: var(--sp-4) var(--sp-5);
+  color: var(--c-fg);
+  text-decoration: none;
+  transition: background-color 0.15s var(--ease);
+}
+
+.archive-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.archive-sub {
+  font-size: 15px;
+  color: var(--c-muted);
+}
+
+.archive-go {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--c-line-strong);
+  display: grid;
+  place-items: center;
+}
+
+@media (hover: hover) {
+  .dash .cell-archive:hover {
+    background: var(--c-sunken);
+  }
+}
+
+/* ⋯ menu floats above the page so a scrolling card can't clip it. */
+.dash .dash-menu.floating {
+  position: fixed;
+  right: auto;
+  top: auto;
+  z-index: 51;
+  min-width: 0;
+}
+
+.dash-menu-wrap .dash-menu-backdrop {
+  z-index: 50;
+}
+
+/* ---------- narrower screens (portrait iPad): stack, still one screen ---------- */
+@media (max-width: 960px) {
+  .bento {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  .cell-ready {
+    grid-row: 1;
+  }
+  .cell-sessions {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .cell-archive {
+    grid-row: 3;
+  }
+  .bento-inner {
+    padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  }
+}
+
+/* ---------- phones / very short windows: let the page scroll instead of crushing the lists ---------- */
+@media (max-width: 600px), (max-height: 560px) {
+  .dash.bento-page {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .bento {
+    grid-template-rows: auto auto auto;
+  }
+  .cell-scroll {
+    max-height: 60vh;
+  }
+  .bento-inner {
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip-pill,
+  .dash .cell-archive {
+    transition: none;
+  }
+}
