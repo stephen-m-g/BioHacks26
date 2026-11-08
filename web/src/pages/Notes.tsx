@@ -7,7 +7,7 @@ import SessionHeader from '../components/SessionHeader'
 import RichText from '../components/RichText'
 import { useSessionData } from '../hooks/useSessionData'
 import { api } from '../lib/api'
-import { formatDate } from '../lib/lectures'
+import { formatDate, renameSession } from '../lib/lectures'
 import { pageInfo } from '../lib/pdfPages'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
@@ -104,6 +104,7 @@ export default function Notes() {
       <SessionHeader
         sessionId={sessionId}
         title={title}
+        onRename={student ? undefined : (name) => renameSession(sessionId, name).then(() => data.patchSession({ title: name }))}
         view="notes"
         student={student}
         when={data.session ? formatDate(data.session.started_at) : undefined}

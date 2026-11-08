@@ -1,16 +1,15 @@
 // P4 owns this page. Every recorded session, newest first: open notes (or resume a live one),
-// rename, set classes, delete (the notes screen switches to the transcript). Opened from the arrow on the dashboard's
+// set classes, delete (rename it from its notes screen). Opened from the arrow on the dashboard's
 // Recorded sessions card. Same layout as the Lectures and Archive pages.
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ClassFilterBar, useClassFilter } from '../components/ClassFilter'
 import { ClassDotButton, ClassPickerDialog, ManageClassesDialog, type ClassEdits } from '../components/Classes'
 import ConfirmDialog from '../components/ConfirmDialog'
-import RenameDialog from '../components/RenameDialog'
 import { IconArrowLeft, IconArrowRight, IconClock, IconPlay } from '../components/DashIcons'
 import RowMenu, { SortMenu, sortRows, useSortOrder } from '../components/RowMenu'
 import { createClass, deleteClass, listClasses, setSessionClasses, updateClass } from '../lib/classes'
-import { deleteSession, formatDate, renameSession } from '../lib/lectures'
+import { deleteSession, formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { ClassGroup, Session } from '../types'
 import '../styles/p4.css'
@@ -50,7 +49,6 @@ export default function Sessions() {
   const [rows, setRows] = useState<Row[]>([])
   const [error, setError] = useState<string | null>(null)
   const [toDelete, setToDelete] = useState<Row | null>(null)
-  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null)
   const [classes, setClasses] = useState<ClassGroup[]>([])
   const [picker, setPicker] = useState<{ id: string; title: string; selected: string[] } | null>(null)
   const [classesOk, setClassesOk] = useState(false)
@@ -143,7 +141,6 @@ export default function Sessions() {
           <RowMenu
             label={title}
             items={[
-              { label: 'Rename…', onClick: () => setRenaming({ id: s.id, title }) },
               { label: 'Delete session', danger: true, onClick: () => setToDelete(s) },
             ]}
           />
@@ -223,18 +220,6 @@ export default function Sessions() {
         {toDelete && titleOf(toDelete)} from {formatDate(toDelete?.started_at)}. Its board, transcript and notes are deleted permanently.
         The prepared lecture is kept.
       </ConfirmDialog>
-
-      <RenameDialog
-        open={renaming !== null}
-        current={renaming?.title ?? ''}
-        onCancel={() => setRenaming(null)}
-        onSave={(name) =>
-          act(async () => {
-            if (renaming) await renameSession(renaming.id, name)
-            setRenaming(null)
-          })
-        }
-      />
 
       <ClassPickerDialog
         open={picker !== null}

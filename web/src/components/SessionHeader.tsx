@@ -1,6 +1,7 @@
 // Header for a session's two views (study notes and transcript), matching the list pages and the lecture
 // editor: ← back + the session's title, then a row with the Study notes / Transcript switch, the date and
 // (notes only) Print. Students (?student=1 on the notes) get no transcript switch and go back to the board.
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { IconArrowLeft, IconClock, IconPrinter } from './DashIcons'
 import '../styles/p4.css'
@@ -19,6 +20,44 @@ export function useSessionReturn() {
   return { to, label: RETURN_LABELS[to], state: to === '/' ? undefined : { from: to } }
 }
 
+/** The session's name, edited in place: Enter or leaving the field saves, Escape puts it back. Empty keeps the old name. */
+function TitleField({ title, onRename }: { title: string; onRename: (name: string) => Promise<unknown> }) {
+  const [value, setValue] = useState(title)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setValue(title), [title])
+
+  const commit = () => {
+    const next = value.trim()
+    if (!next || next === title) return setValue(title)
+    setFailed(false)
+    onRename(next).catch(() => {
+      setFailed(true)
+      setValue(title)
+    })
+  }
+
+  return (
+    <input
+      className="lp-title lp-title-input"
+      aria-label="Session name"
+      title={failed ? 'Couldn’t rename this session. Try again.' : 'Rename this session'}
+      value={value}
+      placeholder="Session name"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') {
+          setValue(title)
+          // Blur after the reset renders, so commit sees the old name and does nothing.
+          const el = e.currentTarget
+          requestAnimationFrame(() => el.blur())
+        }
+      }}
+    />
+  )
+}
+
 export default function SessionHeader({
   sessionId,
   title,
@@ -26,7 +65,10 @@ export default function SessionHeader({
   when,
   student = false,
   onPrint,
+  onRename,
 }: {
+  /** Makes the title an editable field (like the lecture editor's); saves on Enter or when it loses focus. */
+  onRename?: (name: string) => Promise<unknown>
   sessionId: string
   title: string
   view: 'notes' | 'transcript'
@@ -48,7 +90,11 @@ export default function SessionHeader({
             <IconArrowLeft />
           </span>
         </Link>
-        <h1 className="lp-title">{title}</h1>
+        {onRename && !student ? (
+          <TitleField title={title} onRename={onRename} />
+        ) : (
+          <h1 className="lp-title">{title}</h1>
+        )}
         <span aria-hidden="true" />
       </header>
 

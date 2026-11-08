@@ -72,6 +72,30 @@
   text-overflow: ellipsis;
 }
 
+/* A session's name, editable in place: looks like the heading, with the lecture editor's underline cue */
+input.lp-title-input {
+  width: 100%;
+  min-width: 0;
+  height: 56px;
+  padding: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--c-fg);
+}
+
+@media (hover: hover) {
+  input.lp-title-input:hover {
+    border-bottom-color: var(--c-soft);
+  }
+}
+
+input.lp-title-input:focus {
+  outline: none;
+  border-bottom-color: var(--c-fg);
+}
+
 /* ---------- body: the editor's 868px column; the card takes the remaining height ---------- */
 .lp-body {
   flex: 1;
