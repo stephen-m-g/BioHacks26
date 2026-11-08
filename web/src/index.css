@@ -1023,6 +1023,16 @@ textarea {
   stroke-width: 4;
 }
 
+.lasso-confirmed.hoverable:focus {
+  outline: none;
+}
+
+.lasso-confirmed.hoverable:focus-visible {
+  fill: rgba(250, 204, 21, 0.35);
+  stroke: #713f12;
+  stroke-width: 5;
+}
+
 .lasso-actions {
   position: absolute;
   display: flex;
@@ -1073,7 +1083,7 @@ textarea {
 }
 
 .annotation-popover p {
-  margin: 6px 0 10px;
+  margin: 6px 0 0;
 }
 
 /* ---------- notes / raw ---------- */

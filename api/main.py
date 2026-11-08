@@ -9,7 +9,8 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from collections import Counter
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
 from dotenv import load_dotenv
@@ -82,13 +83,13 @@ def refine_batch(db, session_id: str) -> RefineOut:
     t0 = time.perf_counter()
     unrefined = (
         db.table("transcript_segments")
-        .select("id, raw_text, t_start, created_at")
+        .select("id, raw_text, t_start, t_end, created_at")
         .eq("session_id", session_id)
         .is_("text_block_id", "null")
-        .order("created_at")
         .execute()
         .data
     )
+    unrefined.sort(key=segment_order_key)
     segs, words = [], 0
     for s in unrefined:
         segs.append(s)
@@ -109,9 +110,10 @@ def refine_batch(db, session_id: str) -> RefineOut:
 
     raw = " ".join(s["raw_text"].strip() for s in segs if s["raw_text"].strip())
     # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
-    out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, raw)], RefineGemini,
+    out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, segs)], RefineGemini,
                                  timeout_ms=10_000, model=os.getenv("GEMINI_REFINE_MODEL") or None, thinking="LOW")
-    text = choose_refined_text(raw, out.text if out else None)
+    cleaned_segments = choose_refined_segments(segs, out)
+    text, offsets = join_refined_segments(cleaned_segments)
 
     t_write = time.perf_counter()
     block = (
@@ -121,18 +123,80 @@ def refine_batch(db, session_id: str) -> RefineOut:
         .data[0]
     )
     ids = [s["id"] for s in segs]
-    db.table("transcript_segments").update({"text_block_id": block["id"]}).in_("id", ids).execute()
+    for segment, (text_start, text_end) in zip(segs, offsets):
+        db.table("transcript_segments").update({
+            "text_block_id": block["id"], "text_start": text_start, "text_end": text_end,
+        }).eq("id", segment["id"]).execute()
     log.info("[refine] segs=%d words=%d left=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids), words,
              len(unrefined) - len(ids), db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
     return RefineOut(block=block, segment_ids=ids)
 
 
-def refine_prompt(vocab: list[str], prev_text: str, raw: str) -> str:
+def refine_prompt(vocab: list[str], prev_text: str, segments: list[dict]) -> str:
+    source = "\n".join(f"[SEGMENT id={segment['id']}] {segment['raw_text'].strip()}" for segment in segments)
     return (
         f"Lecture vocabulary: {', '.join(vocab) if vocab else '(none)'}\n\n"
         f"Previous paragraph: {prev_text[-600:] or '(none)'}\n\n"
-        f"New raw speech: {raw}"
+        f"New raw speech segments in chronological order:\n{source}"
     )
+
+
+def choose_refined_segments(segments: list[dict], out: RefineGemini | None) -> list[str]:
+    """Accept cleanup only when Gemini preserves every stable segment id in exact source order."""
+    raw_parts = [segment["raw_text"].strip() for segment in segments]
+    if out and out.segments:
+        expected_ids = [segment["id"] for segment in segments]
+        if [segment.id for segment in out.segments] == expected_ids:
+            candidates = [segment.text.strip() for segment in out.segments]
+            if all(candidates) and not cross_segment_token_leak(raw_parts, candidates) and all(
+                choose_refined_text(raw_part, candidate) == candidate
+                for raw_part, candidate in zip(raw_parts, candidates)
+            ):
+                return candidates
+        log.warning("[refine] rejected Gemini segment map that changed source ids/order/boundaries")
+    elif out and len(segments) == 1:
+        return [choose_refined_text(raw_parts[0], out.text)]
+    return raw_parts
+
+
+def cross_segment_token_leak(raw_parts: list[str], candidates: list[str]) -> bool:
+    """Reject exact words removed from one stable source id and added to another."""
+    token_counts = lambda value: Counter(re.findall(r"[a-z0-9]+", value.lower()))
+    raw_counts = [token_counts(part) for part in raw_parts]
+    candidate_counts = [token_counts(part) for part in candidates]
+    tokens = set().union(*(counts.keys() for counts in raw_counts + candidate_counts))
+    for token in tokens:
+        deficits = [i for i, counts in enumerate(raw_counts) if counts[token] > candidate_counts[i][token]]
+        excesses = [i for i, counts in enumerate(candidate_counts) if counts[token] > raw_counts[i][token]]
+        if any(source != destination for source in deficits for destination in excesses):
+            return True
+    return False
+
+
+def utf16_length(value: str) -> int:
+    """Return browser-compatible String.length units for persisted source spans."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def join_refined_segments(parts: list[str]) -> tuple[str, list[tuple[int, int]]]:
+    """Join with one space and return exact half-open UTF-16 offsets for every source segment."""
+    text = ""
+    offsets = []
+    for part in parts:
+        if text:
+            text += " "
+        start = utf16_length(text)
+        text += part
+        offsets.append((start, utf16_length(text)))
+    return text, offsets
+
+
+def segment_order_key(segment: dict) -> tuple[str, str, str, str]:
+    """Speech occurrence first; callback/save time and id only break ties deterministically."""
+    created = segment.get("created_at") or ""
+    start = segment.get("t_start") or created
+    end = segment.get("t_end") or start
+    return start, end, created, segment.get("id") or ""
 
 
 def choose_refined_text(raw: str, candidate: str | None) -> str:
@@ -256,8 +320,7 @@ def asset_contents(asset: dict) -> list | None:
 
 @app.post("/annotations/{annotation_id}/close", response_model=CloseOut)
 def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOut:
-    """Confirm a lasso and pick the teacher's words about it.
-    Fallback: label "Annotation", bubble_text = joined candidate text (max 70 words)."""
+    """Confirm a lasso and clean all speech deterministically captured while it was open."""
     t0 = time.perf_counter()
     db = get_db()
     rows = db.table("annotations").select("*").eq("id", annotation_id).limit(1).execute().data
@@ -270,7 +333,7 @@ def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOu
         db.table("annotations").update({"status": "confirmed", "closed_at": closed_at.isoformat()}) \
             .eq("id", annotation_id).execute()
 
-    segs = close_candidates(db, ann, closed_at)
+    segs = reconcile_annotation_segments(db, ann, closed_at)
     asset = block_asset(db, ann.get("block_id"))
     vocab = lecture_vocab(db, ann["session_id"]) if segs else []
     image = selection_image(body, asset, ann.get("bbox"))
@@ -283,54 +346,55 @@ def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOu
     if vocab:
         contents.append(f"Lecture vocabulary: {', '.join(vocab)}")
     if segs:
-        lines = [f"{i}. {'[OPEN] ' if s.get('annotation_id') == annotation_id else ''}{s['raw_text'].strip()}"
-                 for i, s in enumerate(segs, 1)]
-        contents.append("Transcript (numbered):\n" + "\n".join(lines) +
-                        "\n\nAlso return used_segments: the line numbers your bubble_text came from.")
+        lines = [f"{i}. {s['raw_text'].strip()}" for i, s in enumerate(segs, 1)]
+        contents.append("Captured transcript (numbered, all lines belong to this annotation):\n" + "\n".join(lines) +
+                        "\n\nClean every line in order. Return all line numbers in used_segments.")
     else:
         contents.append("Transcript: (he said nothing). Return bubble_text \"\" and used_segments [].")
 
     out, gemini_ms = ai.generate("close", prompts.CLOSE, contents, CloseGemini, timeout_ms=20_000)
     if out:
         label = out.label.strip() or "Annotation"
-        bubble = truncate_words(out.bubble_text.strip(), 70) or None
-        used = [segs[n - 1] for n in out.used_segments if 1 <= n <= len(segs)] if bubble else []
+        raw = " ".join(s["raw_text"].strip() for s in segs)
+        bubble = choose_refined_text(raw, out.bubble_text) or None
     else:
         label = "Annotation"
-        # Without Gemini, speech from while the lasso was open ([OPEN]) is the best guess; else the whole window.
-        used = [s for s in segs if s.get("annotation_id") == annotation_id] or segs
-        bubble = truncate_words(" ".join(s["raw_text"].strip() for s in used), 70) or None
+        bubble = " ".join(s["raw_text"].strip() for s in segs) or None
     if not segs:
         bubble = None
 
     t_write = time.perf_counter()
     db.table("annotations").update({"label": label, "bubble_text": bubble}).eq("id", annotation_id).execute()
-    # Link the segments used (without stealing another annotation's), and untag tagged ones it didn't use.
-    link = [s["id"] for s in used if s.get("annotation_id") in (None, annotation_id)]
-    if link:
-        db.table("transcript_segments").update({"annotation_id": annotation_id}).in_("id", link).execute()
-    unused = [s["id"] for s in segs if s.get("annotation_id") == annotation_id and s["id"] not in link]
-    if unused and out:
-        db.table("transcript_segments").update({"annotation_id": None}).in_("id", unused).execute()
-    log.info("[close] segs=%d used=%d image=%s db=%.0fms gemini=%.0fms total=%.0fms%s", len(segs), len(link),
+    log.info("[close] segs=%d image=%s db=%.0fms gemini=%.0fms total=%.0fms%s", len(segs),
              "yes" if image else "no", db_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback)")
     return CloseOut(label=label, bubble_text=bubble)
 
 
-def close_candidates(db, ann: dict, closed_at: datetime) -> list[dict]:
-    """Segments from 5 s before the lasso until it was confirmed, plus any tagged with it, in time order."""
+def reconcile_annotation_segments(db, ann: dict, closed_at: datetime) -> list[dict]:
+    """Link only unowned segments fully contained in [drawn_at, closed_at]; never steal or guess crossings."""
     drawn_at = parse_ts(ann["drawn_at"]) if ann.get("drawn_at") else closed_at
-    cols = "id, raw_text, t_start, created_at, annotation_id"
-    window = (
-        db.table("transcript_segments").select(cols)
-        .eq("session_id", ann["session_id"])
-        .gte("t_start", (drawn_at - timedelta(seconds=5)).isoformat())
-        .lte("t_start", closed_at.isoformat())
-        .execute().data
-    )
-    tagged = db.table("transcript_segments").select(cols).eq("annotation_id", ann["id"]).execute().data
-    by_id = {s["id"]: s for s in window + tagged if (s.get("raw_text") or "").strip()}
-    return sorted(by_id.values(), key=lambda s: s.get("t_start") or s.get("created_at") or "")
+    cols = "id, raw_text, t_start, t_end, created_at, annotation_id"
+    rows = (db.table("transcript_segments").select(cols)
+            .eq("session_id", ann["session_id"]).execute().data)
+    link, unlink = [], []
+    for segment in rows:
+        start = parse_ts(segment["t_start"]) if segment.get("t_start") else None
+        end = parse_ts(segment["t_end"]) if segment.get("t_end") else start
+        contained = start is not None and end is not None and drawn_at <= start and end <= closed_at
+        if segment.get("annotation_id") == ann["id"] and not contained:
+            unlink.append(segment["id"])
+        elif segment.get("annotation_id") is None and contained:
+            link.append(segment["id"])
+    if unlink:
+        db.table("transcript_segments").update({"annotation_id": None}).in_("id", unlink).execute()
+    if link:
+        db.table("transcript_segments").update({"annotation_id": ann["id"]}).in_("id", link).execute()
+    captured = [
+        segment for segment in rows
+        if segment["id"] not in unlink and (segment.get("annotation_id") == ann["id"] or segment["id"] in link)
+        and (segment.get("raw_text") or "").strip()
+    ]
+    return sorted(captured, key=segment_order_key)
 
 
 def block_asset(db, block_id: str | None) -> dict:
@@ -401,8 +465,14 @@ def compile_session(session_id: str) -> NotesContent:
         while refine_batch(db, session_id).block is not None:
             pass
     blocks = db.table("blocks").select("*").eq("session_id", session_id).order("position").execute().data
-    anns = (db.table("annotations").select("id, block_id, label, bubble_text")
+    segments = (db.table("transcript_segments").select("id, text_block_id, t_start, t_end, created_at")
+                .eq("session_id", session_id).execute().data)
+    blocks = chronological_blocks(blocks, segments)
+    anns = (db.table("annotations").select("id, session_id, block_id, status, drawn_at, closed_at, label, bubble_text")
             .eq("session_id", session_id).eq("status", "confirmed").execute().data)
+    for ann in anns:
+        closed_at = parse_ts(ann["closed_at"]) if ann.get("closed_at") else datetime.now(timezone.utc)
+        reconcile_annotation_segments(db, ann, closed_at)
     assets = (db.table("assets").select("id, kind, label, description, text_content, file_name")
               .eq("lecture_id", lecture_id).execute().data)
     db_ms = ms(t0)
@@ -418,6 +488,26 @@ def compile_session(session_id: str) -> NotesContent:
     log.info("[compile] blocks=%d anns=%d sections=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(blocks),
              len(anns), len(notes.sections), db_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback)")
     return notes
+
+
+def chronological_blocks(blocks: list[dict], segments: list[dict]) -> list[dict]:
+    """Order text blocks by their earliest spoken segment while leaving image slots in place."""
+    ordered = sorted(blocks, key=lambda block: (block.get("position", 0), block.get("id") or ""))
+    by_block: dict[str, list[dict]] = {}
+    for segment in segments:
+        if segment.get("text_block_id"):
+            by_block.setdefault(segment["text_block_id"], []).append(segment)
+    timed_indexes = [
+        index for index, block in enumerate(ordered)
+        if block["kind"] == "text" and by_block.get(block["id"])
+    ]
+    timed_blocks = sorted(
+        (ordered[index] for index in timed_indexes),
+        key=lambda block: (min(segment_order_key(segment) for segment in by_block[block["id"]]), block["id"]),
+    )
+    for index, block in zip(timed_indexes, timed_blocks):
+        ordered[index] = block
+    return ordered
 
 
 def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
@@ -474,7 +564,43 @@ def clean_notes(notes: NotesContent, blocks: list, anns: list, title: str) -> No
         fallback.overview = notes.overview.strip()
         fallback.review_questions = notes.review_questions
         return fallback
+    text_blocks = [b for b in blocks if b["kind"] == "text" and (b.get("text") or "").strip()]
+    block_index = 0
+    for section in notes.sections:
+        count = len(section.paragraphs)
+        section.paragraph_block_ids = [block["id"] for block in text_blocks[block_index:block_index + count]]
+        block_index += count
+    ensure_annotation_figures(notes, blocks, anns)
     return notes
+
+
+def ensure_annotation_figures(notes: NotesContent, blocks: list, anns: list) -> None:
+    """Every annotated image appears once; its section owns every confirmed annotation on that image."""
+    if not notes.sections:
+        return
+    valid_images = {block["id"] for block in blocks if block["kind"] == "image"}
+    seen: set[str] = set()
+    for section in notes.sections:
+        unique = []
+        for figure in section.figures:
+            if figure.image_block_id in valid_images and figure.image_block_id not in seen:
+                seen.add(figure.image_block_id)
+                unique.append(figure)
+        section.figures = unique
+
+    annotated_images = []
+    for block in blocks:
+        if block["kind"] == "image" and any(ann["block_id"] == block["id"] for ann in anns):
+            annotated_images.append(block["id"])
+    for image_id in annotated_images:
+        if image_id not in seen:
+            notes.sections[-1].figures.append(Figure(image_block_id=image_id, caption=""))
+            seen.add(image_id)
+
+    ordered_annotations = sorted(anns, key=lambda ann: (ann.get("drawn_at") or "", ann["id"]))
+    for section in notes.sections:
+        figure_ids = {figure.image_block_id for figure in section.figures}
+        section.annotation_ids = [ann["id"] for ann in ordered_annotations if ann["block_id"] in figure_ids]
 
 
 def fallback_notes(title: str, blocks: list, anns: list) -> NotesContent:
@@ -491,6 +617,7 @@ def fallback_notes(title: str, blocks: list, anns: list) -> NotesContent:
             s.annotation_ids += [a["id"] for a in anns if a["block_id"] == b["id"]]
         elif (b.get("text") or "").strip():
             s.paragraphs.append(b["text"].strip())
+            s.paragraph_block_ids.append(b["id"])
     sections = [s for s in sections if s.paragraphs or s.figures]
     return NotesContent(title=title, overview="", sections=sections, review_questions=[])
 

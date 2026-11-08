@@ -3,20 +3,116 @@ import type { Annotation, TranscriptSegment } from '../types'
 type ExplanationAnnotation = Pick<Annotation, 'id' | 'bubble_text'>
 type ExplanationSegment = Pick<TranscriptSegment, 'annotation_id' | 'raw_text' | 't_start' | 'created_at'>
 
-/** Prefer /close's cleaned speech, then recover faithfully from persisted annotation-linked raw segments. */
+type ImageAnnotation = Pick<Annotation, 'id' | 'block_id' | 'status' | 'drawn_at'>
+
+type SpanSegment = Pick<
+  TranscriptSegment,
+  'id' | 'text_block_id' | 'text_start' | 'text_end' | 'annotation_id'
+>
+
+export interface TranscriptParagraphPart {
+  text: string
+  segmentId: string | null
+  annotationId: string | null
+}
+
+export function isTranscriptPartHighlighted(
+  part: TranscriptParagraphPart,
+  selectedAnnotationId: string | null,
+): boolean {
+  return selectedAnnotationId !== null && part.annotationId === selectedAnnotationId
+}
+
+/** Cards are a one-to-one projection of persisted confirmed circles, never Gemini's selection. */
+export function annotationsForImage<T extends ImageAnnotation>(annotations: T[], blockId: string): T[] {
+  return annotations
+    .filter((annotation) => annotation.block_id === blockId && annotation.status === 'confirmed')
+    .sort((a, b) => a.drawn_at.localeCompare(b.drawn_at) || a.id.localeCompare(b.id))
+}
+
+export const NO_EXPLANATION = 'No explanation recorded.'
+
+export interface AnnotationCard {
+  id: string
+  title: string
+  text: string
+}
+
+type CardAnnotation = ImageAnnotation & ExplanationAnnotation & Pick<Annotation, 'label'>
+
+/** One compact card per confirmed circle on the image, keyed by the persisted annotation ID. */
+export function annotationCardsForImage(
+  annotations: CardAnnotation[],
+  blockId: string,
+  segments: ExplanationSegment[],
+): AnnotationCard[] {
+  return annotationsForImage(annotations, blockId).map((annotation, index) => ({
+    id: annotation.id,
+    title: annotation.label?.trim() || `Annotation ${index + 1}`,
+    text: annotationExplanation(annotation, segments) || NO_EXPLANATION,
+  }))
+}
+
+/**
+ * Gemini key terms restate what the teacher said about circled regions, so a section that shows
+ * annotation cards drops its key terms, and no key term may repeat an annotation's title elsewhere.
+ */
+export function studyKeyTerms<T extends { term: string }>(
+  keyTerms: T[],
+  sectionHasAnnotationCards: boolean,
+  annotationTitles: string[],
+): T[] {
+  if (sectionHasAnnotationCards) return []
+  const normalize = (value: string) => value.trim().toLowerCase()
+  const titles = new Set(annotationTitles.map(normalize))
+  return keyTerms.filter((keyTerm) => !titles.has(normalize(keyTerm.term)))
+}
+
+/** Build display spans only from persisted source offsets; invalid/legacy mappings remain unhighlighted. */
+export function transcriptParagraphParts(
+  paragraph: string,
+  blockId: string | undefined,
+  segments: SpanSegment[],
+): TranscriptParagraphPart[] {
+  if (!blockId) return [{ text: paragraph, segmentId: null, annotationId: null }]
+  const linked = segments
+    .filter(
+      (segment) =>
+        segment.text_block_id === blockId &&
+        Number.isInteger(segment.text_start) &&
+        Number.isInteger(segment.text_end) &&
+        segment.text_start! >= 0 &&
+        segment.text_end! > segment.text_start! &&
+        segment.text_end! <= paragraph.length,
+    )
+    .sort((a, b) => a.text_start! - b.text_start! || a.text_end! - b.text_end! || a.id.localeCompare(b.id))
+  const parts: TranscriptParagraphPart[] = []
+  let cursor = 0
+  for (const segment of linked) {
+    const start = segment.text_start!
+    const end = segment.text_end!
+    if (start < cursor) continue
+    if (start > cursor) parts.push({ text: paragraph.slice(cursor, start), segmentId: null, annotationId: null })
+    parts.push({ text: paragraph.slice(start, end), segmentId: segment.id, annotationId: segment.annotation_id })
+    cursor = end
+  }
+  if (cursor < paragraph.length) {
+    parts.push({ text: paragraph.slice(cursor), segmentId: null, annotationId: null })
+  }
+  return parts.length > 0 ? parts : [{ text: paragraph, segmentId: null, annotationId: null }]
+}
+
+/** Persisted linked segments are complete source-of-truth speech; the saved bubble is a legacy fallback. */
 export function annotationExplanation(
   annotation: ExplanationAnnotation,
   segments: ExplanationSegment[],
 ): string | null {
-  const saved = annotation.bubble_text?.trim()
-  if (saved) return saved
-
   const linked = segments
     .filter((segment) => segment.annotation_id === annotation.id && segment.raw_text.trim())
     .sort((a, b) => (a.t_start ?? a.created_at).localeCompare(b.t_start ?? b.created_at))
     .map((segment) => segment.raw_text.trim())
     .join(' ')
-  if (!linked) return null
+  if (!linked) return annotation.bubble_text?.trim() || null
 
   const cleaned = linked
     .replace(/\b(?:um+|uh+)\b[\s,]*/gi, '')

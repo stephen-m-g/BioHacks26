@@ -143,6 +143,140 @@ interface Utterance<T> {
   text: string
 }
 
+export interface ScribeWordTimestamp {
+  text?: string
+  start?: number
+  end?: number
+  type?: 'word' | 'spacing' | 'audio_event'
+}
+
+export interface TimestampedTranscript {
+  text: string
+  tStart: string
+  tEnd: string
+}
+
+export interface AnnotationCaptureInterval {
+  annotationId: string
+  drawnAt: string
+  closedAt: string | null
+}
+
+export interface AnnotationTranscriptPart extends TimestampedTranscript {
+  annotationId: string | null
+}
+
+/** Convert Scribe's cumulative input-audio clock to persisted wall-clock occurrence times. */
+export function timestampedTranscript(
+  text: string,
+  words: readonly ScribeWordTimestamp[] | undefined,
+  audioStartedAt: number | null,
+  fallbackStart: string,
+  fallbackEnd: string,
+): TimestampedTranscript {
+  const starts = (words ?? []).map((word) => word.start).filter((value): value is number => Number.isFinite(value))
+  const ends = (words ?? []).map((word) => word.end).filter((value): value is number => Number.isFinite(value))
+  if (audioStartedAt === null || starts.length === 0 || ends.length === 0) {
+    return { text, tStart: fallbackStart, tEnd: fallbackEnd }
+  }
+  return {
+    text,
+    tStart: new Date(audioStartedAt + Math.min(...starts) * 1_000).toISOString(),
+    tEnd: new Date(audioStartedAt + Math.max(...ends) * 1_000).toISOString(),
+  }
+}
+
+function containingInterval(
+  startMs: number,
+  endMs: number,
+  intervals: readonly AnnotationCaptureInterval[],
+): string | null {
+  const interval = intervals.find((item) => {
+    const drawnAt = Date.parse(item.drawnAt)
+    const closedAt = item.closedAt ? Date.parse(item.closedAt) : Number.POSITIVE_INFINITY
+    return drawnAt <= startMs && endMs <= closedAt
+  })
+  return interval?.annotationId ?? null
+}
+
+/** Split a delayed commit at word boundaries and assign each word by when it was spoken. */
+export function partitionTimestampedTranscript(
+  text: string,
+  words: readonly ScribeWordTimestamp[] | undefined,
+  audioStartedAt: number | null,
+  fallbackStart: string,
+  fallbackEnd: string,
+  intervals: readonly AnnotationCaptureInterval[],
+): AnnotationTranscriptPart[] {
+  const wordsWithText = (words ?? []).filter((word): word is ScribeWordTimestamp & { text: string } =>
+    typeof word.text === 'string',
+  )
+  const timedWords = (words ?? []).filter(
+    (word): word is ScribeWordTimestamp & { text: string; start: number; end: number } =>
+      typeof word.text === 'string' && Number.isFinite(word.start) && Number.isFinite(word.end),
+  )
+  const completeTiming =
+    timedWords.length > 0 &&
+    timedWords.length === wordsWithText.length &&
+    wordsWithText.map((word) => word.text).join('') === text
+  if (audioStartedAt === null || !completeTiming) {
+    const startMs = Date.parse(fallbackStart)
+    const endMs = Date.parse(fallbackEnd)
+    const interval = intervals.find((item) => {
+      const drawnAt = Date.parse(item.drawnAt)
+      const closedAt = item.closedAt ? Date.parse(item.closedAt) : Number.POSITIVE_INFINITY
+      return drawnAt <= startMs && endMs <= closedAt
+    })
+    return [{ text, tStart: fallbackStart, tEnd: fallbackEnd, annotationId: interval?.annotationId ?? null }]
+  }
+
+  const parts: Array<{
+    text: string
+    startMs: number
+    endMs: number
+    annotationId: string | null
+  }> = []
+  for (const word of timedWords) {
+    const startMs = audioStartedAt + word.start * 1_000
+    const endMs = audioStartedAt + word.end * 1_000
+    const annotationId = containingInterval(startMs, endMs, intervals)
+    const current = parts.at(-1)
+    if (current?.annotationId === annotationId) {
+      current.text += word.text
+      current.endMs = Math.max(current.endMs, endMs)
+    } else {
+      parts.push({ text: word.text, startMs, endMs, annotationId })
+    }
+  }
+  return parts
+    .map((part) => ({
+      text: part.text.trim(),
+      tStart: new Date(part.startMs).toISOString(),
+      tEnd: new Date(part.endMs).toISOString(),
+      annotationId: part.annotationId,
+    }))
+    .filter((part) => part.text.length > 0)
+}
+
+/** Correlates delayed timestamp messages with stable commits, including repeated identical text. */
+export class TimestampedCommitQueue<T> {
+  private pending: Array<{ text: string; value: T }> = []
+
+  push(text: string, value: T): void {
+    this.pending.push({ text, value })
+  }
+
+  take(text: string): T | null {
+    const index = this.pending.findIndex((item) => item.text === text)
+    if (index < 0) return null
+    return this.pending.splice(index, 1)[0].value
+  }
+
+  drain(): T[] {
+    return this.pending.splice(0).map((item) => item.value)
+  }
+}
+
 /**
  * Tracks the in-progress Scribe segment. Context is captured when the first partial appears (like the
  * board segment pipeline expects), and the last partial can be flushed if the stream ends before the server commits it.

@@ -43,6 +43,7 @@ export default function Teach() {
       sessionId,
       annotationId: useSessionStore.getState().pendingAnnotationId,
     }),
+    captureAnnotationIntervals: actions.getAnnotationIntervals,
   })
 
   useEffect(() => {
@@ -157,7 +158,7 @@ export default function Teach() {
             onSlot: (slot) => store.selectedAssetId && insertAt(store.selectedAssetId, slot),
             onStroke: (blockId, points) => actions.addStroke(blockId, points, store.inkColor, store.inkWidth),
             onLasso: actions.addLasso,
-            onConfirm: actions.confirmAnnotation,
+            onConfirm: (id) => actions.confirmAnnotation(id, speech.flush),
             onReject: actions.rejectAnnotation,
           }}
         />

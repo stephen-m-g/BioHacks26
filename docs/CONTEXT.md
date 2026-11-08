@@ -36,10 +36,10 @@ A prepared lecture can be launched any number of times; each launch is a new ses
   - **End session** (confirm dialog).
 - **Smart annotation** (lasso): drawing a loop on an image in Smart mode creates a `pending` annotation. While it's pending:
   - the outline has an animated **shimmer**;
-  - final speech segments are tagged with its `annotation_id`;
+  - the completed loop records `drawn_at`; word-timestamped speech after it is tagged with its `annotation_id`;
   - big ✓ and ✗ buttons sit next to it;
   - **no new lasso and no image insertion** until he presses ✓ or ✗ (ink is still allowed).
-  - ✓ calls `POST /annotations/{id}/close`. Gemini decides which sentences belong to it, using the time window (5 s before `drawn_at` until `closed_at`) and the tagged segments as guides. ✗ sets `rejected` and un-tags the segments.
+  - ✓ records `closed_at`, flushes in-flight Scribe audio, then calls `POST /annotations/{id}/close`. Speech association is deterministic from word occurrence time in `[drawn_at, closed_at)`; Gemini only cleans the already-associated words. ✗ sets `rejected` and un-tags the segments.
 - **End session:** confirm any pending annotation, run a final refine, set `status='ended'`, start `POST /sessions/{id}/compile` without waiting for it, then open `/notes/:id`, which shows "compiling…" until the notes arrive over realtime.
 
 ## Database (`supabase/schema.sql`, RLS off)
@@ -49,7 +49,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - `blocks(id, session_id, kind 'text'|'image', position float, text, asset_id, aspect, created_at)`. The board is the blocks sorted by `position`; an image inserted between two blocks gets the midpoint position. `aspect` = image width/height.
 - `strokes(id, session_id, block_id, points [[x,y,pressure]], color, width, created_at)`
 - `annotations(id, session_id, block_id, path [[x,y,p]], bbox {x,y,w,h}, status 'pending'|'confirmed'|'rejected', drawn_at, closed_at, label, bubble_text)`
-- `transcript_segments(id, session_id, t_start, t_end, raw_text, confidence, annotation_id, text_block_id, created_at)`. `text_block_id` null means not refined yet.
+- `transcript_segments(id, session_id, t_start, t_end, raw_text, confidence, annotation_id, text_block_id, text_start, text_end, created_at)`. `text_block_id` null means not refined yet; `text_start`/`text_end` are a half-open UTF-16 range inside the cleaned block text, matching browser string indexing.
 - `lecture_notes(session_id, content jsonb, created_at)`
 - Realtime: sessions, blocks, strokes, annotations, transcript_segments, lecture_notes. Storage: public bucket `assets`, path `{lectureId}/{assetId}.{ext}`.
 
@@ -57,7 +57,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 - `GET /health`
 - `POST /assets/{id}/describe` → `{label, description, key_terms}`. Image: send the image. PDF: send the PDF as a document part. Text: send `text_content`.
 - `POST /sessions/{id}/refine` → `{block, segment_ids}`. Takes the session's segments where `text_block_id is null`, cleans them into one paragraph (vocabulary = the lecture's asset `key_terms`, context = the previous text block), inserts a text block at `max(position)+1`, and sets `text_block_id` on those segments. Falls back to the joined raw text if Gemini fails. **Already implemented.**
-- `POST /annotations/{id}/close` body `{crop_png_base64?}` → `{label, bubble_text}`. Sets `confirmed`/`closed_at`, picks his words about the selection, writes `label`/`bubble_text`, and sets `annotation_id` on the segments it used.
+- `POST /annotations/{id}/close` body `{crop_png_base64?}` → `{label, bubble_text}`. Sets `confirmed`/`closed_at`, reconciles only unowned segments fully contained in the capture interval, and cleans all captured speech without selecting or dropping lines.
 - `POST /sessions/{id}/compile` → notes JSON; upserts `lecture_notes`.
 - `POST /sessions/{id}/scribe-token` → `{token}`. Single-use ElevenLabs Scribe Realtime token (expires in 15 min) for live transcription (ElevenLabs is the only speech-to-text engine). Only for existing `live` sessions, rate-limited (10/min per session, 60/min total). 503 if `ELEVENLABS_API_KEY` is unset. No user auth yet, so anyone who knows a live session id can mint tokens.
 - `POST /segments/{id}/clean` is **removed** (replaced by batch refine).
@@ -69,6 +69,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
   "sections": [{
     "id": "s1", "heading": "...",
     "paragraphs": ["... **bold** allowed ..."],
+    "paragraph_block_ids": ["uuid"],
     "key_terms": [{"term": "...", "definition": "..."}],
     "figures": [{"image_block_id": "uuid", "caption": "..."}],
     "annotation_ids": ["uuid"]
@@ -76,7 +77,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
   "review_questions": ["..."]
 }
 ```
-Figures render the image with its confirmed annotations. Hovering an annotation shows `label` + `bubble_text`. Clicking it (tapping, then "Go to section", on touch) scrolls to the section whose `annotation_ids` contains it.
+Figures render the image with one card per confirmed annotation. Selecting a circle or card selects the same stable annotation id and highlights only transcript source spans whose persisted `annotation_id` matches it. Empty annotations show "No explanation recorded." and do not highlight transcript text.
 
 ## Ownership after the redesign
 - **P1** (canvas): `components/ImageBlock.tsx` (ink, lasso, shimmer, ✓/✗, popovers), `components/Board.tsx`, `pages/Teach.tsx`, `components/Sidebar.tsx`.

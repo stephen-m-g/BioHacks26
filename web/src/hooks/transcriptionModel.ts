@@ -24,6 +24,25 @@ export interface SpeechMetrics {
   baselineWpm: number | null
 }
 
+interface OrderedTranscriptSegment {
+  id: string
+  t_start: string | null
+  t_end: string | null
+  created_at: string
+}
+
+/** Speech occurrence order with deterministic fallbacks for equal/legacy timestamps. */
+export function compareTranscriptSegments(a: OrderedTranscriptSegment, b: OrderedTranscriptSegment): number {
+  const aStart = a.t_start ?? a.created_at
+  const bStart = b.t_start ?? b.created_at
+  return (
+    aStart.localeCompare(bStart) ||
+    (a.t_end ?? aStart).localeCompare(b.t_end ?? bStart) ||
+    a.created_at.localeCompare(b.created_at) ||
+    a.id.localeCompare(b.id)
+  )
+}
+
 const ROLLING_WINDOW_MS = 60_000
 const BASELINE_WINDOW_MS = 180_000
 const MINIMUM_RATE_WINDOW_MS = 1_000

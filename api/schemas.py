@@ -1,6 +1,6 @@
 """Pydantic models: request bodies, endpoint responses, Gemini outputs, notes JSON.
 Field names are the shared API contract (docs/CONTEXT.md): do not rename."""
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # --- /assets/{id}/describe ---
@@ -11,8 +11,14 @@ class DescribeOut(BaseModel):
 
 
 # --- /sessions/{id}/refine ---
+class RefinedSegment(BaseModel):
+    id: str
+    text: str
+
+
 class RefineGemini(BaseModel):
     text: str
+    segments: list[RefinedSegment]
 
 
 class RefineOut(BaseModel):
@@ -56,6 +62,7 @@ class Section(BaseModel):
     id: str
     heading: str
     paragraphs: list[str]
+    paragraph_block_ids: list[str] = Field(default_factory=list)
     key_terms: list[KeyTerm]
     figures: list[Figure]
     annotation_ids: list[str]

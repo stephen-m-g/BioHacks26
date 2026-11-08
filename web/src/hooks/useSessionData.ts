@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Annotation, Asset, Block, Lecture, Session, Stroke, TranscriptSegment } from '../types'
+import { compareTranscriptSegments } from './transcriptionModel'
 
 export type RowTable = 'blocks' | 'strokes' | 'annotations' | 'transcript_segments'
 export interface RowOf {
@@ -41,8 +42,6 @@ const EMPTY: SessionDataState = {
 function byId<T extends { id: string }>(rows: T[] | null | undefined): Record<string, T> {
   return Object.fromEntries((rows ?? []).map((r) => [r.id, r]))
 }
-
-const time = (s: TranscriptSegment) => s.t_start ?? s.created_at
 
 export function useSessionData(sessionId: string | undefined) {
   const [state, setState] = useState<SessionDataState>(EMPTY)
@@ -129,7 +128,7 @@ export function useSessionData(sessionId: string | undefined) {
     const blocks = Object.values(state.blocks).sort((a, b) => a.position - b.position)
     const strokes = Object.values(state.strokes).sort((a, b) => a.created_at.localeCompare(b.created_at))
     const annotations = Object.values(state.annotations)
-    const segments = Object.values(state.transcript_segments).sort((a, b) => time(a).localeCompare(time(b)))
+    const segments = Object.values(state.transcript_segments).sort(compareTranscriptSegments)
     const imageAssets = Object.values(state.assets).filter((a) => a.kind === 'image')
     return { blockList: blocks, strokeList: strokes, annotationList: annotations, segmentList: segments, imageAssets }
   }, [state])

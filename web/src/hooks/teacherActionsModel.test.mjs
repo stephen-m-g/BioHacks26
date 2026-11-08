@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { RefineCoordinator, buildTranscriptSegment, waitForPendingWrites } from './teacherActionsModel.ts'
+import {
+  RefineCoordinator,
+  buildTranscriptSegment,
+  flushSpeechAndWaitForPendingWrites,
+  waitForPendingWrites,
+} from './teacherActionsModel.ts'
 
 const base = {
   id: 'segment-1',
@@ -102,4 +107,32 @@ test('waits for pending transcript inserts before closing an annotation', async 
 
   assert.equal(await closing, 'closed')
   assert.deepEqual(events, ['close'])
+})
+
+test('flushes delayed final speech before waiting for its insert and closing the annotation', async () => {
+  let releaseWrite
+  const pending = new Set()
+  const events = []
+
+  const result = await flushSpeechAndWaitForPendingWrites(
+    pending,
+    async () => {
+      events.push('flush')
+      const write = new Promise((resolve) => {
+        releaseWrite = () => {
+          events.push('write')
+          resolve()
+        }
+      })
+      pending.add(write)
+      queueMicrotask(releaseWrite)
+    },
+    async () => {
+      events.push('close')
+      return 'closed'
+    },
+  )
+
+  assert.equal(result, 'closed')
+  assert.deepEqual(events, ['flush', 'write', 'close'])
 })
