@@ -100,7 +100,7 @@ export default function SessionHeader({
 
       <div className="sv-bar no-print">
         {!student && (
-          <nav className="cf large sv-tabs" aria-label="Session views">
+          <nav className="cf large slide sv-tabs" aria-label="Session views">
             <Link
               className={`cf-chip${view === 'notes' ? ' on' : ''}`}
               to={`/notes/${sessionId}`}
