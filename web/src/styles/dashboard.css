@@ -491,3 +491,14 @@
   align-self: flex-start;
   border-style: dashed;
 }
+
+/* Brand logo in place of the page title (transparent PNG, black artwork). */
+.dash-title.dash-logo {
+  line-height: 0;
+}
+
+.dash-logo img {
+  display: block;
+  height: clamp(40px, 5vw, 56px);
+  width: auto;
+}

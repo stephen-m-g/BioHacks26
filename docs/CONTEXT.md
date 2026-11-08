@@ -11,9 +11,9 @@ Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illeg
 ## Screens
 | Route | Screen |
 |---|---|
-| `/` | **Dashboard.** *Prepared lectures* (not archived): New, Start, Edit, Archive, plus a link to *All lectures*. *Past sessions*: View notes, Delete (confirm). A still-live session shows Resume. |
+| `/` | **Dashboard** (aside logo top left). Class filter chips (All + one per class, Edit classes). *Prepared lectures* (not archived): Start, Edit, ⋯ (Classes…, Archive, Delete). *Past sessions*: Open notes, Transcript, ⋯ (Classes…, Delete). Each row's circle shows its classes: one color, equal slices for several, dashed outline for none. A still-live session shows Resume. |
 | `/lectures` | **All lectures**, including archived: Edit, Archive/Restore, Delete. Deleting a lecture also deletes its past sessions; the confirm dialog says so. |
-| `/prep/:lectureId` | **Prep**, chat-style. He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title. **Save** applies the title and removals and returns to the dashboard (it does not start a session). **← Dashboard** leaves without saving: uploads from this visit are deleted again, removed items come back, and a brand-new lecture (opened with `?new=1`) is deleted entirely. It asks to confirm only if something would be lost. |
+| `/prep/:lectureId` | **Prep**, chat-style. A **Classes** row toggles which classes the lecture is in (applied on Save, undone by ← Lectures; "New class" creates one immediately). He uploads images, PDFs and .txt files, or types/pastes text. Each item gets an AI acknowledgement (label, description, key terms from `/describe`). Images go to the image bank for the live session; text and PDFs become session context. Editable title. **Save** applies the title and removals and returns to the dashboard (it does not start a session). **← Dashboard** leaves without saving: uploads from this visit are deleted again, removed items come back, and a brand-new lecture (opened with `?new=1`) is deleted entirely. It asks to confirm only if something would be lost. |
 | `/teach/:sessionId` | **Live session** (below). Projected for the class. |
 | `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land, plus Recompile and Print/PDF buttons. |
 | `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. Not linked from anywhere for now. |
@@ -89,3 +89,8 @@ Figures render the image with its confirmed annotations. Hovering an annotation 
 - Nothing has been tested against a real Supabase project (no keys yet), and nothing has been tested on an iPad.
 - The crop image for `/close` isn't sent yet. The backend can crop the asset image to `bbox` itself.
 - Adaptive volume and speech metrics (P3) aren't started.
+
+## Classes
+Named, colored groupings: different classes, or sections of one class. Tables `classes(id, name, color)`, `lecture_classes(lecture_id, class_id)`,
+`session_classes(session_id, class_id)` (many-to-many; migration `supabase/migrations/2026-11-07_classes.sql`). A new session copies its lecture's
+classes. A lecture created while the dashboard is filtered to a class starts in that class. Deleting a class keeps its lectures and sessions.

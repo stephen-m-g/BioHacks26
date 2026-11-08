@@ -164,8 +164,6 @@ export default function Dashboard() {
   const shownSessions = sessions.filter((s) => inFilter(s.session_classes))
   const filterName = filter === 'all' ? null : byId.get(filter)?.name
 
-  const today = new Date()
-  const sessionsToday = shownSessions.filter((s) => isSameDay(new Date(s.started_at), today)).length
 
   const savePicker = (ids: string[], fresh: { name: string; color: string }[]) =>
     run(async () => {
@@ -225,13 +223,9 @@ export default function Dashboard() {
       <div className="dash-inner">
         <header className="dash-header">
           <div>
-            <h1 className="dash-title">Lectures</h1>
-            {supabaseConfigured && (
-              <p className="dash-sub">
-                {shownLectures.length} ready to present · {plural(sessionsToday, 'session')} today
-                {filterName && ` · ${filterName}`}
-              </p>
-            )}
+            <h1 className="dash-title dash-logo">
+              <img src="/aside-logo.png" alt="aside" width={1065} height={321} />
+            </h1>
           </div>
           <button
             className="dash-btn solid"

@@ -217,3 +217,67 @@
     max-width: 92%;
   }
 }
+
+/* ---------- classes row ---------- */
+.pp-class-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.p4 .pp-class-chip {
+  min-height: var(--tap, 64px);
+  padding: 0 22px;
+  border: 1px solid var(--d-soft);
+  border-radius: 999px;
+  background: var(--d-card);
+  color: var(--d-fg);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.p4 .pp-class-chip.on {
+  background: var(--d-fg);
+  border-color: var(--d-fg);
+  color: var(--d-card);
+}
+
+.p4 .pp-class-chip.add {
+  background: transparent;
+  border-style: dashed;
+  color: var(--d-muted);
+}
+
+.pp-class-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px var(--d-card);
+}
+
+.pp-class-chip.on .pp-class-dot {
+  box-shadow: 0 0 0 2px var(--d-fg), 0 0 0 3px var(--d-card);
+}
+
+.pp-class-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.p4 .pp-class-new input {
+  min-height: var(--tap, 64px);
+  padding: 0 20px;
+  border: 1px solid var(--d-soft);
+  border-radius: 999px;
+  background: var(--d-card);
+  font: inherit;
+  font-size: 16px;
+  width: 200px;
+}
