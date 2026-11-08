@@ -1,8 +1,8 @@
-# Shared context (v2: scrolling study document, teacher-only)
+# Shared context (v2: scrolling study document, read-only student view)
 
 This replaces the slide-based parts of the original shared context. Patient facts, UI rules, stack, deploy and checkpoints are unchanged. What changed:
 - **No slides.** The live board is one long scrolling document, and the end product is an interactive study document, not a PDF.
-- **Teacher-only for now.** The board is projected for the class; the study documents live on the site. No student join, student view, join codes or publish step. These may come back later with auth and roles.
+- **Students follow along read-only.** The board is projected for the class. While a session is live, the teacher's breadcrumb shows a join pill: `{host}/join` and a 6-character code. Students open `/join` on their phones and type the code (or open `/join/ABC123`), which takes them to `/live/:sessionId`: the same board, read-only and live over Realtime. When the session ends they get a link to the study notes. No accounts, roles or publish step; anyone with the code can watch (RLS is off).
 
 ## Patient (unchanged, short)
 Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illegible after ~10 min. Right key pinch is 3 kg and he can't hold it for more than a few seconds (left hand is stronger now). Speech drops from 165 wpm / 98% intelligible at 9 am to 118 wpm / 91% at 4 pm.
@@ -16,9 +16,11 @@ Alex Chen, 47, senior high-school biology teacher with ALS. Handwriting is illeg
 | `/archive` | **Archive**: archived lectures only (Edit, ⋯ Restore/Delete permanently). Opened from the dashboard's Archive card. Deleting a lecture also deletes its past sessions; the confirm dialog says so. |
 | `/sessions` | **Recorded sessions**: every session, newest first (Notes or Resume, Transcript, ⋯ Classes…/Delete). Opened from the arrow on the dashboard's Recorded sessions card. |
 | `/prep/:lectureId` | **Prep** (create/edit a lecture), fits one screen. Header: ← and the editable title (no Save button). ← asks **Save / Don't save / Cancel** when anything would be lost (always for a brand-new lecture, since not saving deletes it); with no changes it just goes back. Save applies title, classes and removals. Class chips (dashboard-style, + for a new class) under the header. **Materials** chat card fills the middle and scrolls inside itself: uploads (images, PDFs, .txt) and typed notes, each with an AI acknowledgement from `/describe`; images go to the image bank, the rest becomes context. Composer at the bottom: Attach, a notes field that grows to about six lines, Send (grey until there's text). |
-| `/teach/:sessionId` | **Live session** (below). Projected for the class. |
-| `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land (compiling once itself if End session's compile never arrives), plus a Print/PDF button. |
+| `/teach/:sessionId` | **Live session** (below). Projected for the class. While live, a dark pill on the right of the breadcrumb shows `{host}/join` and the session's join code in large monospace, readable from the back of the room. |
+| `/notes/:sessionId` | **Study document** (processed notes). Shows "compiling…" until the notes land (compiling once itself if End session's compile never arrives), plus a Print/PDF button. With `?student=1` (opened from the student view) a **Board** link back to `/live/:sessionId` replaces Lectures, and the page never starts that compile itself (only the teacher's page does). |
 | `/sessions/:sessionId/raw` | **Raw view.** The board as it ended (read-only), plus the timestamped transcript. Not linked from anywhere for now. |
+| `/join`, `/join/:code` | **Join** (students, phone-first). One card: enter the code on the board (big monospace field, Join enabled at 6 characters). An unknown code says "No lecture with that code. Check the board and try again." `/join/:code` joins straight away. Goes to `/live/:sessionId`. |
+| `/live/:sessionId` | **Student live view.** The board read-only and live: title with a pulsing Live dot (or an Ended badge), pending lassos shimmer, tapping a circle shows his words ("Linking his words…" until `/close` writes back). Follows new content unless the student scrolls up; a **Jump to latest ↓** button appears when far from the bottom. Once ended: a banner with **Open study notes** (`/notes/:id?student=1`). No links to teacher pages. |
 
 A prepared lecture can be launched any number of times; each launch is a new session. Archiving only hides it from the dashboard.
 
@@ -47,7 +49,7 @@ A prepared lecture can be launched any number of times; each launch is a new ses
 ## Database (`supabase/schema.sql`, RLS off)
 - `lectures(id, title, archived_at, created_at)`
 - `assets(id, lecture_id, kind 'image'|'text'|'pdf', storage_path, text_content, file_name, label, description, key_terms[], created_at)`
-- `sessions(id, lecture_id → lectures on delete cascade, title, status 'live'|'ended', started_at, ended_at)`. `title` starts as the lecture title and can be renamed per session.
+- `sessions(id, lecture_id → lectures on delete cascade, title, status 'live'|'ended', started_at, ended_at, join_code unique)`. `title` starts as the lecture title and can be renamed per session. `join_code` is 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (no 0/O/1/I/L), set by the teacher's page when a live session opens; migration `supabase/migrations/2026-11-07_join_codes.sql`. Without the column the app still works, just with no code shown.
 - `blocks(id, session_id, kind 'text'|'image', position float, text, asset_id, aspect, created_at)`. The board is the blocks sorted by `position`; an image inserted between two blocks gets the midpoint position. `aspect` = image width/height.
 - `strokes(id, session_id, block_id, points [[x,y,pressure]], color, width, created_at)`
 - `annotations(id, session_id, block_id, path [[x,y,p]], bbox {x,y,w,h}, status 'pending'|'confirmed'|'rejected', drawn_at, closed_at, label, bubble_text)`
