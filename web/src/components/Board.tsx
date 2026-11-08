@@ -1,5 +1,5 @@
 // P1 owns this component. The live board: a vertical document of text paragraphs and images,
-// with unrefined speech in grey at the bottom. Used interactively on /teach and read-only on the raw view.
+// with unrefined speech in grey at the bottom. Used interactively on /teach and read-only on the raw and student views.
 import { Fragment } from 'react'
 import { assetUrl } from '../lib/assets'
 import type { Annotation, Asset, Block, Stroke, TranscriptSegment } from '../types'
@@ -20,11 +20,28 @@ interface Props {
   interim?: string
   teacher?: BoardTeacherProps
   onJump?: (annotationId: string) => void
+  /** Read-only: also show pending lassos (as the shimmer), e.g. on the student view of a live session. */
+  showPending?: boolean
+  /** Shown while the board has nothing on it. */
+  emptyText?: string
 }
 
-export default function Board({ blocks, assets, strokes, annotations, segments, interim, teacher, onJump }: Props) {
+export default function Board({
+  blocks,
+  assets,
+  strokes,
+  annotations,
+  segments,
+  interim,
+  teacher,
+  onJump,
+  showPending,
+  emptyText,
+}: Props) {
   const unrefined = segments.filter((s) => !s.text_block_id)
-  const visibleAnnotations = annotations.filter((a) => a.status !== 'rejected' && (teacher || a.status === 'confirmed'))
+  const visibleAnnotations = annotations.filter(
+    (a) => a.status !== 'rejected' && (teacher || showPending || a.status === 'confirmed'),
+  )
   const empty = blocks.length === 0 && unrefined.length === 0 && !interim
 
   const slot = (index: number) =>
@@ -71,7 +88,11 @@ export default function Board({ blocks, assets, strokes, annotations, segments, 
         </p>
       )}
 
-      {empty && <p className="muted board-empty">{teacher ? 'Start talking, or place an image from the sidebar.' : 'Nothing on this board.'}</p>}
+      {empty && (
+        <p className="muted board-empty">
+          {emptyText ?? (teacher ? 'Start talking, or place an image from the sidebar.' : 'Nothing on this board.')}
+        </p>
+      )}
     </div>
   )
 }
