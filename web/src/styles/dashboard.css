@@ -1241,9 +1241,15 @@
   outline-offset: 2px;
 }
 
-/* ---------- list cards: minimal scrollbar, breathing room at the bottom ---------- */
-.cell-scroll {
+/* ---------- list cards: minimal scrollbar; the list is clipped 24px above the card's bottom
+   edge (same as the side inset), so cut-off rows have a frame below them ---------- */
+.cell-ready,
+.cell-sessions {
   padding-bottom: var(--sp-5);
+}
+
+.cell-scroll {
+  padding-bottom: var(--sp-2);
   /* Firefox */
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
