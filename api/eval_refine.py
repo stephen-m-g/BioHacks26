@@ -110,7 +110,7 @@ def call(model: str, level: str, case) -> dict:
     t0 = time.perf_counter()
     try:
         resp = ai.get_client().models.generate_content(
-            model=model, contents=[refine_prompt(VOCAB, prev, raw)], config=cfg)
+            model=model, contents=[refine_prompt(VOCAB, prev, [{"id": "s0", "raw_text": raw}])], config=cfg)
         ms = (time.perf_counter() - t0) * 1000
         out = resp.parsed.text if isinstance(resp.parsed, RefineGemini) else None
         thoughts = getattr(resp.usage_metadata, "thoughts_token_count", None) or 0

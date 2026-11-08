@@ -5,13 +5,11 @@ import io
 import logging
 import mimetypes
 import os
-import re
 import threading
 import time
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
-from difflib import SequenceMatcher
 
 from dotenv import load_dotenv
 
@@ -22,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from PIL import Image  # noqa: E402
 
 import ai  # noqa: E402
+import cleanup  # noqa: E402
 import prompts  # noqa: E402
 import scribe  # noqa: E402
 from db import download, get_db  # noqa: E402
@@ -101,34 +100,38 @@ def refine_batch(db, session_id: str) -> RefineOut:
 
     vocab = lecture_vocab(db, session_id)
     blocks = (
-        db.table("blocks").select("kind, position, text").eq("session_id", session_id)
+        db.table("blocks").select("*").eq("session_id", session_id)
         .order("position", desc=True).execute().data
     )
     max_pos = blocks[0]["position"] if blocks else 0.0
-    prev_text = next((b["text"] for b in blocks if b["kind"] == "text" and b.get("text")), "")
+    prev_block = next((b for b in blocks if b["kind"] == "text" and b.get("text")), None)
+    prev_text = prev_block["text"] if prev_block else ""
     db_read_ms = ms(t0)
 
-    raw = " ".join(s["raw_text"].strip() for s in segs if s["raw_text"].strip())
     # Fast model, little thinking: eval_refine.py scored lite+LOW 40/40 at ~0.7 s vs 2.6 s for 3.6-flash default.
     out, gemini_ms = ai.generate("refine", prompts.REFINE, [refine_prompt(vocab, prev_text, segs)], RefineGemini,
                                  timeout_ms=10_000, model=os.getenv("GEMINI_REFINE_MODEL") or None, thinking="LOW")
-    cleaned_segments = choose_refined_segments(segs, out)
+    cleaned_segments, outcomes = choose_refined_segments(segs, out)
     text, offsets = join_refined_segments(cleaned_segments)
 
     t_write = time.perf_counter()
-    block = (
-        db.table("blocks")
-        .insert({"session_id": session_id, "kind": "text", "position": max_pos + 1, "text": text})
-        .execute()
-        .data[0]
-    )
+    if text or not prev_block:
+        block = (
+            db.table("blocks")
+            .insert({"session_id": session_id, "kind": "text", "position": max_pos + 1, "text": text})
+            .execute()
+            .data[0]
+        )
+    else:
+        block = prev_block  # only filler was said: mark it refined without adding an empty paragraph
     ids = [s["id"] for s in segs]
     for segment, (text_start, text_end) in zip(segs, offsets):
         db.table("transcript_segments").update({
             "text_block_id": block["id"], "text_start": text_start, "text_end": text_end,
         }).eq("id", segment["id"]).execute()
-    log.info("[refine] segs=%d words=%d left=%d db=%.0fms gemini=%.0fms total=%.0fms%s", len(ids), words,
-             len(unrefined) - len(ids), db_read_ms + ms(t_write), gemini_ms, ms(t0), "" if out else " (fallback: raw)")
+    log.info("[refine] segs=%d words_in=%d words_out=%d left=%d gemini=%s outcomes=%s db=%.0fms gemini=%.0fms "
+             "total=%.0fms", len(ids), words, len(text.split()), len(unrefined) - len(ids),
+             "ok" if out else "failed", dict(sorted(outcomes.items())), db_read_ms + ms(t_write), gemini_ms, ms(t0))
     return RefineOut(block=block, segment_ids=ids)
 
 
@@ -141,36 +144,62 @@ def refine_prompt(vocab: list[str], prev_text: str, segments: list[dict]) -> str
     )
 
 
-def choose_refined_segments(segments: list[dict], out: RefineGemini | None) -> list[str]:
-    """Accept cleanup only when Gemini preserves every stable segment id in exact source order."""
+def choose_refined_segments(segments: list[dict], out: RefineGemini | None) -> tuple[list[str], Counter]:
+    """Cleaned text per source segment, in source order; "" when the segment was only filler.
+
+    Each segment is judged on its own against its own raw text, so one bad segment cannot discard the cleanup of
+    the others, and words cannot move between stable ids (they would be an insertion in one segment and a content
+    deletion in the other). A segment whose Gemini text is missing or unsafe gets the deterministic cleanup.
+    Outcome counts (no transcript text) are returned for logging.
+    """
     raw_parts = [segment["raw_text"].strip() for segment in segments]
-    if out and out.segments:
-        expected_ids = [segment["id"] for segment in segments]
-        if [segment.id for segment in out.segments] == expected_ids:
-            candidates = [segment.text.strip() for segment in out.segments]
-            if all(candidates) and not cross_segment_token_leak(raw_parts, candidates) and all(
-                choose_refined_text(raw_part, candidate) == candidate
-                for raw_part, candidate in zip(raw_parts, candidates)
-            ):
-                return candidates
-        log.warning("[refine] rejected Gemini segment map that changed source ids/order/boundaries")
-    elif out and len(segments) == 1:
-        return [choose_refined_text(raw_parts[0], out.text)]
-    return raw_parts
+    candidates: list[str | None] = [None] * len(segments)
+    outcomes: Counter = Counter()
+    if out is None:
+        outcomes["gemini_failed"] = len(segments)
+    elif out.segments:
+        position = {segment["id"]: i for i, segment in enumerate(segments)}
+        id_counts = Counter(segment.id for segment in out.segments)
+        usable = [segment for segment in out.segments if segment.id in position and id_counts[segment.id] == 1]
+        order = [position[segment.id] for segment in usable]
+        if order != sorted(order):
+            outcomes["reordered_ids"] = len(segments)  # a shuffled map means Gemini lost track of the boundaries
+        else:
+            for segment in usable:
+                candidates[position[segment.id]] = segment.text
+        outcomes["unknown_or_duplicate_ids"] += len(out.segments) - len(usable)
+    elif len(segments) == 1:
+        candidates[0] = out.text
+    else:
+        outcomes["no_segment_map"] = len(segments)
+
+    cleaned = []
+    for raw, candidate in zip(raw_parts, candidates):
+        if candidate is not None:
+            check = cleanup.check_cleanup(raw, candidate)
+            if check.ok:
+                cleaned.append(" ".join(candidate.split()))
+                outcomes["accepted_changed" if tokens_changed(raw, candidate) else "accepted_unchanged"] += 1
+                outcomes["fillers_removed"] += check.fillers
+                outcomes["words_removed"] += check.deleted
+                outcomes["corrections"] += check.corrected
+                continue
+            outcomes[f"rejected:{check.reason}"] += 1
+        elif out is not None and not outcomes["reordered_ids"] and not outcomes["no_segment_map"]:
+            outcomes["missing_id"] += 1
+        fallback = cleanup.basic_cleanup(raw)
+        outcomes["fallback_cleaned" if fallback != raw else "fallback_raw"] += 1
+        cleaned.append(fallback)
+    rejected = sum(v for k, v in outcomes.items() if k.startswith("rejected:"))
+    if rejected or out is None:
+        log.warning("[refine] %d/%d segments used the deterministic fallback (%s)",
+                    outcomes["fallback_cleaned"] + outcomes["fallback_raw"], len(segments),
+                    ", ".join(k for k in sorted(outcomes) if k.startswith("rejected:")) or "gemini failed")
+    return cleaned, +outcomes
 
 
-def cross_segment_token_leak(raw_parts: list[str], candidates: list[str]) -> bool:
-    """Reject exact words removed from one stable source id and added to another."""
-    token_counts = lambda value: Counter(re.findall(r"[a-z0-9]+", value.lower()))
-    raw_counts = [token_counts(part) for part in raw_parts]
-    candidate_counts = [token_counts(part) for part in candidates]
-    tokens = set().union(*(counts.keys() for counts in raw_counts + candidate_counts))
-    for token in tokens:
-        deficits = [i for i, counts in enumerate(raw_counts) if counts[token] > candidate_counts[i][token]]
-        excesses = [i for i, counts in enumerate(candidate_counts) if counts[token] > raw_counts[i][token]]
-        if any(source != destination for source in deficits for destination in excesses):
-            return True
-    return False
+def tokens_changed(raw: str, candidate: str) -> bool:
+    return cleanup.tokens(raw) != cleanup.tokens(candidate)
 
 
 def utf16_length(value: str) -> int:
@@ -178,11 +207,16 @@ def utf16_length(value: str) -> int:
     return len(value.encode("utf-16-le")) // 2
 
 
-def join_refined_segments(parts: list[str]) -> tuple[str, list[tuple[int, int]]]:
-    """Join with one space and return exact half-open UTF-16 offsets for every source segment."""
+def join_refined_segments(parts: list[str]) -> tuple[str, list[tuple[int | None, int | None]]]:
+    """Join with one space and return exact half-open UTF-16 offsets for every source segment.
+    A segment with no cleaned text (only filler) gets (None, None): the schema forbids empty spans."""
     text = ""
-    offsets = []
+    offsets: list[tuple[int | None, int | None]] = []
     for part in parts:
+        part = part.strip()
+        if not part:
+            offsets.append((None, None))
+            continue
         if text:
             text += " "
         start = utf16_length(text)
@@ -200,25 +234,18 @@ def segment_order_key(segment: dict) -> tuple[str, str, str, str]:
 
 
 def choose_refined_text(raw: str, candidate: str | None) -> str:
-    """Use Gemini's cleanup only when it remains recognizably near-verbatim.
+    """Use Gemini's cleanup only when every change is a safe edit (see cleanup.check_cleanup); else the raw text.
 
-    The raw segment text is the source of truth. Character-level comparison tolerates punctuation changes and
-    phonetic spelling corrections (for example "a tee pee" -> "ATP") while rejecting summaries, paraphrases,
-    and truncated output.
+    The raw text is the source of truth: fillers, stutters, false starts and sound-alike corrections
+    ("a tee pee" -> "ATP") pass, while summaries, paraphrases, truncation and changed numbers or negations don't.
     """
     raw = raw.strip()
     candidate = (candidate or "").strip()
     if not candidate:
         return raw
-    raw_cmp = "".join(re.findall(r"[a-z0-9]+", raw.lower()))
-    candidate_cmp = "".join(re.findall(r"[a-z0-9]+", candidate.lower()))
-    if not raw_cmp or not candidate_cmp:
-        return raw
-    length_ratio = len(candidate_cmp) / len(raw_cmp)
-    similarity = SequenceMatcher(None, raw_cmp, candidate_cmp, autojunk=False).ratio()
-    if length_ratio < 0.55 or length_ratio > 1.35 or similarity < 0.55:
-        log.warning("[refine] rejected unfaithful Gemini output (length=%.2f similarity=%.2f)",
-                    length_ratio, similarity)
+    check = cleanup.check_cleanup(raw, candidate)
+    if not check.ok:
+        log.warning("[close] rejected unfaithful Gemini output (%s)", check.reason)
         return raw
     return candidate
 

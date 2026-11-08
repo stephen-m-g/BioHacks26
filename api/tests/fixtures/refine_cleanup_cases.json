@@ -1,0 +1,70 @@
+[
+  {
+    "name": "dynamics-fillers-stutter",
+    "old_validator_fell_back": false,
+    "segments": [
+      {"raw": "Okay, um, so today we're, we're learning about dynamics.", "expected": "Okay, so today we're learning about dynamics."},
+      {"raw": "Here is the, uh, free-body diagram,", "expected": "Here is the free-body diagram,"},
+      {"raw": "and this is the force of friction.", "expected": "and this is the force of friction."}
+    ]
+  },
+  {
+    "name": "negation-and-numbers",
+    "old_validator_fell_back": false,
+    "segments": [
+      {"raw": "The force is not 10 newtons,", "expected": "The force is not 10 newtons,"},
+      {"raw": "it's 20 newtons.", "expected": "it's 20 newtons."}
+    ]
+  },
+  {
+    "name": "filler-only-segments",
+    "old_validator_fell_back": true,
+    "segments": [
+      {"raw": "Um.", "expected": ""},
+      {"raw": "So the, the mitochondria is, uh, where cellular respiration happens.", "expected": "So the mitochondria is where cellular respiration happens."},
+      {"raw": "Uh,", "expected": ""}
+    ]
+  },
+  {
+    "name": "filler-only-with-discourse",
+    "old_validator_fell_back": true,
+    "segments": [
+      {"raw": "Uh-huh. Okay.", "expected": ""},
+      {"raw": "We're gonna, we're gonna look at osmosis now.", "expected": "We're gonna look at osmosis now."},
+      {"raw": "Water moves, um, across the membrane.", "expected": "Water moves across the membrane."}
+    ]
+  },
+  {
+    "name": "short-segment-length-ratio",
+    "old_validator_fell_back": true,
+    "segments": [
+      {"raw": "um so", "expected": "So"},
+      {"raw": "the the cell membrane is a phospholipid bilayer", "expected": "the cell membrane is a phospholipid bilayer."}
+    ]
+  },
+  {
+    "name": "false-start-with-correction",
+    "old_validator_fell_back": false,
+    "segments": [
+      {"raw": "and it, it goes all the way down the, sorry, along the mountain", "expected": "And it goes all the way along the mountain."},
+      {"raw": "um so the, the dirt path is here", "expected": "So the dirt path is here."}
+    ]
+  },
+  {
+    "name": "misheard-terms",
+    "old_validator_fell_back": false,
+    "segments": [
+      {"raw": "so the first step is gly coll is is uh it happens in the site oh plaz", "expected": "So the first step is glycolysis, it happens in the cytoplasm."},
+      {"raw": "um it splits glue coast into two pie roo vate", "expected": "It splits glucose into two pyruvate,"},
+      {"raw": "and you get a little bit of a tee pee", "expected": "and you get a little bit of ATP."}
+    ]
+  },
+  {
+    "name": "meaningful-repeats-kept",
+    "old_validator_fell_back": false,
+    "segments": [
+      {"raw": "I know that that is very very important,", "expected": "I know that that is very very important,"},
+      {"raw": "uh, never mix the two solutions.", "expected": "never mix the two solutions."}
+    ]
+  }
+]
