@@ -9,8 +9,10 @@ import { useSessionData } from '../hooks/useSessionData'
 import { useTeacherActions } from '../hooks/useTeacherActions'
 import { MIC_OFF, isMicOn, shouldRecord, turnMicOn, type MicState } from '../hooks/micModel'
 import { useScribeTranscription } from '../hooks/useScribeTranscription'
+import { ensureJoinCode, formatJoinCode } from '../lib/joinCode'
 import { useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
+import '../styles/student.css'
 
 /** How often unrefined speech is batch-cleaned into a paragraph. */
 const REFINE_EVERY_MS = 15_000
@@ -72,6 +74,21 @@ export default function Teach() {
       Date.now() - lastBoardTouch.current < HOLD_SCROLL_AFTER_TOUCH_MS,
   )
 
+  // Students join with this code (shown in the breadcrumb). If it can't be set, no code is shown; class goes on.
+  const live = data.session?.status === 'live'
+  const joinCode = data.session?.join_code ?? null
+  const { loading, patchSession } = data
+  useEffect(() => {
+    if (loading || !live || joinCode) return
+    let cancelled = false
+    ensureJoinCode(sessionId).then((code) => {
+      if (!cancelled && code) patchSession({ join_code: code })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [loading, live, joinCode, sessionId, patchSession])
+
   const insertAt = useCallback(
     (assetId: string, slot: number, aspect?: number) => {
       actions.insertImage(assetId, aspect ?? aspects.current.get(assetId) ?? 4 / 3, slot)
@@ -131,6 +148,12 @@ export default function Teach() {
           <strong>{title}</strong>
           <span aria-hidden="true">›</span>
           <span>{data.session.status === 'live' ? 'Live session' : 'Ended'}</span>
+          {live && joinCode && (
+            <div className="join-pill">
+              <span className="join-pill-url">{window.location.host}/join</span>
+              <span className="join-pill-code">{formatJoinCode(joinCode)}</span>
+            </div>
+          )}
         </div>
         <div className="canvas-card">
           <main
