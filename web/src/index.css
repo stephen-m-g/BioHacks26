@@ -761,6 +761,100 @@ textarea {
   display: block;
 }
 
+/* PDFs: one row per document (a small first-page thumbnail, the file name and page count) */
+.docs-label {
+  margin-top: 8px;
+}
+
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doc-item {
+  min-height: 64px;
+  padding: 6px 8px 6px 6px;
+  border-radius: 0;
+  border: 1px solid var(--line);
+  background: white;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  opacity: 0.75;
+  touch-action: pan-y;
+  transition: opacity 0.12s;
+}
+
+.doc-item:hover,
+.doc-item.on {
+  opacity: 1;
+}
+
+.doc-item.on {
+  outline: 2px solid var(--fg);
+  outline-offset: -2px;
+}
+
+.doc-item.error .doc-meta {
+  color: #b91c1c;
+}
+
+.doc-thumb {
+  flex: none;
+  width: 38px;
+  height: 50px;
+  border: 1px solid var(--line);
+  background: var(--c-soft);
+  overflow: hidden;
+}
+
+.doc-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  display: block;
+  pointer-events: none;
+}
+
+.doc-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.doc-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* A placed PDF page: a quiet "Page 2 of 4" line above it */
+.pdf-page-label {
+  margin: 16px 0 -6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+}
+
+.pdf-page-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .drag-ghost {
   position: fixed;
   width: 140px;

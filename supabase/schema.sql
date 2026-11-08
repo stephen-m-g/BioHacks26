@@ -12,15 +12,21 @@ create table lectures (
 create table assets (
   id uuid primary key default gen_random_uuid(),
   lecture_id uuid references lectures on delete cascade,
-  kind text check (kind in ('image','text','pdf')),
-  storage_path text,          -- path inside the "assets" bucket: {lectureId}/{assetId}.{ext}
+  kind text constraint assets_kind_check check (kind in ('image','text','pdf','pdf_page')),
+  storage_path text,          -- path inside the "assets" bucket: {lectureId}/{assetId}.{ext}; pdf_page: {lectureId}/{pdfId}/page-0001.png
   text_content text,
   file_name text,
   label text,
   description text,
   key_terms text[],
+  source_asset_id uuid references assets on delete cascade,  -- pdf_page: the PDF it was rendered from
+  page_number integer,        -- pdf_page: 1-based
+  page_count integer,         -- pdf: set once every page has been rendered (null = not rendered yet)
+  aspect real,                -- pdf_page: width / height
   created_at timestamptz default now()
 );
+-- One row per page of a PDF, so rendering again never duplicates pages.
+create unique index assets_pdf_page_unique on assets (source_asset_id, page_number) where source_asset_id is not null;
 
 create table sessions (
   id uuid primary key default gen_random_uuid(),

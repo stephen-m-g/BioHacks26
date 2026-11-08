@@ -1,5 +1,5 @@
 // Thin fetch wrapper for the FastAPI backend (P2). Never put the Gemini key in the frontend.
-import type { Block, NotesContent } from '../types'
+import type { Asset, Block, NotesContent } from '../types'
 
 export const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
@@ -7,9 +7,20 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** FastAPI's `detail` string, when the server sent one (written for the teacher). */
+    readonly detail: string | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
+  }
+}
+
+function detailOf(body: string): string | null {
+  try {
+    const detail = (JSON.parse(body) as { detail?: unknown }).detail
+    return typeof detail === 'string' ? detail : null
+  } catch {
+    return null
   }
 }
 
@@ -19,14 +30,25 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (!res.ok) throw new ApiError(`POST ${path} failed: ${res.status} ${await res.text()}`, res.status)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new ApiError(`POST ${path} failed: ${res.status} ${text}`, res.status, detailOf(text))
+  }
   return res.json() as Promise<T>
+}
+
+/** A message to show the teacher for a failed API call. */
+export function apiErrorMessage(e: unknown, fallback: string): string {
+  if (e instanceof ApiError) return e.detail ?? fallback
+  return navigator.onLine === false ? 'You’re offline.' : `${fallback} The server couldn’t be reached.`
 }
 
 export const api = {
   health: async () => (await fetch(`${API_URL}/health`)).json() as Promise<{ ok: boolean }>,
   describeAsset: (assetId: string) =>
     post<{ label: string; description: string; key_terms: string[] }>(`/assets/${assetId}/describe`),
+  /** Render a PDF's pages to page-image assets (once; later calls return the same pages). */
+  renderPdfPages: (assetId: string) => post<{ page_count: number; pages: Asset[] }>(`/assets/${assetId}/pages`),
   /** Batch-clean unrefined speech into one text block appended to the board. */
   refineSession: (sessionId: string) =>
     post<{ block: Block | null; segment_ids: string[] }>(`/sessions/${sessionId}/refine`),

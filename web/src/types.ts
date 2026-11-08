@@ -21,7 +21,8 @@ export interface Lecture {
   created_at: Timestamp
 }
 
-export type AssetKind = 'image' | 'text' | 'pdf'
+/** 'pdf_page': one rendered page of a 'pdf' asset (POST /assets/{id}/pages); never shown as its own material. */
+export type AssetKind = 'image' | 'text' | 'pdf' | 'pdf_page'
 
 export interface Asset {
   id: UUID
@@ -33,6 +34,14 @@ export interface Asset {
   label: string | null
   description: string | null
   key_terms: string[] | null
+  /** pdf_page: the PDF it was rendered from. Absent before the pdf_pages migration. */
+  source_asset_id?: UUID | null
+  /** pdf_page: 1-based page number. */
+  page_number?: number | null
+  /** pdf: number of rendered pages; null until every page has been rendered. */
+  page_count?: number | null
+  /** pdf_page: width / height. */
+  aspect?: number | null
   created_at: Timestamp
 }
 

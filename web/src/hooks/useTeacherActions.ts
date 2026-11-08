@@ -6,7 +6,8 @@ import { newId, nowIso } from '../lib/assets'
 import { bboxOf } from '../lib/ink'
 import { supabase } from '../lib/supabase'
 import { useSessionStore } from '../store/session'
-import type { Annotation, Block, Point, Stroke, TranscriptSegment } from '../types'
+import { slotPositions } from '../lib/pdfPages'
+import type { Annotation, Asset, Block, Point, Stroke, TranscriptSegment } from '../types'
 import { RefineCoordinator, buildTranscriptSegment, flushSpeechAndWaitForPendingWrites } from './teacherActionsModel'
 import type { AnnotationCaptureInterval } from './scribeModel'
 import type { TranscriptionContext } from './transcriptionModel'
@@ -125,29 +126,45 @@ export function useTeacherActions(data: SessionData) {
     [upsert],
   )
 
-  /** Insert an image block into drop slot `slot` (0 = top, blocks.length = bottom). */
-  const insertImage = useCallback(
-    (assetId: string, aspect: number, slot: number) => {
-      if (useSessionStore.getState().pendingAnnotationId) return // finish the open lasso first
+  /** Image blocks for `images` (in order) in drop slot `slot` (0 = top, blocks.length = bottom). */
+  const insertImageBlocks = useCallback(
+    (images: { assetId: string; aspect: number }[], slot: number): Block[] => {
+      if (useSessionStore.getState().pendingAnnotationId) return [] // finish the open lasso first
       const blocks = ref.current.blockList
-      const prev = blocks[slot - 1]?.position
-      const next = blocks[slot]?.position
-      const position =
-        prev === undefined && next === undefined ? 1 : prev === undefined ? next! - 1 : next === undefined ? prev + 1 : (prev + next) / 2
-      const row: Block = {
+      const positions = slotPositions(blocks[slot - 1]?.position, blocks[slot]?.position, images.length)
+      const createdAt = nowIso()
+      const rows: Block[] = images.map((image, i) => ({
         id: newId(),
         session_id: sessionId,
         kind: 'image',
-        position,
+        position: positions[i],
         text: null,
-        asset_id: assetId,
-        aspect,
-        created_at: nowIso(),
-      }
-      upsert('blocks', row)
-      supabase.from('blocks').insert(row).then(logError('insert image block'))
+        asset_id: image.assetId,
+        aspect: image.aspect,
+        created_at: createdAt,
+      }))
+      for (const row of rows) upsert('blocks', row)
+      if (rows.length) supabase.from('blocks').insert(rows).then(logError('insert image blocks'))
+      return rows
     },
     [sessionId, upsert],
+  )
+
+  const insertImage = useCallback(
+    (assetId: string, aspect: number, slot: number) => {
+      insertImageBlocks([{ assetId, aspect }], slot)
+    },
+    [insertImageBlocks],
+  )
+
+  /** Every page of a PDF, in page order, as consecutive image blocks in one slot. Returns the new blocks. */
+  const insertPdfPages = useCallback(
+    (pages: Asset[], slot: number): Block[] =>
+      insertImageBlocks(
+        pages.map((page) => ({ assetId: page.id, aspect: page.aspect || 8.5 / 11 })),
+        slot,
+      ),
+    [insertImageBlocks],
   )
 
   /** Called by the transcription hook for every final result. */
@@ -224,7 +241,7 @@ export function useTeacherActions(data: SessionData) {
   }, [sessionId, confirmAnnotation, performRefine, data.patchSession])
 
   return useMemo(
-    () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession, getAnnotationIntervals }),
-    [addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, addSegment, refine, renameSession, endSession, getAnnotationIntervals],
+    () => ({ addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, insertPdfPages, addSegment, refine, renameSession, endSession, getAnnotationIntervals }),
+    [addStroke, undoStroke, addLasso, confirmAnnotation, rejectAnnotation, insertImage, insertPdfPages, addSegment, refine, renameSession, endSession, getAnnotationIntervals],
   )
 }

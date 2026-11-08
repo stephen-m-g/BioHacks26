@@ -17,3 +17,8 @@ def public_url(storage_path: str) -> str:
 def download(storage_path: str) -> bytes:
     """Fetch a file from the "assets" bucket with the service role (works even if the bucket is private)."""
     return get_db().storage.from_("assets").download(storage_path)
+
+
+def upload(storage_path: str, data: bytes, content_type: str) -> None:
+    """Write a file to the "assets" bucket, replacing any file already at that path."""
+    get_db().storage.from_("assets").upload(storage_path, data, {"content-type": content_type, "upsert": "true"})

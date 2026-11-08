@@ -923,6 +923,23 @@
   min-height: 64px;
 }
 
+/* ---------- PDF page status under a PDF's acknowledgement ---------- */
+.pp-ai-foot.pp-pages-error {
+  color: var(--c-danger, #b91c1c);
+}
+
+.p4 .pp-retry {
+  min-height: 48px;
+  padding: 0 var(--sp-2);
+  border: none;
+  background: transparent;
+  color: var(--c-fg);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ---------- leave dialog: Cancel on the left, Don't save / Save on the right ---------- */
 .pp-leave-actions {
   flex-wrap: nowrap;

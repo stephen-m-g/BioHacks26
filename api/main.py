@@ -21,12 +21,13 @@ from PIL import Image  # noqa: E402
 
 import ai  # noqa: E402
 import cleanup  # noqa: E402
+import pdf_pages  # noqa: E402
 import prompts  # noqa: E402
 import scribe  # noqa: E402
-from db import download, get_db  # noqa: E402
+from db import download, get_db, upload  # noqa: E402
 from schemas import (  # noqa: E402
-    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, RefineGemini, RefineOut, ScribeTokenOut,
-    Section,
+    CloseGemini, CloseIn, CloseOut, DescribeOut, Figure, NotesContent, PdfPagesOut, RefineGemini, RefineOut,
+    ScribeTokenOut, Section,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -345,6 +346,89 @@ def asset_contents(asset: dict) -> list | None:
     return [ai.image_part(data, mime), f"File name: {name}"]
 
 
+_pdf_locks: dict[str, threading.Lock] = {}
+_pdf_locks_guard = threading.Lock()
+PAGE_ID_NAMESPACE = uuid.UUID("5d1f0c1e-7a43-4c7e-9a55-0b1a2c3d4e5f")
+
+
+def pdf_lock(asset_id: str) -> threading.Lock:
+    """Prep and a session (or two tabs) may ask for the same PDF's pages at once: render it only once."""
+    with _pdf_locks_guard:
+        return _pdf_locks.setdefault(asset_id, threading.Lock())
+
+
+def page_asset_id(pdf_id: str, page_number: int) -> str:
+    """Stable id per (PDF, page), so a retry after a partial failure overwrites instead of duplicating."""
+    return str(uuid.uuid5(PAGE_ID_NAMESPACE, f"{pdf_id}:{page_number}"))
+
+
+@app.post("/assets/{asset_id}/pages", response_model=PdfPagesOut)
+def render_pdf_pages(asset_id: str) -> PdfPagesOut:
+    """Render every page of a PDF asset to a 'pdf_page' image asset (once; later calls return the same rows)."""
+    db = get_db()
+    rows = db.table("assets").select("*").eq("id", asset_id).limit(1).execute().data
+    if not rows:
+        raise HTTPException(404, "asset not found")
+    if rows[0].get("kind") != "pdf":
+        raise HTTPException(400, "only PDF assets have pages")
+    with pdf_lock(asset_id):
+        try:
+            return ensure_pdf_pages(db, rows[0])
+        except pdf_pages.PdfPagesError as e:
+            log.info("[pages] %s: %s", asset_id, e.message)
+            raise HTTPException(e.status, e.message) from None
+
+
+def existing_pdf_pages(db, pdf_id: str) -> list[dict]:
+    pages = db.table("assets").select("*").eq("source_asset_id", pdf_id).execute().data
+    return sorted(pages, key=lambda page: page.get("page_number") or 0)
+
+
+def ensure_pdf_pages(db, pdf: dict) -> PdfPagesOut:
+    t0 = time.perf_counter()
+    # Re-read under the lock: another request may have finished rendering while this one waited.
+    pdf = db.table("assets").select("*").eq("id", pdf["id"]).limit(1).execute().data[0]
+    count = pdf.get("page_count")
+    if count:
+        pages = existing_pdf_pages(db, pdf["id"])
+        if [page.get("page_number") for page in pages] == list(range(1, count + 1)):
+            return PdfPagesOut(page_count=count, pages=pages)
+
+    path = pdf.get("storage_path") or ""
+    if not path or path.startswith("data:"):
+        raise pdf_pages.PdfPagesError(422, "This PDF has no stored file.")
+    try:
+        data = download(path)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[pages] download failed for %s: %s", path, e)
+        raise pdf_pages.PdfPagesError(404, "The PDF file is missing from storage. Remove it and upload it again.") \
+            from None
+
+    name = pdf.get("file_name") or "PDF"
+    pages: list[dict] = []
+    for page in pdf_pages.render_pages(data):
+        page_path = f"{pdf['lecture_id']}/{pdf['id']}/page-{page.number:04d}.png"
+        try:
+            upload(page_path, page.png, "image/png")
+        except Exception as e:  # noqa: BLE001
+            log.warning("[pages] upload failed for %s: %s", page_path, e)
+            raise pdf_pages.PdfPagesError(502, "Couldn't save the page images. Try again.") from None
+        pages.append({
+            "id": page_asset_id(pdf["id"], page.number), "lecture_id": pdf["lecture_id"], "kind": "pdf_page",
+            "storage_path": page_path, "file_name": f"{name}, page {page.number}", "source_asset_id": pdf["id"],
+            "page_number": page.number, "aspect": page.width / page.height,
+        })
+    try:
+        db.table("assets").upsert(pages).execute()
+        db.table("assets").update({"page_count": len(pages)}).eq("id", pdf["id"]).execute()
+    except Exception as e:  # noqa: BLE001 - most likely the pdf_pages migration hasn't been run
+        log.warning("[pages] saving page rows failed: %s", e)
+        raise pdf_pages.PdfPagesError(503, "The database isn't set up for PDF pages yet "
+                                           "(run supabase/migrations/2026-11-08_pdf_pages.sql).") from None
+    log.info("[pages] %s: %d pages rendered in %.0fms", pdf["id"], len(pages), ms(t0))
+    return PdfPagesOut(page_count=len(pages), pages=existing_pdf_pages(db, pdf["id"]))
+
+
 @app.post("/annotations/{annotation_id}/close", response_model=CloseOut)
 def close_annotation(annotation_id: str, body: CloseIn | None = None) -> CloseOut:
     """Confirm a lasso and clean all speech deterministically captured while it was open."""
@@ -500,8 +584,7 @@ def compile_session(session_id: str) -> NotesContent:
     for ann in anns:
         closed_at = parse_ts(ann["closed_at"]) if ann.get("closed_at") else datetime.now(timezone.utc)
         reconcile_annotation_segments(db, ann, closed_at)
-    assets = (db.table("assets").select("id, kind, label, description, text_content, file_name")
-              .eq("lecture_id", lecture_id).execute().data)
+    assets = db.table("assets").select("*").eq("lecture_id", lecture_id).execute().data
     db_ms = ms(t0)
 
     out, gemini_ms = (None, 0.0)
@@ -509,6 +592,7 @@ def compile_session(session_id: str) -> NotesContent:
         doc = compile_input(title, blocks, anns, assets)
         out, gemini_ms = ai.generate("compile", prompts.COMPILE, [doc], NotesContent, timeout_ms=120_000)
     notes = clean_notes(out, blocks, anns, title) if out else fallback_notes(title, blocks, anns)
+    ensure_page_figures(notes, blocks, assets)
 
     t_write = time.perf_counter()
     db.table("lecture_notes").upsert({"session_id": session_id, "content": notes.model_dump()}).execute()
@@ -549,7 +633,10 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
             lines.append(f"[TEXT text_block_id={b['id']}] {b['text'].strip()}")
         elif b["kind"] == "image":
             a = assets_by_id.get(b.get("asset_id"), {})
-            lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
+            if a.get("kind") == "pdf_page":
+                lines.append(f"[IMAGE image_block_id={b['id']}] {page_label(a, assets_by_id)}")
+            else:
+                lines.append(f"[IMAGE image_block_id={b['id']}] {a.get('label') or 'image'}: {a.get('description') or ''}")
             for ann in anns_by_block.get(b["id"], []):
                 lines.append(f"    [ANNOTATION annotation_id={ann['id']}] {ann.get('label') or ''}: "
                              f"\"{ann.get('bubble_text') or ''}\"")
@@ -562,6 +649,41 @@ def compile_input(title: str, blocks: list, anns: list, assets: list) -> str:
             lines.append(f"- {name}: {a.get('description') or ''} {body}".strip())
     lines += ["", "Section ids: use s1, s2, ... in order."]
     return "\n".join(lines)
+
+
+def page_label(page: dict, assets_by_id: dict) -> str:
+    """"Page 2 of 4 of Forces worksheet (forces.pdf)" for a pdf_page asset."""
+    pdf = assets_by_id.get(page.get("source_asset_id"), {})
+    count = pdf.get("page_count")
+    name = pdf.get("file_name") or "PDF"
+    title = f"{pdf['label']} ({name})" if pdf.get("label") and pdf.get("label") != name else name
+    return f"Page {page.get('page_number')}{f' of {count}' if count else ''} of {title}"
+
+
+def page_block_ids(blocks: list, assets: list) -> list[str]:
+    """Board blocks showing a PDF page, in board order."""
+    page_assets = {a["id"] for a in assets if a.get("kind") == "pdf_page"}
+    return [b["id"] for b in blocks if b["kind"] == "image" and b.get("asset_id") in page_assets]
+
+
+def ensure_page_figures(notes: NotesContent, blocks: list, assets: list) -> None:
+    """Every PDF page on the board appears once in the notes, even if nobody talked about it: a page Gemini
+    didn't place joins the section of the nearest text before it on the board (or the first section)."""
+    pages = page_block_ids(blocks, assets)
+    if not pages:
+        return
+    placed = {f.image_block_id for s in notes.sections for f in s.figures}
+    if not notes.sections:
+        notes.sections.append(Section(id="s1", heading="Pages", paragraphs=[], key_terms=[], figures=[],
+                                      annotation_ids=[]))
+    section_of_text = {block_id: s for s in notes.sections for block_id in s.paragraph_block_ids}
+    current = notes.sections[0]
+    for block in blocks:
+        if block["id"] in section_of_text:
+            current = section_of_text[block["id"]]
+        elif block["id"] in pages and block["id"] not in placed:
+            current.figures.append(Figure(image_block_id=block["id"], caption=""))
+            placed.add(block["id"])
 
 
 DEFAULT_TITLE = "Untitled lecture"  # what the web app names a lecture until he renames it

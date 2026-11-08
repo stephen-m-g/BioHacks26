@@ -10,6 +10,12 @@ class DescribeOut(BaseModel):
     key_terms: list[str]
 
 
+# --- /assets/{id}/pages ---
+class PdfPagesOut(BaseModel):
+    page_count: int
+    pages: list[dict]  # pdf_page asset rows, in page order
+
+
 # --- /sessions/{id}/refine ---
 class RefinedSegment(BaseModel):
     id: str

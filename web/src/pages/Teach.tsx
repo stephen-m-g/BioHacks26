@@ -9,7 +9,10 @@ import { useSessionData } from '../hooks/useSessionData'
 import { useTeacherActions } from '../hooks/useTeacherActions'
 import { MIC_OFF, isMicOn, shouldRecord, turnMicOn, type MicState } from '../hooks/micModel'
 import { useScribeTranscription } from '../hooks/useScribeTranscription'
+import { api, apiErrorMessage } from '../lib/api'
 import { ensureJoinCode, formatJoinCode } from '../lib/joinCode'
+import { pagesOf, pdfFirstBlockOnBoard, pdfPagesReady } from '../lib/pdfPages'
+import type { SidebarDocument } from '../components/Sidebar'
 import { useSessionStore } from '../store/session'
 import { useSettings } from '../store/settings'
 import '../styles/student.css'
@@ -89,12 +92,86 @@ export default function Teach() {
     }
   }, [loading, live, joinCode, sessionId, patchSession])
 
+  // PDFs: each page is rendered once to an image asset (usually already done in prep). PDFs uploaded before
+  // that existed, or whose rendering failed, are rendered here; the sidebar shows progress and errors.
+  const [pdfStatus, setPdfStatus] = useState<Record<string, { state: 'preparing' | 'error'; error?: string }>>({})
+  const { mergeAssets } = data
+  const preparePdf = useCallback(
+    (pdfId: string) => {
+      setPdfStatus((s) => ({ ...s, [pdfId]: { state: 'preparing' } }))
+      api
+        .renderPdfPages(pdfId)
+        .then((r) => {
+          mergeAssets([...r.pages, { id: pdfId, page_count: r.page_count }])
+          setPdfStatus(({ [pdfId]: _, ...rest }) => rest)
+        })
+        .catch((e) =>
+          setPdfStatus((s) => ({ ...s, [pdfId]: { state: 'error', error: apiErrorMessage(e, 'Couldn’t prepare this PDF’s pages.') } })),
+        )
+    },
+    [mergeAssets],
+  )
+  const requestedPdfs = useRef(new Set<string>())
+  useEffect(() => {
+    if (loading || !live) return
+    for (const pdf of data.pdfAssets) {
+      if (requestedPdfs.current.has(pdf.id) || pdfPagesReady(pdf, pagesOf(Object.values(data.assets), pdf.id))) continue
+      requestedPdfs.current.add(pdf.id)
+      preparePdf(pdf.id)
+    }
+  }, [loading, live, data.pdfAssets, data.assets, preparePdf])
+
+  const documents: SidebarDocument[] = data.pdfAssets.map((pdf) => {
+    const pages = pagesOf(Object.values(data.assets), pdf.id)
+    const ready = pdfPagesReady(pdf, pages)
+    const status = pdfStatus[pdf.id]
+    return {
+      asset: pdf,
+      firstPage: pages[0] ?? null,
+      pageCount: ready ? pages.length : null,
+      status: ready ? 'ready' : status?.state === 'error' ? 'error' : 'preparing',
+      error: status?.error,
+      onBoard: pdfFirstBlockOnBoard(data.blockList, data.assets, pdf.id) !== null,
+    }
+  })
+
+  /** Bring a placed PDF page to the top of the board (programmatic, so it doesn't count as the teacher scrolling). */
+  const showBlock = useCallback((blockId: string) => {
+    lastBoardTouch.current = Date.now()
+    window.setTimeout(() => {
+      scrollRef.current?.querySelector(`[data-pdf-page="${blockId}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+  }, [])
+
+  const showPdf = useCallback(
+    (pdfId: string) => {
+      const first = pdfFirstBlockOnBoard(data.blockList, data.assets, pdfId)
+      if (first) showBlock(first)
+    },
+    [data.blockList, data.assets, showBlock],
+  )
+
+  /** Every page of the PDF, in order, in one slot; a PDF already on this board is shown instead of repeated. */
+  const placePdf = useCallback(
+    (pdfId: string, slot: number) => {
+      store.setSelectedAsset(null)
+      const pdf = data.assets[pdfId]
+      const pages = pagesOf(Object.values(data.assets), pdfId)
+      if (!pdf || !pdfPagesReady(pdf, pages)) return
+      if (pdfFirstBlockOnBoard(data.blockList, data.assets, pdfId)) return showPdf(pdfId)
+      const placed = actions.insertPdfPages(pages, slot)
+      if (placed[0]) showBlock(placed[0].id)
+    },
+    [actions, data.assets, data.blockList, showBlock, showPdf, store],
+  )
+
   const insertAt = useCallback(
     (assetId: string, slot: number, aspect?: number) => {
+      if (data.assets[assetId]?.kind === 'pdf') return placePdf(assetId, slot)
       actions.insertImage(assetId, aspect ?? aspects.current.get(assetId) ?? 4 / 3, slot)
       store.setSelectedAsset(null)
     },
-    [actions, store],
+    [actions, store, data.assets, placePdf],
   )
 
   const endSession = async () => {
@@ -118,6 +195,8 @@ export default function Teach() {
   if (data.error || !data.session) return <div className="page notice warn">{data.error ?? 'Session not found'}</div>
 
   const placing = store.pendingAnnotationId === null && (store.selectedAssetId !== null || store.draggingAssetId !== null)
+  const placingId = store.draggingAssetId ?? store.selectedAssetId
+  const placeLabel = placingId && data.assets[placingId]?.kind === 'pdf' ? 'Place every page of the PDF here' : undefined
 
   const title = data.session.title || data.lecture?.title || 'Lecture'
 
@@ -127,8 +206,12 @@ export default function Teach() {
         title={title}
         onRename={actions.renameSession}
         images={data.imageAssets}
+        documents={documents}
         onUndo={actions.undoStroke}
         onDrop={(assetId, aspect, slot) => insertAt(assetId, slot, aspect)}
+        onDropDocument={placePdf}
+        onShowDocument={showPdf}
+        onRetryDocument={preparePdf}
         onEnd={() => setConfirmEnd(true)}
         onImageAspect={(id, aspect) => aspects.current.set(id, aspect)}
         recording={{
@@ -178,6 +261,7 @@ export default function Teach() {
             onPen: store.setPencilSeen,
             pendingId: store.pendingAnnotationId,
             placing,
+            placeLabel,
             onSlot: (slot) => store.selectedAssetId && insertAt(store.selectedAssetId, slot),
             onStroke: (blockId, points) => actions.addStroke(blockId, points, store.inkColor, store.inkWidth),
             onLasso: actions.addLasso,
