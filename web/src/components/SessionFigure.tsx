@@ -16,15 +16,17 @@ interface Props {
   annotations: Annotation[]
   /** The circles' cards; their title and text are also what the popovers show. */
   cards: AnnotationCard[]
+  /** False: the cards only feed the popovers and aren't listed under the image. */
+  showCards?: boolean
   /** Alt text for an ordinary image. */
   alt: string
   /** Screen-reader caption. */
   caption?: string
-  selectedAnnotationId: string | null
-  /** A circle was clicked: select it and bring its card into view. */
-  onSelectAnnotation: (annotationId: string) => void
+  selectedAnnotationId?: string | null
+  /** A circle was clicked: select it and bring its card into view. Without it, a tap toggles the popover. */
+  onSelectAnnotation?: (annotationId: string) => void
   /** A card was clicked. */
-  onSelectCard: (annotationId: string) => void
+  onSelectCard?: (annotationId: string) => void
 }
 
 export default function SessionFigure({
@@ -33,9 +35,10 @@ export default function SessionFigure({
   strokes,
   annotations,
   cards,
+  showCards = true,
   alt,
   caption,
-  selectedAnnotationId,
+  selectedAnnotationId = null,
   onSelectAnnotation,
   onSelectCard,
 }: Props) {
@@ -66,7 +69,7 @@ export default function SessionFigure({
         onSelectAnnotation={onSelectAnnotation}
       />
       {caption && <figcaption className="st-visually-hidden">{caption}</figcaption>}
-      {cards.length > 0 && (
+      {showCards && cards.length > 0 && (
         <div className="st-terms" aria-label="Image annotations">
           {cards.map((card) => (
             <button
@@ -75,7 +78,7 @@ export default function SessionFigure({
               key={card.id}
               className={`st-term-card${selectedAnnotationId === card.id ? ' selected' : ''}`}
               aria-pressed={selectedAnnotationId === card.id}
-              onClick={() => onSelectCard(card.id)}
+              onClick={() => onSelectCard?.(card.id)}
             >
               <strong>{card.title}</strong>
               <span>{card.text}</span>
