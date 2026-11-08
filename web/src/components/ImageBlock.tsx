@@ -197,7 +197,7 @@ export default function ImageBlock({ block, src, alt, strokes, annotations, inte
       {readOnly && shown && (
         <div className="annotation-popover" style={popoverPosition(shown)}>
           <strong>{shown.label ?? 'Annotation'}</strong>
-          <p>{shown.bubble_text ?? '…'}</p>
+          <p>{shown.bubble_text?.trim() || 'No explanation recorded'}</p>
           {onJump && activeId === shown.id && (
             <button className="primary" onClick={() => onJump(shown.id)}>
               Go to section

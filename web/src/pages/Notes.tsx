@@ -11,6 +11,7 @@ import { assetUrl } from '../lib/assets'
 import { formatDate } from '../lib/lectures'
 import { supabase } from '../lib/supabase'
 import type { LectureNotes, NotesContent } from '../types'
+import { annotationExplanation } from './notesModel'
 import '../styles/p4.css'
 import '../styles/study.css'
 
@@ -158,7 +159,9 @@ export default function Notes() {
                             src={assetUrl(asset)}
                             alt={asset?.label ?? f.caption}
                             strokes={data.strokeList.filter((st) => st.block_id === block.id)}
-                            annotations={data.annotationList.filter((a) => a.block_id === block.id && a.status === 'confirmed')}
+                            annotations={data.annotationList
+                              .filter((a) => a.block_id === block.id && a.status === 'confirmed')
+                              .map((a) => ({ ...a, bubble_text: annotationExplanation(a, data.segmentList) }))}
                             onJump={jumpTo}
                           />
                           <figcaption>{f.caption}</figcaption>

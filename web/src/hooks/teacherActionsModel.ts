@@ -39,6 +39,12 @@ export class RefineCoordinator {
   }
 }
 
+/** Run annotation linking only after transcript inserts already in flight have settled. */
+export async function waitForPendingWrites<T>(pending: Set<Promise<void>>, task: () => Promise<T>): Promise<T> {
+  if (pending.size > 0) await Promise.allSettled([...pending])
+  return task()
+}
+
 export function buildTranscriptSegment(input: BuildTranscriptSegmentInput): TranscriptSegment {
   return {
     id: input.id,
