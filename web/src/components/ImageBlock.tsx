@@ -5,7 +5,7 @@ import { useEffect, useReducer, useRef, useState, type PointerEvent as ReactPoin
 import { bboxOf, clamp01, lassoPath, strokePath, VB_W } from '../lib/ink'
 import type { BoardMode } from '../store/session'
 import type { Annotation, Block, Point, Stroke } from '../types'
-import { popoverReducer } from './annotationPopoverModel'
+import { isAnnotationTarget, popoverReducer } from './annotationPopoverModel'
 
 export interface ImageBlockInteraction {
   mode: BoardMode
@@ -58,8 +58,33 @@ export default function ImageBlock({
   const [draft, setDraft] = useState<Point[] | null>(null)
   const [popover, dispatchPopover] = useReducer(popoverReducer, null)
   const leaveTimer = useRef<number | undefined>(undefined)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => () => window.clearTimeout(leaveTimer.current), [])
+
+  // Only listen while a popover is open; never block or swallow the event that dismisses it.
+  const popoverOpen = popover !== null
+  useEffect(() => {
+    if (!popoverOpen) return
+    const dismiss = () => {
+      window.clearTimeout(leaveTimer.current)
+      dispatchPopover({ type: 'dismiss' })
+    }
+    const onPointerDown = (e: PointerEvent) => {
+      if (!isAnnotationTarget(e.target instanceof Element ? e.target : null, rootRef.current)) dismiss()
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismiss()
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    document.addEventListener('keydown', onKeyDown)
+    window.addEventListener('scroll', dismiss, { capture: true, passive: true })
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true)
+      document.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('scroll', dismiss, { capture: true })
+    }
+  }, [popoverOpen])
 
   // Apple Pencil: stop the page from scrolling under the pen once fingers are set to scroll.
   useEffect(() => {
@@ -149,7 +174,7 @@ export default function ImageBlock({
   }
 
   return (
-    <div className="image-block" style={{ aspectRatio: String(aspect) }}>
+    <div ref={rootRef} className="image-block" style={{ aspectRatio: String(aspect) }}>
       <img src={src} alt={alt} draggable={false} />
       <svg
         ref={svgRef}

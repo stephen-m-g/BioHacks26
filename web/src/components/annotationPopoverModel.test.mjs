@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { annotationCardId, popoverReducer } from './annotationPopoverModel.ts'
+import { annotationCardId, isAnnotationTarget, popoverReducer } from './annotationPopoverModel.ts'
 
 const run = (events, state = null) => events.reduce(popoverReducer, state)
 
@@ -57,4 +57,32 @@ test('each circle targets its own card by annotation ID', () => {
   assert.equal(new Set(ids).size, 4)
   assert.equal(annotationCardId('ann-3'), 'annotation-card-ann-3')
   assert.notEqual(annotationCardId('ann-3'), annotationCardId('ann-1'))
+})
+
+test('outside click, transcript click, Escape and scroll all dismiss any popover', () => {
+  for (const opened of [
+    run([{ type: 'enter', id: 'ann-1' }]),
+    run([{ type: 'focus', id: 'ann-1' }]),
+    run([{ type: 'activate', id: 'ann-1', navigates: false }]),
+  ]) {
+    assert.equal(popoverReducer(opened, { type: 'dismiss' }), null)
+  }
+})
+
+test('a dismissed popover stays closed until the next hover', () => {
+  const state = run([{ type: 'enter', id: 'ann-1' }, { type: 'dismiss' }, { type: 'leave', id: 'ann-1' }])
+  assert.equal(state, null)
+  assert.deepEqual(popoverReducer(state, { type: 'enter', id: 'ann-2' }), { id: 'ann-2', via: 'hover' })
+})
+
+const fakeElement = (matches, inRoot) => ({ closest: () => (matches ? {} : null), inRoot })
+const root = { contains: (node) => node.inRoot }
+
+test('only this images circles and popover count as inside', () => {
+  assert.equal(isAnnotationTarget(fakeElement(true, true), root), true)
+  assert.equal(isAnnotationTarget(fakeElement(false, true), root), false, 'image background')
+  assert.equal(isAnnotationTarget(fakeElement(false, false), root), false, 'transcript or page background')
+  assert.equal(isAnnotationTarget(fakeElement(true, false), root), false, 'circle on another image')
+  assert.equal(isAnnotationTarget(null, root), false)
+  assert.equal(isAnnotationTarget(fakeElement(true, true), null), false)
 })
