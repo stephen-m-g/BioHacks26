@@ -122,6 +122,7 @@ export default function Notes() {
           )}
           {loaded && !hasContent && (
             <div className="p4-notice" role="status">
+              {!notes && !compileFailed && <span className="st-spinner" aria-hidden="true" />}
               <span>
                 {notes
                   ? 'This session didn’t produce any notes.'
