@@ -55,7 +55,7 @@ export default function RawSession() {
               <h2 id="board-heading" className="lp-label">
                 Board
               </h2>
-              <span className="lp-hint">As it was when the session ended</span>
+              <span className="lp-hint">Original speech, as recognized</span>
             </div>
             <TranscriptBoard
               blocks={data.blockList}

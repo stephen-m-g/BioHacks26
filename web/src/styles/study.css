@@ -73,6 +73,12 @@
   color: var(--d-text);
 }
 
+.st-section p.st-raw-note {
+  margin-top: -8px;
+  font-size: 14px;
+  color: var(--d-muted);
+}
+
 .st-transcript-highlight {
   padding: 0.08em 0.12em;
   margin: 0 -0.02em;

@@ -12,6 +12,8 @@ import {
   NO_EXPLANATION,
   rawAnnotationCardsForImage,
   rawAnnotationExplanation,
+  rawParagraphParts,
+  rawSpeechParts,
   studyKeyTerms,
   transcriptParagraphParts,
   transcriptSections,
@@ -543,4 +545,45 @@ test('sections: trailing unrefined speech after a PDF page gets its own card', (
 
 test('sections: an empty board has no cards', () => {
   assert.deepEqual(transcriptSections([], new Map(), []), [])
+})
+
+// ---------- Transcript view: raw paragraphs ----------
+
+test('raw paragraph: rebuilt from its own segments in speech order, wording untouched', () => {
+  const segments = [
+    rawSegment('s3', null, 'Other block.', '2026-11-07T19:00:01Z', { text_block_id: 'b2' }),
+    rawSegment('s2', 'ann-a', ' the the mighty condria ', '2026-11-07T19:00:03Z', { text_block_id: 'b1', text_start: 0, text_end: 15 }),
+    rawSegment('s1', null, 'Um, so uh,', '2026-11-07T19:00:02Z', { text_block_id: 'b1' }),
+  ]
+  assert.deepEqual(rawParagraphParts('b1', segments), [
+    { text: 'Um, so uh,', segmentId: 's1', annotationId: null },
+    { text: 'the the mighty condria', segmentId: 's2', annotationId: 'ann-a' },
+  ])
+})
+
+test('raw paragraph: filler-only segments with null offsets are kept', () => {
+  const segments = [
+    rawSegment('s1', null, 'Uh, um.', '2026-11-07T19:00:02Z', { text_block_id: 'b1', text_start: null, text_end: null }),
+  ]
+  assert.deepEqual(rawParagraphParts('b1', segments), [{ text: 'Uh, um.', segmentId: 's1', annotationId: null }])
+})
+
+test('raw paragraph: null when no segment maps to the block (legacy), so the view can say so', () => {
+  assert.equal(rawParagraphParts('b1', [rawSegment('s1', null, 'x', '2026-11-07T19:00:02Z', { text_block_id: 'b2' })]), null)
+})
+
+test('raw speech parts: sorted by speech time with stable tie-breakers, blank rows dropped, input untouched', () => {
+  const t = '2026-11-07T19:00:02Z'
+  const segments = [
+    rawSegment('b', null, 'second', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('blank', null, '  ', t),
+    rawSegment('a', null, 'first', t, { created_at: '2026-11-07T19:00:05Z' }),
+    rawSegment('z', null, 'zeroth', '2026-11-07T19:00:01Z'),
+  ]
+  const before = structuredClone(segments)
+  assert.deepEqual(
+    rawSpeechParts(segments).map((p) => p.text),
+    ['zeroth', 'first', 'second'],
+  )
+  assert.deepEqual(segments, before)
 })

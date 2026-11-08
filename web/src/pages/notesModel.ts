@@ -201,18 +201,38 @@ export function annotationExplanation(
 
 type RawSegment = Pick<TranscriptSegment, 'id' | 'annotation_id' | 'raw_text' | 't_start' | 't_end' | 'created_at'>
 
+/** Transcript view: segments as recognized, one part each, in speech order. Never cleaned. */
+export function rawSpeechParts(segments: RawSegment[]): TranscriptParagraphPart[] {
+  return [...segments]
+    .sort(compareSpeechOrder)
+    .map((segment) => ({ text: segment.raw_text.trim(), segmentId: segment.id, annotationId: segment.annotation_id }))
+    .filter((part) => part.text)
+}
+
+/**
+ * Transcript view: a text block's paragraph rebuilt from the segments refined into it (text_block_id), including
+ * filler-only ones whose cleaned offsets are null. Null when no segment maps to it (sessions from before the
+ * mapping), so the view can show the block's cleaned text and say so.
+ */
+export function rawParagraphParts(
+  blockId: string,
+  segments: (RawSegment & Pick<TranscriptSegment, 'text_block_id'>)[],
+): TranscriptParagraphPart[] | null {
+  const linked = segments.filter((segment) => segment.text_block_id === blockId)
+  return linked.length > 0 ? rawSpeechParts(linked) : null
+}
+
 /**
  * Transcript view: the circle's linked speech exactly as recognized, in speech order, including filler-only
  * segments. Never cleaned and never the saved bubble; null when no speech is linked.
  */
 export function rawAnnotationExplanation(annotationId: string, segments: RawSegment[]): string | null {
-  const raw = segments
-    .filter((segment) => segment.annotation_id === annotationId)
-    .sort(compareSpeechOrder)
-    .map((segment) => segment.raw_text.trim())
-    .filter(Boolean)
-    .join(' ')
-  return raw || null
+  const linked = segments.filter((segment) => segment.annotation_id === annotationId)
+  return (
+    rawSpeechParts(linked)
+      .map((part) => part.text)
+      .join(' ') || null
+  )
 }
 
 /** Transcript view: the same one-card-per-confirmed-circle projection as the notes, with raw speech. */
