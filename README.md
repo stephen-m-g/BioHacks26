@@ -17,11 +17,7 @@ An accessible teaching workspace that turns spoken explanations, lecture materia
 
 ## Demo
 
-[**Watch the demo video**](
-
 https://github.com/user-attachments/assets/ab2ca793-f133-4b30-98f4-c3ff96e19b6d
-
-) (MP4, 11 MB)
 
 ## Why Aside?
 
