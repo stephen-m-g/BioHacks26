@@ -15,6 +15,10 @@ An accessible teaching workspace that turns spoken explanations, lecture materia
 
 ---
 
+## Demo
+
+[**Watch the demo video**](docs/aside_demo_synced.mp4) (MP4, 11 MB)
+
 ## Why Aside?
 
 Traditional whiteboards assume a teacher can continuously write, draw, and speak at the same time. For educators with limited hand dexterity or progressive motor conditions such as ALS, that can become a barrier to teaching.
