@@ -1,63 +1,149 @@
-# BioHacks 2026: iPad whiteboard for a teacher with ALS
+<div align="center">
+  <img src="web/public/aside-logo.png" alt="Aside logo" width="110" />
 
-Wearables & Quality of Life track. A teacher-only web app, projected in class, that replaces Alex Chen's whiteboard. His speech becomes a live, scrolling board of cleaned-up paragraphs and lecture images. He can ink on images or lasso part of one to link what he's saying to it. Each session is saved as an interactive study document.
+# Aside
 
-**The current spec is [docs/CONTEXT.md](docs/CONTEXT.md)** (screens, schema, API contract, notes JSON, ownership).
+### A voice-powered whiteboard that keeps up with the teacher.
 
-## Layout
+**Winner of Best Use of Gemini API · BioHacks 2026**
 
-| Path | What | Owner |
-|---|---|---|
-| `web/src/pages/Teach.tsx`, `components/{Board,ImageBlock,Sidebar}.tsx` | Live session: board, ink, lasso + shimmer + ✓/✗, image bank, settings | P1 |
-| `web/src/hooks/useTeacherActions.ts`, `useSessionData.ts` | Optimistic board actions; session loading + realtime | P1 / shared |
-| `web/src/hooks/useScribeTranscription.ts` | Speech recognition (ElevenLabs Scribe v2 Realtime) | P3 |
-| `web/src/pages/{Dashboard,AllLectures,Prep,Notes,RawSession}.tsx` | Dashboard, archive, chat-style prep, study document, raw board | P4 |
-| `web/src/store/session.ts`, `store/settings.ts` | Live UI state (mode, ink, pending lasso); persisted device settings | shared |
-| `web/src/types.ts`, `web/src/lib/api.ts` | DB types, typed API client | shared |
-| `api/` | Python 3.11 FastAPI + google-genai + supabase-py | P2 |
-| `supabase/schema.sql` | Tables, realtime publication, storage bucket | P4 |
+An accessible teaching workspace that turns spoken explanations, lecture materials, and visual annotations into interactive study notes.
 
-Routes: `/` dashboard, `/lectures` all lectures/archive, `/prep/:lectureId`, `/teach/:sessionId`, `/notes/:sessionId`, `/sessions/:sessionId/raw`. **`/teach/demo` runs the live board offline with sample images**, so you can try it without Supabase.
+[**Live app**](https://web-sigma-beryl-41.vercel.app/) · [**Source code**](https://github.com/stephen-m-g/BioHacks26)
 
-## Setup
+</div>
 
-### 1. Supabase (P4, once)
-Create a project, then paste `supabase/schema.sql` into the SQL editor and run it. It creates the tables, adds them to realtime, and creates the public `assets` bucket. Share the project URL, anon key and service role key with the team (not in git).
+---
 
-### 2. Web
-```bash
-cd web
-cp .env.example .env.local   # fill in VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_URL
-npm install
-npm run dev                  # http://localhost:5173
+## Why Aside?
+
+Traditional whiteboards assume a teacher can continuously write, draw, and speak at the same time. For educators with limited hand dexterity or progressive motor conditions such as ALS, that can become a barrier to teaching.
+
+Aside puts the explanation first. A teacher speaks naturally while the app builds a scrolling board of lecture content. They can draw on images or circle a region to connect their spoken explanation to a specific part of the material. Students can follow along live and revisit the lesson afterward.
+
+## Features
+
+- **Live speech-to-whiteboard** — ElevenLabs Scribe v2 Realtime transcribes the teacher's speech as the lesson unfolds.
+- **Context-aware transcript cleanup** — Gemini removes filler words, accidental repetitions, and false starts while preserving the lecture's meaning and sequence. The original raw transcription remains accessible.
+- **Visual lecture materials** — Upload PDFs, images, and text notes. Multi-page PDFs appear as individually annotatable pages on the board.
+- **Smart annotations** — Circle part of an image or PDF page while speaking to associate an explanation with that exact region. Hover over the circle later to see the linked speech.
+- **Page-aware transcription** — Speech is associated with the PDF page that was active when it was spoken, including when the teacher revisits an earlier page.
+- **Live student follow-along** — Students use a session code to watch a read-only version of the live board.
+- **Interactive study notes** — After the session, Aside compiles cleaned lecture text alongside the original images and annotations, with a separate view for the raw transcript.
+
+## How it works
+
+```text
+Teacher's voice ──> ElevenLabs Scribe v2 Realtime ──> timestamped speech
+                                                         │
+PDFs, images, notes ──> live teaching board <─────────────┤
+                              │                          │
+                       Ink and Smart circles             │
+                              │                          ▼
+                              └──────────────> Gemini transcript refinement
+                                                 │
+                                                 ▼
+                                        Saved lecture session
+                                                 │
+                                                 ▼
+                                        Interactive study notes
+                                        + original transcript
 ```
 
-### 3. API
+The application uses timestamps and persisted IDs to associate speech with annotations and PDF pages. Gemini refines the words and helps organize notes; it does not guess which circle or page the teacher was discussing.
+
+## Technology
+
+| Layer                                  | Stack                                    |
+| -------------------------------------- | ---------------------------------------- |
+| Frontend                               | React, TypeScript, Vite, Zustand         |
+| Speech recognition                     | ElevenLabs Scribe v2 Realtime            |
+| AI text refinement and note generation | Google Gemini (`google-genai`)           |
+| Backend                                | Python, FastAPI                          |
+| Database and storage                   | Supabase (PostgreSQL, Realtime, Storage) |
+| PDF rendering                          | PDFium (`pypdfium2`)                     |
+| Hosting                                | Vercel (web), Render (API)               |
+
+## Try Aside
+
+Explore the [live app](https://web-sigma-beryl-41.vercel.app/).
+
+A typical teaching session:
+
+1. **Prepare a lecture.** Upload a PDF, image, or text note, then save the materials.
+2. **Teach naturally.** Start a session, enable the microphone, and speak while navigating the visual material.
+3. **Annotate visually.** Use Ink to draw or Smart mode to circle regions and link spoken explanations.
+4. **Share the lesson.** Students enter the displayed session code to follow along live.
+5. **Review afterward.** Open Study Notes for the cleaned, interactive document or Transcript to read the original speech recognition output.
+
+> **Prototype note:** This is a software project exploring accessible classroom interaction, not a certified medical or assistive device. The full workflow requires configured third-party services and browser microphone permissions.
+
+## Run locally
+
+### Prerequisites
+
+- Node.js and npm compatible with `web/package.json`
+- Python 3.12 (the deployment uses Python 3.12.10)
+- A Supabase project
+- Google Gemini and ElevenLabs API keys
+
+### 1. Configure Supabase
+
+For a **new development project**, run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL editor. See [`supabase/migrations/`](supabase/migrations/) for incremental changes to existing databases; do **not** reapply migrations or duplicate schema changes already present in your database.
+
+**Security:** The current prototype does not implement user authentication and its database configuration uses permissive access rules. Use a dedicated test project, do not upload sensitive student information, and review access policies before production deployment.
+
+### 2. Start the API
+
 ```bash
 cd api
-python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env         # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, ELEVENLABS_API_KEY
-uvicorn main:app --reload --port 8000
-python smoke.py              # hits every endpoint
+cp .env.example .env       # fill in your server-side credentials
+python -m uvicorn main:app --reload --port 8000
 ```
 
-The Gemini, ElevenLabs and service role keys live only in `api/.env`. Never put them in `web/`.
+Set the values documented in [`api/.env.example`](api/.env.example). Never expose the Supabase service-role key, Gemini key, or ElevenLabs key in the frontend.
 
-## Coordinates
+### 3. Start the frontend
 
-Slides are 16:9. Every x, y, w, h and stroke width is normalized to [0,1] of the slide's width/height. Stroke points are `[[x, y, pressure], ...]`. bbox is `{x, y, w, h}`.
+In a separate terminal:
 
-## Deploy (HTTPS is required for the mic on iPad Safari)
+```bash
+cd web
+cp .env.example .env.local  # configure Supabase and API URL
+npm install
+npm run dev
+```
 
-- **Web → Vercel:** import the repo, set Root Directory to `web`, framework Vite, add the three `VITE_*` env vars. `web/vercel.json` handles SPA routing.
-- **API → Render:** New → Blueprint, pick this repo (`render.yaml`), then set the secrets. Add the Vercel URL to `WEB_ORIGIN`. Vultr is an option for its sponsor prize. For quick testing: `cloudflared tunnel --url http://localhost:8000`.
+Open **http://localhost:5173**. On a device other than localhost, microphone access normally requires HTTPS.
 
-## UI rules
+### Run tests
 
-Every tap target is at least 64px. No pinch, long-press or double-tap. Works left-handed. Few taps per action. Tolerates imprecise input.
+```bash
+# Frontend (from web/)
+npm test
+npm run build
 
-## Adaptive volume
+# Backend (from api/ with your virtual environment active)
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
 
-Needs a lapel or headset mic, with the speaker pointed away from it to avoid feedback.
+## Repository layout
+
+```text
+web/        React app: preparation, teaching board, student view, notes
+api/        FastAPI: Gemini processing, transcription tokens, PDF rendering
+supabase/   Database schema and migrations
+docs/       Internal technical context and implementation notes
+```
+
+## Recognition
+
+Aside originated at **BioHacks 2026**, where it won **Best Use of Gemini API**. The project continues the idea beyond the event: making teaching materials easier to create, annotate, share, and revisit when writing or fine motor interaction is difficult.
+
+---
+
+_Helping keep a teacher's ideas on the board, even when writing becomes difficult._
